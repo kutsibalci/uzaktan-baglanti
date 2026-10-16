@@ -34,6 +34,10 @@
       PWA (ana ekrana ekle, ağ öncelikli service worker), `usb-baglan.bat` (adb reverse).
       **(Başsız Edge'de sahte dokunuşlarla doğrulandı; gerçek telefonda ve gerçek USB/adb ile denenmedi)**
 
+- [x] Tepsi simgesi (`tepsi-baslat.bat`): gizli sunucu, bağlantı bildirimi, bağlantı kesme, Windows açılınca başlatma,
+      izlenirken uyku engeli. Güç menüsü (kilitle/uyku/yeniden başlat/kapat, yalnızca yönetici).
+      **(Balon bildirimi, menü ve gerçek güç komutları elle denenmedi; testler kuru modda/günlükten doğrular)**
+
 ## Sıradaki
 1. İkinci ekranın gerçek tablet/telefonla testi
 2. ddagrab (Desktop Duplication) ile daha hızlı yakalama — DXGI çıkış sırası ↔ \\.\DISPLAYn eşlemesi lazım
