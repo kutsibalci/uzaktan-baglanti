@@ -1,7 +1,7 @@
 // Tablet kalemi: basınç, eğim ve silgi bilgisiyle kalem olaylarını bilgisayara iletir.
 // Yalnızca pointerType === 'pen' olan olaylar işlenir; parmak/fare çekirdek koduna bırakılır.
-// Çekirdek fare/dokunmatik kodunun kalem olaylarını yok sayması başka bir yerde ayarlanıyor; burada
-// ikili işlemeyi önlemek için kalem olaylarında stopPropagation + preventDefault kullanıyoruz.
+// Kalem özelliği devredeyken (RC.setPenActive) çekirdek, kalemin ürettiği fare/dokunma olaylarını yok sayar.
+// Devrede değilse (izleme yok, salt izleme, bilgisayar sentetik kalemi desteklemiyor) kalem fare gibi çalışmaya devam eder.
 (() => {
   const RC = window.RC;
   if (!RC) return;
@@ -10,11 +10,29 @@
   let bekleyen = null;   // rAF ile birleştirilecek son hover/move olayı
   let planli = false;
   let temas = false;     // kalem ekrana değiyor mu
+  let destek = null;     // bilgisayar sentetik kalemi destekliyor mu (null: henüz bilinmiyor)
+  let sorgulandi = false;
 
+  // Kontrol ve ikinci ekran (extend) modlarında çalışır; sunucu ikisini de kabul eder.
   function destekli() {
     const s = RC.state();
-    return !!(s.stream && s.stream.started && s.stream.mode === 'control' && s.me && s.me.role !== 'view');
+    return !!(s.stream && s.stream.started && RC.canInput() && destek !== false);
   }
+  if (RC.setPenActive) RC.setPenActive(destekli);
+
+  RC.on('viewer:start', () => {
+    if (!sorgulandi && RC.canInput()) { sorgulandi = true; RC.send({ t: 'kalem-destek' }); }
+  });
+  RC.on('kalem-destek', (m) => {
+    destek = !!m.ok;
+    if (!m.ok) {
+      console.warn('Kalem desteklenmiyor:', m.hata || '');
+      RC.overlay('Bu bilgisayar kalem girdisini desteklemiyor; kalem fare gibi çalışacak.');
+      setTimeout(() => RC.overlay(''), 3500);
+    }
+  });
+  // Yeniden bağlanınca (sunucu yeniden başlamış olabilir) tekrar sorulur.
+  RC.on('disconnect', () => { sorgulandi = false; destek = null; temas = false; bekleyen = null; });
 
   // e.pressure 0..1 -> 0..1024. Temas varken 0 gelirse en az 1 gönder (çizgi kopmasın).
   function basinc(e, durum) {
@@ -92,5 +110,11 @@
 
   stage.addEventListener('pointerup', (e) => kalkis(e, 'up'), true);
   stage.addEventListener('pointercancel', (e) => kalkis(e, 'out'), true);
-  stage.addEventListener('pointerleave', (e) => kalkis(e, 'out'), true);
+  // pointerleave kabarmaz; yakalama aşamasında alt öğelerinkini de (ör. setPointerCapture sonrası canvas'ın
+  // "yakalama sınırı" olayı) görürdük ve çizgi ilk harekette koparıldı. Yalnızca sahnenin kendi çıkışı sayılır;
+  // temas sürerken (yakalama varken) zaten kalkış pointerup/pointercancel ile gelir.
+  stage.addEventListener('pointerleave', (e) => {
+    if (e.target !== stage || temas) return;
+    kalkis(e, 'out');
+  });
 })();

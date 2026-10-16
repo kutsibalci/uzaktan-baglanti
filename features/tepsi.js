@@ -3,7 +3,7 @@
 // (ör. baslat.bat ile konsoldan çalışırken) hiçbir uç kaydedilmez.
 // Uçlara YALNIZCA bu bilgisayardan (tailscale serve yönlendirmesi değil) ve doğru "X-Tepsi" başlığıyla erişilir:
 //   GET  /api/tepsi/durum    misafir kodu, port, bağlı kişiler, Tailscale adresi
-//   POST /api/tepsi/kes      {"id": 3} ya da {"hepsi": true} — bağlantıyı keser
+//   POST /api/tepsi/kes      {"id": 3} ya da {"hepsi": true} — bağlantıyı keser (hatırlanan cihaz kaydı da silinir)
 //   POST /api/tepsi/kapat    sunucuyu düzgün kapatır (tepsideki "Çıkış" / "Yeniden başlat")
 //   GET  /api/tepsi/olaylar  Server-Sent Events: baglandi, ayrildi, izleme-basladi, izleme-bitti
 const crypto = require('crypto');
@@ -169,6 +169,11 @@ module.exports.init = (api) => {
     else if (body && Number.isInteger(body.id) && body.id > 0) pred = (c) => c.tepsiId === body.id;
     else return json(res, 400, { ok: false, hata: 'id ya da hepsi gerekli.' });
     const targets = [...api.clients].filter(pred);
+    // "Beni hatırla" ile girmiş cihazlar 4002'den sonra kayıtlı anahtarla onaysız geri girerdi; bilgisayarın
+    // başındaki kişinin kesme kararı kalıcı olsun diye bu cihazların kaydı silinir (tekrar girmek için şifre gerekir).
+    for (const c of targets) {
+      if (c.session?.deviceId) { try { api.store.removeDevice(c.session.deviceId); } catch {} }
+    }
     api.kick(pred, 'tepsiden kesildi');
     if (targets.length) {
       api.store.log('admin', { user: '(bilgisayar)', op: 'tepsi-kes', target: targets.map((c) => c.session.username).join(', ') });

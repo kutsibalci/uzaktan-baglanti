@@ -5,26 +5,30 @@
 //   istemci -> { t: 'perde-sorgu' }                (su anki durum)
 //   sunucu  -> { t: 'perde-durum', acik, hata?, neden? }
 //
-// Perdeyi acan baglantilarin hepsi kapaninca ya da izlemeyi birakinca perde kendiliginden kalkar.
-// Bilgisayarin basindaki kisi Ctrl+Alt+Shift+P ile her zaman kapatabilir.
+// Perdeyi acan baglantilarin hepsi kapaninca, izlemeyi birakinca ya da kontrol yetkisini kaybedince
+// perde kendiliginden kalkar. Bilgisayarin basindaki kisi Ctrl+Alt+Shift+P ile her zaman kapatabilir.
 const { spawn } = require('child_process');
 
 const ACILIS_SURESI = 8000;
+const KAPANIS_BEKLE = 2000;  // eski surecin cikmasi icin en fazla bekleme (kisayol cakismasin)
+const YOKLAMA_MS = 1000;
 
 module.exports.init = (api) => {
   let exe = null;
   let derlemeHatasi = null;
   try { exe = api.buildExe('Perde', { target: 'winexe' }); } catch (e) { derlemeHatasi = e.message; api.log('Perde.cs derlenemedi:', e.message); }
 
-  let proc = null;           // Perde.exe sureci (acilirken ya da acikken)
+  let proc = null;           // GECERLI Perde.exe sureci (acilirken ya da acikken)
   let acik = false;          // perde ekranda mi
   const acanlar = new Set(); // perdeyi acan/acik tutan baglantilar
+  let kapanan = null;        // kapatilmakta olan eski surecin cikisi (Promise) ya da null
 
   function yayinla(extra = {}) {
     api.broadcast({ t: 'perde-durum', acik, ...extra });
   }
 
-  // Perde surecini kapatir (stdin kapanisi + kesin oldurme).
+  // Gecerli perde surecini kapatir (stdin kapanisi + kesin oldurme). Kapatilan surecin
+  // isleyicileri bundan sonra durumu degistirmez (proc !== p).
   function kapatSurec() {
     const p = proc;
     proc = null;
@@ -32,23 +36,36 @@ module.exports.init = (api) => {
     acanlar.clear();
     if (!p) return;
     try { if (p.stdin.writable) p.stdin.end('kapat\n'); } catch {}
-    const pid = p.pid;
+    if (p.exitCode !== null || p.signalCode !== null) return;
     const bitti = setTimeout(() => { try { p.kill(); } catch {} }, 1500);
-    p.on('exit', () => clearTimeout(bitti));
+    const cikis = new Promise((resolve) => p.once('exit', () => { clearTimeout(bitti); resolve(); }));
+    kapanan = cikis;
+    cikis.then(() => { if (kapanan === cikis) kapanan = null; });
   }
 
-  function ac() {
+  async function ac() {
+    if (!exe) return { ok: false, hata: derlemeHatasi || 'Perde programi yok.' };
+    if (acik) return { ok: true };
+    if (proc) return { ok: false, hata: 'Perde zaten aciliyor.' };
+    // Eski perde hala cikiyorsa bekle: ayni kisayolu (RegisterHotKey) iki surec tutamaz.
+    if (kapanan) {
+      await Promise.race([kapanan, new Promise((r) => setTimeout(r, KAPANIS_BEKLE))]);
+      if (acik) return { ok: true };
+      if (proc) return { ok: false, hata: 'Perde zaten aciliyor.' };
+    }
     return new Promise((resolve) => {
-      if (!exe) { resolve({ ok: false, hata: derlemeHatasi || 'Perde programi yok.' }); return; }
-      if (acik) { resolve({ ok: true }); return; }
-      if (proc) { resolve({ ok: false, hata: 'Perde zaten aciliyor.' }); return; }
       let bitti = false;
       const tamam = (sonuc) => { if (!bitti) { bitti = true; clearTimeout(zaman); resolve(sonuc); } };
-      proc = spawn(exe, [], { stdio: ['pipe', 'pipe', 'inherit'], windowsHide: true });
+      // exe bir dizi de olabilir ([program, ...arguman]); testler sahte perdeyi node ile calistirir.
+      const [komut, ...arglar] = Array.isArray(exe) ? exe : [exe];
+      const p = spawn(komut, arglar, { stdio: ['pipe', 'pipe', 'inherit'], windowsHide: true });
+      proc = p;
+      const gecerli = () => proc === p;
       let tampon = '';
-      const zaman = setTimeout(() => { kapatSurec(); tamam({ ok: false, hata: 'Perde zamaninda acilmadi.' }); }, ACILIS_SURESI);
+      const zaman = setTimeout(() => { if (gecerli()) kapatSurec(); tamam({ ok: false, hata: 'Perde zamaninda acilmadi.' }); }, ACILIS_SURESI);
 
-      proc.stdout.on('data', (d) => {
+      p.stdout.on('data', (d) => {
+        if (!gecerli()) return;
         tampon += d.toString();
         let i;
         while ((i = tampon.indexOf('\n')) >= 0) {
@@ -60,21 +77,27 @@ module.exports.init = (api) => {
           if (typeof msg.ok === 'boolean') {
             // Acilis cevabi.
             if (msg.ok) { acik = true; tamam({ ok: true }); yayinla(); }
-            else { const hata = msg.hata; tamam({ ok: false, hata }); }
+            else { tamam({ ok: false, hata: msg.hata }); }
           } else if (msg.kapandi) {
             // Perde kendiliginden kapandi (yerel kisayol ya da hata).
-            acik = false;
-            yayinla(msg.hata ? { hata: msg.hata } : { neden: msg.kapandi });
             kapatSurec();
+            yayinla(msg.hata ? { hata: msg.hata } : { neden: msg.kapandi });
+            return;
           }
         }
       });
-      proc.on('error', (e) => { kapatSurec(); tamam({ ok: false, hata: e.message }); });
-      proc.on('exit', () => {
-        if (!bitti) tamam({ ok: false, hata: 'Perde beklenmedik sekilde kapandi.' });
-        if (acik) { acik = false; yayinla(); }
+      p.on('error', (e) => {
+        if (gecerli()) kapatSurec();
+        tamam({ ok: false, hata: e.message });
+      });
+      p.on('exit', () => {
+        tamam({ ok: false, hata: 'Perde beklenmedik sekilde kapandi.' });
+        if (!gecerli()) return; // kapatilmis eski surec: yeni perdenin durumuna dokunma
+        const vardi = acik;
         proc = null;
+        acik = false;
         acanlar.clear();
+        if (vardi) yayinla();
       });
     });
   }
@@ -85,13 +108,16 @@ module.exports.init = (api) => {
     if (acanlar.size === 0 && (acik || proc)) { kapatSurec(); yayinla(); }
   }
 
+  const tutabilir = (ws) => ws.readyState === 1 && ws.streaming && ws.session && ws.session.role !== 'view';
+
   api.on('perde', async (ws, m) => {
     if (m.acik) {
       if (!ws.streaming) { api.sendJson(ws, { t: 'perde-durum', acik, hata: 'Perde yalnizca izleme sirasinda acilir.' }); return; }
       acanlar.add(ws);
       const sonuc = await ac();
-      if (sonuc.ok) api.sendJson(ws, { t: 'perde-durum', acik: true });
-      else { acanlar.delete(ws); api.sendJson(ws, { t: 'perde-durum', acik, hata: sonuc.hata }); }
+      if (sonuc.ok && acanlar.has(ws)) api.sendJson(ws, { t: 'perde-durum', acik: true });
+      else if (sonuc.ok) { birak(ws); api.sendJson(ws, { t: 'perde-durum', acik }); }
+      else { birak(ws); api.sendJson(ws, { t: 'perde-durum', acik, hata: sonuc.hata }); }
     } else {
       birak(ws);
       api.sendJson(ws, { t: 'perde-durum', acik });
@@ -102,8 +128,14 @@ module.exports.init = (api) => {
     api.sendJson(ws, { t: 'perde-durum', acik });
   });
 
-  // Izlemeyi birakan ya da ayrilan baglanti perdeyi tutamaz.
+  // Ayrilan baglanti perdeyi tutamaz.
   api.onClose((ws) => birak(ws));
+  // Izlemeyi birakan (baglantisi acik kalsa da) ya da kontrol yetkisi alinan baglanti da tutamaz.
+  // Izleme baslatma/durdurma cekirdekte oldugundan saniyede bir yoklanir (yalnizca bayrak okuma).
+  setInterval(() => {
+    for (const ws of [...acanlar]) if (!tutabilir(ws)) birak(ws);
+  }, YOKLAMA_MS).unref();
+
   api.adminData(async () => ({ perde: { acik, acan: acanlar.size } }));
 
   // test icin: perdeyi tutan baglanti sayisi ve durum

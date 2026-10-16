@@ -472,13 +472,15 @@
   const BTN = ['left', 'middle', 'right'];
   const heldButtons = new Set();
 
-  // Kalem (pointerType 'pen') olaylarını kalem özelliği işler; tarayıcının kalem için ürettiği fare olaylarını yok say.
-  // Pointer olayları uyumluluk fare olaylarından önce gelir.
+  // Kalem (pointerType 'pen') olaylarını kalem özelliği işler; o devredeyken (RC.setPenActive) tarayıcının kalem için
+  // ürettiği fare/dokunma olaylarını yok say. Devrede değilse (ör. bilgisayar sentetik kalemi desteklemiyor) kalem
+  // fare/parmak gibi çalışır. Pointer olayları uyumluluk fare ve dokunma olaylarından önce gelir.
+  let penActive = () => false;
   let lastPointerType = 'mouse';
   const notePointer = (e) => { lastPointerType = e.pointerType; };
   stage.addEventListener('pointerdown', notePointer, true);
   stage.addEventListener('pointermove', notePointer, true);
-  const fromPen = () => lastPointerType === 'pen';
+  const fromPen = () => lastPointerType === 'pen' && penActive();
 
   stage.addEventListener('mousemove', (e) => { if (!fromPen()) queueMove(e.clientX, e.clientY); });
   stage.addEventListener('mousedown', (e) => {
@@ -510,7 +512,10 @@
   //  Touchpad: dizüstü touchpad'i gibi. Tek parmak imleci göreli (ivmeli) taşır, dokunuş = sol tık,
   //            iki parmak dokunuş = sağ tık, iki parmak kaydırma = tekerlek, çift dokunup sürükleme = sol tuşla sürükleme.
   // Her iki modda: iki parmak sıkıştırma = yakınlaştırma (1x–4x), iki parmak çift dokunuş = 1x.
-  // Kalem dokunuşları (touchType 'stylus') burada işlenmez; kalem özelliği pointer olaylarıyla işler.
+  // Kalem özelliği devredeyken kalem dokunuşları burada işlenmez (kalem özelliği pointer olaylarıyla işler).
+  // Chromium'da Touch.touchType yok; bu yüzden kalemin pointerdown'ından hemen sonra gelen dokunuşlar kimlikleriyle
+  // kalem olarak işaretlenir (Android Chrome kalem için dokunma olayı da üretir). Safari'de touchType 'stylus' da elenir.
+  // Salt izleme rolünde touchpad modu anlamsızdır (imleç yok); hatırlanan mod ne olursa olsun doğrudan mod geçerlidir.
   // Hesaplar public/dokunmatik.js içinde (window.Dokunmatik).
 
   const T = window.Dokunmatik;
@@ -530,7 +535,10 @@
   tpCursor.hidden = true;
   stage.appendChild(tpCursor);
 
-  const fingers = (list) => [...list].filter((t) => t.touchType !== 'stylus');
+  const penTouchIds = new Set();
+  const fingers = (list) => [...list].filter((t) => !penTouchIds.has(t.identifier) && !(t.touchType === 'stylus' && penActive()));
+  const forgetPenTouches = (e) => { for (const t of e.changedTouches) penTouchIds.delete(t.identifier); };
+  const curMode = () => (canInput() ? touchMode : 'direct');
   const canView = () => stream?.started && visible('vViewer');
   const viewBox = () => T.contentBox(stage.clientWidth, stage.clientHeight, canvas.width, canvas.height);
   function local(t) {
@@ -610,6 +618,7 @@
 
   stage.addEventListener('touchstart', (e) => {
     e.preventDefault();
+    if (fromPen()) for (const t of e.changedTouches) penTouchIds.add(t.identifier);
     if (!canView()) return;
     const f = fingers(e.touches);
     if (f.length >= 2) {
@@ -622,7 +631,7 @@
     }
     if (f.length !== 1 || gesture) return;
     const t = f[0];
-    if (touchMode === 'touchpad') {
+    if (curMode() === 'touchpad') {
       gesture = { pad: true, id: t.identifier, x0: t.clientX, y0: t.clientY, x: t.clientX, y: t.clientY, time: Date.now(), t0: Date.now(), moved: false, dragging: false, second: !!tapTimer };
       if (tapTimer) { clearTimeout(tapTimer); tapTimer = null; }
       drawCursor();
@@ -654,7 +663,7 @@
         applyView();
       } else if (g.kind === 'pan') {
         // Doğrudan modda yakınlaştırılmışken görünüm kayar; aksi halde tekerlek.
-        if (view.z > 1 && touchMode === 'direct') {
+        if (view.z > 1 && curMode() === 'direct') {
           setView({ z: view.z, tx: g.start.tx + m.x - g.m0.x, ty: g.start.ty + m.y - g.m0.y });
         } else if (canInput()) {
           g.acc += m.y - g.wy;
@@ -705,6 +714,7 @@
 
   stage.addEventListener('touchend', (e) => {
     e.preventDefault();
+    forgetPenTouches(e);
     if (!gesture || fingers(e.touches).length > 0) return;
     const g = gesture;
     gesture = null;
@@ -743,7 +753,8 @@
     }
   }, { passive: false });
 
-  stage.addEventListener('touchcancel', () => {
+  stage.addEventListener('touchcancel', (e) => {
+    forgetPenTouches(e);
     endSingle();
     gesture = null;
   });
@@ -958,6 +969,8 @@
     on,
     state: () => ({ me: me && { ...me }, stream: stream && { ...stream }, screens: [...screens], connected: ws?.readyState === 1 }),
     canInput,
+    // Kalem özelliği, kalem olaylarını kendisi işlediği sürece true dönen bir fonksiyon kaydeder.
+    setPenActive(fn) { penActive = typeof fn === 'function' ? fn : () => false; },
     toNorm,
     moveNow,
     queueMove,

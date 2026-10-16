@@ -11,6 +11,7 @@ const path = require('path');
 const { pipeline } = require('stream/promises');
 const { Transform } = require('stream');
 const { promisify } = require('util');
+const crypto = require('crypto');
 
 // fs.realpath.native: Windows'ta GetFinalPathNameByHandle — junction/symlink ve 8.3 kısa adları tam yola çevirir.
 const gercekYol = promisify(fs.realpath.native);
@@ -40,20 +41,43 @@ function adTemizle(ad) {
   return s || 'dosya';
 }
 
-// Çakışmada "ad (1).uzantı" ... — 'wx' ile açıldığı için iki yükleme aynı adı alamaz.
-async function benzersizAc(klasor, ad) {
+// Yükleme önce geçici bir ada yazılır; yalnızca eksiksiz bitince son ada taşınır. Böylece sunucu yarıda kapanırsa
+// (tepsiden çıkış, çökme) kesik dosya, tam görünümlü bir adla kalmaz. Kalan geçici dosyalar açılışta silinir.
+const GECICI_UZ = '.uzaktan-yukleniyor';
+
+async function geciciAc(klasor) {
+  const tam = path.join(klasor, `.${crypto.randomBytes(8).toString('hex')}${GECICI_UZ}`);
+  return { tam, fh: await fsp.open(tam, 'wx') };
+}
+
+// Geçici dosyayı benzersiz son ada taşır. Çakışmada "ad (1).uzantı" ... — fs.link var olan adın üzerine yazmaz
+// (EEXIST), bu yüzden iki yükleme aynı adı alamaz. Sabit bağlantı desteklenmeyen sürücülerde yeniden adlandırılır.
+async function benzersizTasi(gecici, klasor, ad) {
   const uz = path.extname(ad);
   const govde = ad.slice(0, ad.length - uz.length);
   for (let i = 0; i < 1000; i++) {
     const aday = i ? `${govde} (${i})${uz}` : ad;
     const tam = path.join(klasor, aday);
     try {
-      return { ad: aday, tam, fh: await fsp.open(tam, 'wx') };
+      await fsp.link(gecici, tam);
+      await fsp.rm(gecici, { force: true });
+      return { ad: aday, tam };
     } catch (e) {
-      if (e.code !== 'EEXIST') throw e;
+      if (e.code === 'EEXIST') continue;
+      // Sabit bağlantı yok (FAT32/exFAT vb.): ad boşsa yeniden adlandır.
+      try { await fsp.access(tam); continue; } catch {}
+      await fsp.rename(gecici, tam);
+      return { ad: aday, tam };
     }
   }
   throw new Error('Uygun dosya adı bulunamadı.');
+}
+
+// Önceki çalışmadan kalan (sunucu yarıda kapanmış) geçici yükleme dosyalarını siler.
+async function eskiGecicileriSil(klasor) {
+  let adlar;
+  try { adlar = await fsp.readdir(klasor); } catch { return; }
+  await Promise.all(adlar.filter((a) => a.endsWith(GECICI_UZ)).map((a) => fsp.rm(path.join(klasor, a), { force: true }).catch(() => {})));
 }
 
 // Göreli yolu kökün içinde gerçek bir yola çevirir. Geçersizse { kod, msg } fırlatır.
@@ -93,6 +117,8 @@ function contentDisposition(ad) {
 }
 
 module.exports.init = (api) => {
+  eskiGecicileriSil(yuklemeKlasoru());
+
   const json = (res, code, obj) => {
     if (res.headersSent || res.destroyed) return;
     res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }).end(JSON.stringify(obj));
@@ -101,9 +127,10 @@ module.exports.init = (api) => {
   // ---------- Yükleme ----------
 
   api.route('POST', '/api/dosya/yukle', async (req, res, ws, url) => {
-    // Node'un varsayılan 5 dakikalık istek süresi büyük yüklemeleri keserdi. Bunun yerine her yüklemede
-    // "hiç veri gelmeme" süresi uygulanır (aşağıda req.setTimeout). Başlık zaman aşımı (headersTimeout) etkilenmez.
-    if (req.socket.server && req.socket.server.requestTimeout) req.socket.server.requestTimeout = 0;
+    // Çekirdeğin istek başına 5 dakikalık süresi (server.js REQUEST_TIMEOUT_MS) büyük yüklemeleri keserdi. Yalnızca
+    // bu (oturumu ve yetkisi doğrulanmış) istek için kapatılır; yerine "hiç veri gelmeme" süresi uygulanır
+    // (aşağıda req.setTimeout). Sunucu genelindeki ayarlara dokunulmaz.
+    req.uzunIstek = true;
 
     const uzunluk = req.headers['content-length'] !== undefined ? Number(req.headers['content-length']) : null;
     if (uzunluk !== null && !(uzunluk >= 0 && uzunluk <= MAX_YUKLEME)) {
@@ -112,7 +139,8 @@ module.exports.init = (api) => {
     }
     const klasor = yuklemeKlasoru();
     await fsp.mkdir(klasor, { recursive: true });
-    const { ad, tam, fh } = await benzersizAc(klasor, adTemizle(url.searchParams.get('ad')));
+    const istenenAd = adTemizle(url.searchParams.get('ad'));
+    const { tam: gecici, fh } = await geciciAc(klasor);
 
     let boyut = 0;
     const sinir = new Transform({
@@ -129,9 +157,18 @@ module.exports.init = (api) => {
     } catch (e) {
       // Yarıda kalan dosyayı bırakma.
       await fh.close().catch(() => {});
-      await fsp.rm(tam, { force: true }).catch(() => {});
-      api.log(`Yükleme yarıda kaldı: ${ad} (${e.message})`);
+      await fsp.rm(gecici, { force: true }).catch(() => {});
+      api.log(`Yükleme yarıda kaldı: ${istenenAd} (${e.message})`);
       return json(res, e.kod || 400, { ok: false, msg: e.kod ? e.message : 'Yükleme yarıda kesildi.' });
+    }
+    await fh.close().catch(() => {});
+    let ad;
+    try {
+      ({ ad } = await benzersizTasi(gecici, klasor, istenenAd));
+    } catch (e) {
+      await fsp.rm(gecici, { force: true }).catch(() => {});
+      api.log(`Yüklenen dosya kaydedilemedi: ${istenenAd} (${e.message})`);
+      return json(res, 500, { ok: false, msg: 'Dosya kaydedilemedi.' });
     }
     api.store.log('dosya', { user: ws.session.username, ip: ws.ip, islem: 'yukle', ad, boyut });
     api.log(`Yüklendi: ${ad} (${boyut} bayt) — ${ws.session.username}`);

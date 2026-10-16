@@ -1,6 +1,6 @@
 // Telefon özelliği, gerçek tarayıcı motorunda (başsız Edge / Chrome): dokunmatik modlar, yakınlaştırma, kalem filtresi,
-// tuş çubuğu ve service worker. Girdi mesajları (move/down/up/wheel/key/text) sayfada YAKALANIR ve sunucuya GİTMEZ:
-// gerçek fare/klavye girdisi oluşmaz. Edge ya da Chrome yoksa atlanır.
+// tuş çubuğu ve service worker. Girdi mesajları (move/down/up/wheel/key/text/kalem) sayfada YAKALANIR ve sunucuya
+// GİTMEZ: gerçek fare/klavye/kalem girdisi oluşmaz. "kalem-destek" sorgusu da yakalanır ve sayfada sahte cevap verilir. Edge ya da Chrome yoksa atlanır.
 // Sunucuyu test/calistir.js TEST_PORT'ta boş veri klasörüyle başlatır (localhost "setup" ile yönetici oluşturulur).
 const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
@@ -56,10 +56,20 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
     await call('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
     await call('Page.addScriptToEvaluateOnNewDocument', { source: `
       window.__sent = [];
+      window.__kalem = [];
+      window.__kalemDestek = true;
       const __orig = WebSocket.prototype.send;
       const __block = new Set(['move','down','up','wheel','key','text']);
+      // Sunucudan geliyormuş gibi mesaj ver (ör. kalem-destek cevabı).
+      window.__fake = (m) => window.__ws && window.__ws.dispatchEvent(new MessageEvent('message', { data: JSON.stringify(m) }));
       WebSocket.prototype.send = function (d) {
-        try { const m = JSON.parse(d); if (__block.has(m.t)) { window.__sent.push(m); return; } } catch {}
+        window.__ws = this;
+        try {
+          const m = JSON.parse(d);
+          if (__block.has(m.t)) { window.__sent.push(m); return; }
+          if (m.t === 'kalem') { window.__kalem.push(m.durum); return; }
+          if (m.t === 'kalem-destek') { setTimeout(() => window.__fake({ t: 'kalem-destek', ok: window.__kalemDestek }), 0); return; }
+        } catch {}
         return __orig.call(this, d);
       };` });
     await call('Page.navigate', { url: `http://localhost:${PORT}/` });
@@ -213,6 +223,37 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
 
     // ---- Kalem: pen kaynaklı fare olayları yok sayılır ----
     await ev("document.getElementById('touchModeBtn').click()"); // doğrudan moda dön
+    await ev('window.__kalem.splice(0)');
+    // Kalemle sürükleme: down -> move... -> up; arada "out" olmamalı (setPointerCapture sonrası alt öğenin
+    // pointerleave olayı çizgiyi koparıyordu).
+    await call('Input.dispatchMouseEvent', { type: 'mouseMoved', x: c0.x - 50, y: c0.y, pointerType: 'pen' });
+    await call('Input.dispatchMouseEvent', { type: 'mousePressed', x: c0.x - 50, y: c0.y, button: 'left', clickCount: 1, pointerType: 'pen' });
+    for (let i = 1; i <= 4; i++) { await sleep(30); await call('Input.dispatchMouseEvent', { type: 'mouseMoved', x: c0.x - 50 + i * 20, y: c0.y, button: 'left', buttons: 1, pointerType: 'pen' }); }
+    await sleep(30);
+    await call('Input.dispatchMouseEvent', { type: 'mouseReleased', x: c0.x + 30, y: c0.y, button: 'left', clickCount: 1, pointerType: 'pen' });
+    await sleep(50);
+    const ks = await ev('window.__kalem.splice(0)');
+    const kd = ks.indexOf('down'), ku = ks.indexOf('up');
+    check('kalem: sürükleme down -> move -> up, arada out yok', kd >= 0 && ku > kd && ks.slice(kd, ku).filter((d) => d === 'move').length >= 2 && !ks.slice(kd, ku).includes('out'), JSON.stringify(ks));
+    s = await sent();
+    check('kalem sürüklemesi çekirdekte fare olarak gitmedi', !s.some((m) => m.t === 'down'), JSON.stringify(s));
+    // Android Chrome: kalem dokunma olayı da üretir (touchType yok). Kalemin pointerdown'ından sonra gelen dokunuş yok sayılır.
+    // (CDP dokunuşu kendi "touch" pointer olayını ürettiği için kalem dizisi sayfada olay gönderilerek kurulur.)
+    await ev(`(() => {
+      const el = document.getElementById('screen');
+      const pt = (type) => el.dispatchEvent(new PointerEvent(type, { pointerType: 'pen', pointerId: 77, bubbles: true, cancelable: true, clientX: ${c0.x}, clientY: ${c0.y} }));
+      const tc = () => new Touch({ identifier: 5, target: el, clientX: ${c0.x}, clientY: ${c0.y} });
+      const te = (type, on) => el.dispatchEvent(new TouchEvent(type, { bubbles: true, cancelable: true, touches: on ? [tc()] : [], changedTouches: [tc()] }));
+      pt('pointerdown'); te('touchstart', true);
+      pt('pointerup'); te('touchend', false);
+    })()`);
+    await sleep(50);
+    s = await sent();
+    check('kalemin ürettiği dokunma olayı çekirdekte ikinci kez işlenmez', !s.some((m) => m.t === 'down'), JSON.stringify(s));
+    await ev('window.__kalem.splice(0)');
+    await tap(P(0.25, 0.75)); await sleep(50);
+    s = await sent();
+    check('kalemden sonra parmak dokunuşu yine tıklar', s.some((m) => m.t === 'down' && m.b === 'left'), JSON.stringify(s));
     await call('Input.dispatchMouseEvent', { type: 'mousePressed', x: c0.x, y: c0.y, button: 'left', clickCount: 1, pointerType: 'pen' });
     await call('Input.dispatchMouseEvent', { type: 'mouseReleased', x: c0.x, y: c0.y, button: 'left', clickCount: 1, pointerType: 'pen' });
     await sleep(50);
@@ -223,6 +264,17 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
     await sleep(50);
     s = await sent();
     check('normal fare hâlâ çalışır', s.some((m) => m.t === 'down') && s.some((m) => m.t === 'up'), JSON.stringify(s));
+    // Bilgisayar sentetik kalemi desteklemiyorsa kalem fare gibi çalışır (yedek).
+    await ev('window.__kalem.splice(0)');
+    await ev("window.__fake({ t: 'kalem-destek', ok: false, hata: 'deneme' })");
+    await call('Input.dispatchMouseEvent', { type: 'mousePressed', x: c0.x, y: c0.y, button: 'left', clickCount: 1, pointerType: 'pen' });
+    await call('Input.dispatchMouseEvent', { type: 'mouseReleased', x: c0.x, y: c0.y, button: 'left', clickCount: 1, pointerType: 'pen' });
+    await sleep(50);
+    s = await sent();
+    const ks2 = await ev('window.__kalem.splice(0)');
+    check('kalem desteklenmiyorsa kalem fare gibi tıklar', s.some((m) => m.t === 'down') && s.some((m) => m.t === 'up') && ks2.length === 0, JSON.stringify({ s, ks2 }));
+    await ev("window.__fake({ t: 'kalem-destek', ok: true })");
+    await ev("document.getElementById('overlay').hidden = true");
 
     // ---- Tuş çubuğu ----
     await ev("document.getElementById('tusBtn').click()");

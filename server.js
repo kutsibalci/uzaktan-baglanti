@@ -66,7 +66,16 @@ const MIME = {
 // Yalnızca ev ağı, Tailscale ve bu bilgisayar kabul edilir.
 const allowed = (req) => isPrivate(req.socket.remoteAddress);
 
+// Yavaş istek koruması (slowloris): gövdesi bu süre içinde tamamlanmayan istek kesilir. Node'un sunucu genelindeki
+// requestTimeout'u yerine istek başına uygulanır; böylece büyük dosya yüklemesi (req.uzunIstek = true, yalnızca
+// oturum ve yetki doğrulandıktan sonra) kendi "hiç veri gelmeme" süresini kullanırken diğer isteklerin koruması sürer.
+const REQUEST_TIMEOUT_MS = Number(process.env.REMOTE_ISTEK_SURESI_MS) || 5 * 60 * 1000; // ortam değişkeni: testler için
+
 const server = http.createServer(async (req, res) => {
+  const reqTimer = setTimeout(() => { if (!req.complete && !req.uzunIstek) req.socket.destroy(); }, REQUEST_TIMEOUT_MS);
+  reqTimer.unref();
+  // Cevap erken yazılsa da (ör. 401) gövdesi yarım kalan istek süresi dolunca yine kesilir.
+  res.on('close', () => { if (req.complete) clearTimeout(reqTimer); });
   if (!allowed(req)) { res.writeHead(403).end(); return; }
   const url = new URL(req.url, 'http://x');
   if (url.pathname === '/api/features') {
@@ -87,6 +96,8 @@ const server = http.createServer(async (req, res) => {
 });
 
 // ---------- WebSocket ----------
+
+server.requestTimeout = 0; // yerine yukarıdaki istek başına süre
 
 const wss = new WebSocketServer({ server, maxPayload: 64 * 1024, verifyClient: ({ req }) => allowed(req) });
 const clients = new Set(); // giriş yapmış bağlantılar

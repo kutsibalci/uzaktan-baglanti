@@ -193,6 +193,25 @@ const ev = (tur, user) => (e) => e.tur === tur && (!user || e.kisi?.kullanici ==
   check('durum: kesilen listede yok', !r.json.kisiler.some((k) => k.id === bId) && r.json.kisiler.some((k) => k.kullanici === 'ahmet'));
   check('yönetici bağlantısı açık kaldı', a.ws.readyState === 1);
 
+  // 4b. Hatırlanan cihaz: kesildikten sonra kayıtlı anahtarla onaysız geri giremez
+  const c = client();
+  await c.next(t('hello'));
+  c.send({ t: 'login', username: 'izleyici', password: 'izle1234', remember: true, deviceName: 'Tablet' });
+  r = await c.next(t('auth'));
+  check('hatırlanan cihazla giriş', r.ok && typeof r.token === 'string', JSON.stringify({ ok: r.ok, token: !!r.token }));
+  const cihazAnahtari = r.token;
+  e = await es.next(ev('baglandi', 'izleyici'));
+  r = await request('POST', '/api/tepsi/kes', { token: TOKEN, body: { id: e.kisi.id } });
+  check('kes: hatırlanan cihaz kesildi', r.status === 200 && r.json.kesilen === 1, r.body);
+  check('hatırlanan cihaz bağlantısı kapandı', (await Promise.race([c.closed, new Promise((res) => setTimeout(() => res('açık'), 3000))])) === 4002);
+  await es.next(ev('ayrildi', 'izleyici'));
+  const c2 = client();
+  await c2.next(t('hello'));
+  c2.send({ t: 'token', token: cihazAnahtari });
+  r = await c2.next(t('auth'));
+  check('kesilen cihaz kayıtlı anahtarla geri giremiyor', r.ok === false, JSON.stringify(r));
+  c2.ws.close();
+
   // 5. Kes (hepsi)
   r = await request('POST', '/api/tepsi/kes', { token: TOKEN, body: { hepsi: true } });
   check('kes: hepsi', r.status === 200 && r.json.kesilen === 1, r.body);

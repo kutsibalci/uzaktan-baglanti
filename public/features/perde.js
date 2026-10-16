@@ -44,7 +44,8 @@
   });
 
   RC.on('viewer:start', () => { guncelle(); if (gorunur()) RC.send({ t: 'perde-sorgu' }); });
-  RC.on('viewer:stop', () => { acik = false; guncelle(); });
+  // İzleme bitince perdeyi bırak (sunucu da saniyede bir yoklayıp izlemeyen bağlantının perdesini kaldırır).
+  RC.on('viewer:stop', () => { if (acik) RC.send({ t: 'perde', acik: false }); acik = false; guncelle(); });
   RC.on('auth', guncelle);
   RC.on('disconnect', () => { acik = false; guncelle(); });
 
