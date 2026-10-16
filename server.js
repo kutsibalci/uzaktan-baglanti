@@ -504,8 +504,9 @@ function lanAddresses() {
 
 captureLoop();
 const features = ext.init({
-  helper, video, store, clients, sendJson, buildExe, PORT,
+  helper, video, store, clients, sendJson, buildExe, PORT, kick, clientInfo,
   dataDir: store.DATA_DIR,
+  guestCode: () => (store.settings.guestOtp ? guestCode : null),
   broadcast(obj, filter = () => true) { for (const c of clients) if (filter(c)) sendJson(c, obj); },
 });
 if (features.length) console.log(`  Özellikler    : ${features.join(', ')}`);
