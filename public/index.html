@@ -5,7 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0f1115">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <title>Uzaktan Bağlantı</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -104,6 +109,8 @@
       </select>
       <select id="screenSel" title="Ekran" hidden></select>
       <button id="kbBtn" class="ctl" title="Klavye">⌨</button>
+      <button id="touchModeBtn" class="ctl touch-only" title="Dokunmatik modu"></button>
+      <button id="zoomBtn" title="Yakınlaştırmayı sıfırla (1×)" hidden>1×</button>
       <select id="keysSel" class="ctl" title="Özel tuşlar">
         <option value="">Tuşlar…</option>
         <option value="win">Windows</option>
@@ -180,6 +187,7 @@
     </div>
   </section>
 
+  <script src="dokunmatik.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

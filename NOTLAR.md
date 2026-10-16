@@ -30,6 +30,9 @@
 - [x] H.264 görüntü: ffmpeg (gdigrab) + NVIDIA/AMD/Intel donanım kodlayıcı (yoksa x264), tarayıcıda WebCodecs.
       VBR: durağan ekranda ~1 Mbps (JPEG ~25 Mbps). HTTPS/localhost dışında otomatik JPEG.
       **(Gerçek tarayıcıda çözme henüz denenmedi; sunucu tarafı ffmpeg ile doğrulandı)**
+- [x] Telefon: touchpad (dokunmatik fare) modu, sıkıştırarak yakınlaştırma (1x–4x), mobil tuş çubuğu (yapışkan Ctrl/Alt/Shift/Win, F1–F12),
+      PWA (ana ekrana ekle, ağ öncelikli service worker), `usb-baglan.bat` (adb reverse).
+      **(Başsız Edge'de sahte dokunuşlarla doğrulandı; gerçek telefonda ve gerçek USB/adb ile denenmedi)**
 
 ## Sıradaki
 1. İkinci ekranın gerçek tablet/telefonla testi

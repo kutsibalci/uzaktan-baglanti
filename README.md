@@ -30,6 +30,7 @@ Gereksinim: Windows 10/11, [Node.js](https://nodejs.org) 20 veya üstü.
 İsteğe bağlı:
 - `tailscale-kur.bat` — her yerden erişim + HTTPS (H.264 için gerekli)
 - `surucu-kur.bat` — ikinci ekran özelliği için sanal monitör sürücüsü
+- `usb-baglan.bat` — Android telefonu USB kablosuyla bağla (adb reverse; Wi-Fi gerekmez, telefonda `http://localhost:3000`)
 
 ## Dosyalar
 | Yol | Görevi |
