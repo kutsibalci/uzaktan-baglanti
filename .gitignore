@@ -1,0 +1,12 @@
+# Bağımlılıklar (npm install ile gelir)
+node_modules/
+
+# Kullanıcı hesapları, cihaz anahtarları, günlük — ASLA repoya girmemeli
+data/
+
+# Derlenen yardımcı program (sunucu açılışta kendisi derler)
+helper/*.exe
+
+# Geçici dosyalar
+*.tmp
+*.log

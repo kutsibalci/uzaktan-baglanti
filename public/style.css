@@ -1,0 +1,88 @@
+:root {
+  --bg: #0f1115;
+  --panel: #1a1d24;
+  --panel2: #232731;
+  --line: #333a48;
+  --text: #e8eaf0;
+  --muted: #8a90a0;
+  --accent: #3b82f6;
+  --error: #f87171;
+  --ok: #34d399;
+  --warn: #fbbf24;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, sans-serif; }
+body { overflow: hidden; }
+[hidden] { display: none !important; }
+h1 { margin: 0; font-size: 22px; }
+h2 { font-size: 15px; margin: 22px 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+.muted { color: var(--muted); margin: 0; }
+.small { font-size: 13px; }
+.mono { font-family: ui-monospace, Consolas, monospace; letter-spacing: 2px; }
+.error { color: var(--error); margin: 0; min-height: 1.2em; font-size: 14px; }
+.warn { color: var(--warn); font-size: 13px; margin: 0; }
+.row { display: flex; align-items: center; }
+.between { justify-content: space-between; gap: 12px; }
+.gap { gap: 8px; }
+.wrap { flex-wrap: wrap; }
+
+input, select, button { font: inherit; color: var(--text); }
+input, select { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; min-width: 0; }
+button { background: var(--accent); border: 0; border-radius: 10px; padding: 11px 14px; cursor: pointer; }
+button.ghost { background: transparent; border: 1px solid var(--line); }
+button.small, .small button { padding: 6px 10px; font-size: 13px; border-radius: 8px; }
+button.danger { background: #7f1d1d; }
+.check { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 14px; cursor: pointer; }
+.check input { width: 18px; height: 18px; }
+
+.center { height: 100%; display: grid; place-items: center; padding: 16px; overflow: auto; }
+.card { width: 100%; max-width: 380px; background: var(--panel); padding: 26px 22px; border-radius: 16px; display: grid; gap: 12px; }
+.card.wide { max-width: 520px; }
+input.code { font-size: 26px; letter-spacing: 8px; text-align: center; }
+
+.tabs { display: flex; gap: 4px; background: var(--bg); padding: 4px; border-radius: 10px; }
+.tab { flex: 1; background: transparent; padding: 8px; color: var(--muted); }
+.tab.active { background: var(--panel2); color: var(--text); }
+.tabpane { display: grid; gap: 12px; }
+
+.spinner { width: 34px; height: 34px; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; margin: 6px auto; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 420px) { .modes { grid-template-columns: 1fr; } }
+.mode { background: var(--panel2); border: 1px solid var(--line); display: grid; gap: 4px; text-align: left; padding: 16px; }
+.mode .icon { font-size: 26px; }
+.mode small { color: var(--muted); }
+.mode:disabled { opacity: .45; cursor: not-allowed; }
+
+/* Görüntüleyici */
+#vViewer { height: 100%; display: flex; flex-direction: column; }
+#toolbar { display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: var(--panel); flex-wrap: wrap; }
+#toolbar button, #toolbar select { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 5px 9px; font-size: 14px; }
+.status { color: var(--error); }
+.status.on { color: var(--ok); }
+.badge { background: #3f3f46; border-radius: 6px; padding: 2px 8px; font-size: 12px; }
+.fps { margin-left: auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+#showBtn { position: fixed; top: 0; left: 50%; transform: translateX(-50%); z-index: 5; background: var(--panel); border-radius: 0 0 8px 8px; padding: 2px 14px; opacity: .6; }
+#stage { flex: 1; min-height: 0; position: relative; touch-action: none; user-select: none; -webkit-user-select: none; background: #000; }
+#screen { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+#overlay { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.6); color: var(--text); font-size: 16px; padding: 20px; text-align: center; }
+#kbInput { position: fixed; left: -1000px; bottom: 0; width: 10px; height: 10px; opacity: 0; }
+
+/* Yönetim */
+#vAdmin { height: 100%; overflow: auto; }
+.admin { max-width: 860px; margin: 0 auto; padding: 16px; }
+.sticky { position: sticky; top: 0; background: var(--bg); padding: 8px 0; z-index: 2; }
+.box { background: var(--panel); border-radius: 12px; padding: 14px; display: grid; gap: 12px; overflow-x: auto; }
+.msg { min-height: 1.2em; margin: 4px 0; font-size: 14px; }
+.msg.ok { color: var(--ok); }
+.msg.err { color: var(--error); }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+td, th { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+th { color: var(--muted); font-weight: 500; }
+td select { padding: 5px 8px; }
+td .row { gap: 6px; }
+.url { font-family: ui-monospace, Consolas, monospace; background: var(--bg); padding: 6px 10px; border-radius: 8px; word-break: break-all; }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; background: var(--error); }
+.dot.on { background: var(--ok); }
+#addUserForm input, #addUserForm select { flex: 1 1 140px; }

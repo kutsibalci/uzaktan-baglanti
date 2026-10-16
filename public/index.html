@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Uzaktan Bağlantı</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Bağlanıyor -->
+  <section id="vConnecting" class="center">
+    <div class="card"><p class="muted">Bağlanılıyor…</p></div>
+  </section>
+
+  <!-- İlk kurulum -->
+  <section id="vSetup" class="center" hidden>
+    <form id="setupForm" class="card">
+      <h1>Hoş geldin 👋</h1>
+      <p class="muted">İlk kurulum: bu bilgisayarın yönetici hesabını oluştur.</p>
+      <input name="username" placeholder="Kullanıcı adı" autocomplete="username" required minlength="3">
+      <input name="password" type="password" placeholder="Şifre (en az 6 karakter)" autocomplete="new-password" required minlength="6">
+      <input name="password2" type="password" placeholder="Şifre (tekrar)" autocomplete="new-password" required minlength="6">
+      <label class="check"><input name="remember" type="checkbox" checked> Bu cihazı hatırla</label>
+      <button type="submit">Hesabı oluştur</button>
+      <p class="error"></p>
+    </form>
+  </section>
+
+  <!-- Giriş -->
+  <section id="vLogin" class="center" hidden>
+    <div class="card">
+      <h1>Uzaktan Bağlantı</h1>
+      <div class="tabs">
+        <button class="tab active" data-tab="tAccount">Hesap</button>
+        <button class="tab" data-tab="tGuest" id="guestTabBtn">Misafir kodu</button>
+      </div>
+      <p id="noSetupMsg" class="warn" hidden>Henüz hesap yok. Önce bilgisayarda <b>http://localhost:3000</b> adresini açıp yönetici hesabını oluşturun. Bu arada misafir koduyla bağlanabilirsiniz.</p>
+      <form id="tAccount" class="tabpane">
+        <input name="username" placeholder="Kullanıcı adı" autocomplete="username" required>
+        <input name="password" type="password" placeholder="Şifre" autocomplete="current-password" required>
+        <label class="check"><input name="remember" type="checkbox" checked> Bu cihazı hatırla (bir daha şifre sorma)</label>
+        <button type="submit">Giriş yap</button>
+      </form>
+      <form id="tGuest" class="tabpane" hidden>
+        <p class="muted">Bilgisayardaki sunucu penceresinde yazan 6 haneli kodu girin. Kod her kullanımdan sonra değişir.</p>
+        <input name="code" class="code" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" maxlength="6" required>
+        <button type="submit">Bağlan</button>
+      </form>
+      <p class="error" id="loginError"></p>
+    </div>
+  </section>
+
+  <!-- Onay bekleniyor -->
+  <section id="vPending" class="center" hidden>
+    <div class="card">
+      <h1>Onay bekleniyor</h1>
+      <div class="spinner"></div>
+      <p class="muted">Bu cihaz ilk kez bağlanıyor. Bilgisayarda açılan pencereden <b>Evet</b>'e basın (60 sn).</p>
+    </div>
+  </section>
+
+  <!-- Ana menü -->
+  <section id="vHome" class="center" hidden>
+    <div class="card wide">
+      <div class="row between">
+        <div>
+          <h1 id="helloName">Merhaba</h1>
+          <p class="muted" id="helloRole"></p>
+        </div>
+        <button id="logoutBtn" class="ghost">Çıkış</button>
+      </div>
+      <div class="modes">
+        <button class="mode" id="modeControl">
+          <span class="icon">🖥️</span>
+          <b>Uzaktan kontrol</b>
+          <small id="controlHint">Bilgisayarın ekranını gör ve kontrol et</small>
+        </button>
+        <button class="mode" id="modeExtend">
+          <span class="icon">➕</span>
+          <b>İkinci ekran</b>
+          <small id="extendHint">Bu cihazı bilgisayarın ek monitörü yap</small>
+        </button>
+      </div>
+      <label class="row gap" id="screenPickRow" hidden>
+        <span class="muted">Ekran:</span>
+        <select id="screenPick"></select>
+      </label>
+      <button id="adminBtn" class="ghost" hidden>⚙ Yönetim</button>
+      <p class="error" id="homeError"></p>
+    </div>
+  </section>
+
+  <!-- Görüntüleyici -->
+  <section id="vViewer" hidden>
+    <header id="toolbar">
+      <button id="backBtn" title="Ana menü">←</button>
+      <span id="status" class="status on" title="Bağlı">●</span>
+      <select id="quality" title="Görüntü kalitesi">
+        <option value="low">Düşük</option>
+        <option value="mid" selected>Orta</option>
+        <option value="high">Yüksek</option>
+      </select>
+      <select id="screenSel" title="Ekran" hidden></select>
+      <button id="kbBtn" class="ctl" title="Klavye">⌨</button>
+      <select id="keysSel" class="ctl" title="Özel tuşlar">
+        <option value="">Tuşlar…</option>
+        <option value="win">Windows</option>
+        <option value="alttab">Alt+Tab</option>
+        <option value="esc">Esc</option>
+        <option value="taskmgr">Görev Yöneticisi</option>
+        <option value="showdesk">Masaüstünü göster</option>
+        <option value="copy">Kopyala</option>
+        <option value="paste">Yapıştır</option>
+      </select>
+      <span id="viewOnly" class="badge" hidden>Salt izleme</span>
+      <button id="fsBtn" title="Tam ekran">⛶</button>
+      <button id="hideBtn" title="Çubuğu gizle">▴</button>
+      <span id="fps" class="fps"></span>
+    </header>
+    <button id="showBtn" hidden title="Çubuğu göster">▾</button>
+    <div id="stage">
+      <canvas id="screen" width="0" height="0"></canvas>
+      <div id="overlay" hidden></div>
+    </div>
+    <textarea id="kbInput" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"></textarea>
+  </section>
+
+  <!-- Yönetim paneli -->
+  <section id="vAdmin" hidden>
+    <div class="admin">
+      <div class="row between sticky">
+        <h1>Yönetim</h1>
+        <button id="adminClose" class="ghost">Kapat ✕</button>
+      </div>
+      <p id="adminMsg" class="msg"></p>
+
+      <h2>Her yerden erişim (Tailscale)</h2>
+      <div class="box" id="tsBox"></div>
+
+      <h2>Misafir erişimi</h2>
+      <div class="box">
+        <label class="check"><input type="checkbox" id="setGuestOtp"> Tek seferlik misafir kodu ile girişe izin ver</label>
+        <div class="row gap wrap" id="guestRow">
+          <span>Şu anki kod: <b id="guestCode" class="mono">—</b></span>
+          <button id="newCodeBtn" class="small">Yeni kod</button>
+          <label class="row gap">Misafir yetkisi:
+            <select id="setGuestRole"><option value="control">Kontrol</option><option value="view">Salt izleme</option></select>
+          </label>
+        </div>
+      </div>
+
+      <h2>Güvenlik</h2>
+      <div class="box">
+        <label class="check"><input type="checkbox" id="setApproval"> Yeni bir cihaz şifreyle giriş yapınca bilgisayarda onay iste</label>
+        <label class="check"><input type="checkbox" id="setTrustTs"> Tailscale üzerinden gelen bağlantılarda onay isteme</label>
+        <p class="muted small">Hatırlanan cihazlar ve bu bilgisayarın kendisi onay gerektirmez. Tailscale ağına yalnızca senin Tailscale hesabına bağlı cihazlar girebildiği için, evde değilken giriş yapabilmen için ikinci seçenek açık bırakılabilir. Şifre her durumda gerekir.</p>
+      </div>
+
+      <h2>Kullanıcılar</h2>
+      <div class="box">
+        <table id="usersTable"></table>
+        <form id="addUserForm" class="row gap wrap">
+          <input name="username" placeholder="Kullanıcı adı" required minlength="3">
+          <input name="password" type="password" placeholder="Şifre" required minlength="6" autocomplete="new-password">
+          <select name="role"><option value="control">Kontrol</option><option value="view">Salt izleme</option><option value="admin">Yönetici</option></select>
+          <button type="submit" class="small">Ekle</button>
+        </form>
+      </div>
+
+      <h2>Hatırlanan cihazlar</h2>
+      <div class="box"><table id="devicesTable"></table></div>
+
+      <h2>Şu an bağlı</h2>
+      <div class="box"><table id="onlineTable"></table></div>
+
+      <h2>Bağlantı günlüğü</h2>
+      <div class="box"><table id="logTable" class="small"></table></div>
+    </div>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>
