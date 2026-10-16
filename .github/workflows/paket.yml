@@ -1,0 +1,57 @@
+# Taşınabilir Windows paketi: "v*" etiketi gönderilince zip'i oluşturup Releases'e ekler.
+# Elle çalıştırmak için: Actions sekmesi -> "Taşınabilir paket" -> Run workflow (yalnızca indirilebilir dosya üretir).
+name: Taşınabilir paket
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  paket:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Sürüm etiketi package.json ile uyuşuyor mu
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: powershell
+        run: |
+          $v = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ("v$v" -ne $env:GITHUB_REF_NAME) { throw "Etiket $env:GITHUB_REF_NAME ama package.json sürümü $v" }
+
+      - name: Paketle
+        shell: powershell
+        run: ./tools/paketle.ps1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tasinabilir-paket
+          path: dist/*.zip
+          retention-days: 14
+
+      - name: Release oluştur
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $zip = (Get-Item dist/*.zip).FullName
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          $notes = @"
+          Taşınabilir Windows paketi. Kurulum gerekmez:
+
+          1. Zip'i bir klasöre aç.
+          2. ``baslat.bat`` dosyasına çift tıkla.
+          3. Bu bilgisayarda http://localhost:3000 adresini açıp yönetici hesabını oluştur.
+
+          SHA256: ``$hash``
+          "@
+          gh release create $env:GITHUB_REF_NAME $zip --title "Uzaktan Bağlantı $env:GITHUB_REF_NAME" --notes $notes

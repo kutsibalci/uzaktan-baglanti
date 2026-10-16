@@ -7,6 +7,9 @@ data/
 # Derlenen yardımcı program (sunucu açılışta kendisi derler)
 helper/*.exe
 
+# Taşınabilir paket çıktısı (tools\paketle.ps1)
+dist/
+
 # Geçici dosyalar
 *.tmp
 *.log

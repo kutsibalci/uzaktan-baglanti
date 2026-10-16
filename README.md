@@ -11,11 +11,18 @@ Windows bilgisayarı telefondan, tabletten ya da başka bir bilgisayardan **tara
 - Her yerden erişim: Tailscale (HTTPS)
 - Dış sunucu, lisans, abonelik yok — internet olmadan da çalışır
 
-## Gereksinimler
-- Windows 10/11
-- [Node.js](https://nodejs.org) 20 veya üstü
+## Taşınabilir paket (önerilen)
+[Releases](../../releases) bölümünden `UzaktanBaglanti-vX.Y.Z-win64.zip` dosyasını indir, bir klasöre aç, `baslat.bat`'a çift tıkla. Node.js, ffmpeg ve her şey içinde; kurulum gerekmez. Hesaplar klasörün içindeki `data\`'da durur, klasörü taşıyınca ayarlar da gider.
 
-## Kurulum
+**Yeni sürüm yayınlamak:** `package.json`'daki sürümü artır, commit'le, sonra:
+```
+git tag v0.2.0
+git push origin v0.2.0
+```
+GitHub Actions paketi oluşturup Releases'e ekler. Elle paket: `powershell -ExecutionPolicy Bypass -File tools\paketle.ps1` → `dist\`.
+
+## Kaynak koddan çalıştırma
+Gereksinim: Windows 10/11, [Node.js](https://nodejs.org) 20 veya üstü.
 1. `baslat.bat` dosyasına çift tıkla (ilk açılışta bağımlılıkları indirir).
 2. Bu bilgisayarda `http://localhost:3000` adresini açıp yönetici hesabını oluştur.
 3. Diğer cihazdan, sunucu penceresinde yazan adrese gir.
@@ -32,5 +39,7 @@ Windows bilgisayarı telefondan, tabletten ya da başka bir bilgisayardan **tara
 | `helper/RemoteHelper.cs` | Ekran yakalama + fare/klavye (Windows'un kendi C# derleyicisiyle derlenir) |
 | `public/` | Tarayıcı arayüzü |
 | `data/` | Hesaplar ve hatırlanan cihazlar (repoya girmez) |
+| `tools/paketle.ps1` | Taşınabilir zip oluşturur |
+| `.github/workflows/paket.yml` | Etiket gönderilince zip'i Releases'e koyar |
 
 Yol haritası ve piyasa notları: [NOTLAR.md](NOTLAR.md)
