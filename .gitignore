@@ -16,3 +16,6 @@ dist/
 
 # usb-baglan.bat ile indirilen Android platform-tools (adb)
 tools/platform-tools/
+
+# Claude Code çalışma klasörü (ajan worktree'leri)
+.claude/
