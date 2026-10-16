@@ -40,10 +40,10 @@ function killTree(pid) {
   spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore' });
 }
 
-function startServer(dataDir) {
+function startServer(dataDir, ortam = {}) {
   return new Promise((resolve, reject) => {
     const p = spawn(process.execPath, ['server.js'], {
-      cwd: ROOT, env: { ...process.env, PORT, TEST_PORT: PORT, REMOTE_DATA_DIR: dataDir }, stdio: ['ignore', 'pipe', 'pipe'],
+      cwd: ROOT, env: { ...process.env, ...ortam, PORT, TEST_PORT: PORT, REMOTE_DATA_DIR: dataDir }, stdio: ['ignore', 'pipe', 'pipe'],
     });
     let out = '';
     const timer = setTimeout(() => reject(new Error(`sunucu başlamadı:\n${out}`)), 30000);
@@ -59,11 +59,16 @@ function startServer(dataDir) {
 
 async function runSuite(file) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rc-test-'));
+  // Her pakete geçici bir klasör (TEST_TMP, sunucuya ve teste verilir). Dosya aktarımı gerçek
+  // İndirilenler/profil klasörü yerine bunun altını kullanır (REMOTE_UPLOAD_DIR, REMOTE_BROWSE_ROOT).
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rc-tmp-'));
+  const ortam = { TEST_TMP: tmpDir, REMOTE_UPLOAD_DIR: path.join(tmpDir, 'yuklenen'), REMOTE_BROWSE_ROOT: path.join(tmpDir, 'kok') };
+  fs.mkdirSync(ortam.REMOTE_BROWSE_ROOT);
   let server;
   try {
-    server = await startServer(dataDir);
+    server = await startServer(dataDir, ortam);
     server.p.removeAllListeners('exit');
-    const r = spawnSync(process.execPath, [path.join(__dirname, file)], { cwd: ROOT, encoding: 'utf8', timeout: 180000, env: { ...process.env, TEST_PORT: PORT } });
+    const r = spawnSync(process.execPath, [path.join(__dirname, file)], { cwd: ROOT, encoding: 'utf8', timeout: 180000, env: { ...process.env, ...ortam, TEST_PORT: PORT } });
     process.stdout.write(r.stdout || '');
     if (r.stderr) process.stdout.write(r.stderr);
     const ok = r.status === 0;
@@ -75,6 +80,7 @@ async function runSuite(file) {
   } finally {
     if (server) killTree(server.p.pid);
     fs.rmSync(dataDir, { recursive: true, force: true });
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 }
 
