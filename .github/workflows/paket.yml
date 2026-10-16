@@ -14,15 +14,15 @@ jobs:
   paket:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
 
       - name: Sürüm etiketi package.json ile uyuşuyor mu
         if: startsWith(github.ref, 'refs/tags/')
-        shell: powershell
+        shell: pwsh
         run: |
           $v = (Get-Content package.json -Raw | ConvertFrom-Json).version
           if ("v$v" -ne $env:GITHUB_REF_NAME) { throw "Etiket $env:GITHUB_REF_NAME ama package.json sürümü $v" }
@@ -31,15 +31,16 @@ jobs:
         shell: powershell
         run: ./tools/paketle.ps1
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: tasinabilir-paket
           path: dist/*.zip
           retention-days: 14
 
+      # pwsh: Windows PowerShell 5.1 adım betiğini ANSI okuyup Türkçe karakterleri bozuyor.
       - name: Release oluştur
         if: startsWith(github.ref, 'refs/tags/')
-        shell: powershell
+        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
