@@ -13,3 +13,6 @@ dist/
 # Geçici dosyalar
 *.tmp
 *.log
+
+# usb-baglan.bat ile indirilen Android platform-tools (adb)
+tools/platform-tools/

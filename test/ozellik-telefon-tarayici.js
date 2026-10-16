@@ -1,0 +1,276 @@
+// Telefon özelliği, gerçek tarayıcı motorunda (başsız Edge / Chrome): dokunmatik modlar, yakınlaştırma, kalem filtresi,
+// tuş çubuğu ve service worker. Girdi mesajları (move/down/up/wheel/key/text) sayfada YAKALANIR ve sunucuya GİTMEZ:
+// gerçek fare/klavye girdisi oluşmaz. Edge ya da Chrome yoksa atlanır.
+// Sunucuyu test/calistir.js TEST_PORT'ta boş veri klasörüyle başlatır (localhost "setup" ile yönetici oluşturulur).
+const { spawn, spawnSync } = require('child_process');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const http = require('http');
+const ROOT = path.join(__dirname, '..');
+const WebSocket = require(path.join(ROOT, 'node_modules', 'ws'));
+const PORT = process.env.TEST_PORT || 3999;
+const BROWSERS = [
+  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+  'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+];
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const kill = (pid) => spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore' });
+
+let pass = 0, fail = 0;
+const check = (n, c, x = '') => { console.log(`${c ? 'OK  ' : 'FAIL'} ${n} ${x}`); c ? pass++ : fail++; };
+
+const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''; r.on('data', (c) => d += c); r.on('end', () => { try { res(JSON.parse(d)); } catch (e) { rej(e); } }); }).on('error', rej));
+
+(async () => {
+  const exe = BROWSERS.find((b) => fs.existsSync(b));
+  if (!exe) { console.log('OK   tarayıcı (Edge/Chrome) bulunamadı, tarayıcı testi atlandı'); process.exit(0); }
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'rc-tarayici-'));
+  let browser;
+  try {
+    // Hata ayıklama portu 0: tarayıcı boş bir port seçer ve profile/DevToolsActivePort dosyasına yazar.
+    browser = spawn(exe, [
+      '--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', '--mute-audio', 'about:blank',
+    ], { stdio: 'ignore' });
+    const portFile = path.join(profile, 'DevToolsActivePort');
+    for (let i = 0; i < 80 && !fs.existsSync(portFile); i++) await sleep(250);
+    const dbg = Number(fs.readFileSync(portFile, 'utf8').split(/\r?\n/)[0]);
+    let targets = [];
+    for (let i = 0; i < 40; i++) { try { targets = await getJson(`http://127.0.0.1:${dbg}/json/list`); if (targets.some((t) => t.type === 'page')) break; } catch {} await sleep(250); }
+    const page = targets.find((t) => t.type === 'page');
+    const cdp = new WebSocket(page.webSocketDebuggerUrl);
+    await new Promise((r) => cdp.on('open', r));
+    let id = 0; const pending = new Map();
+    const exceptions = [];
+    cdp.on('message', (d) => {
+      const m = JSON.parse(d);
+      if (m.method === 'Runtime.exceptionThrown') exceptions.push(m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text);
+      if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); }
+    });
+    const call = (method, params = {}) => new Promise((r, j) => { const i = ++id; pending.set(i, r); cdp.send(JSON.stringify({ id: i, method, params })); setTimeout(() => j(new Error(`CDP zaman aşımı: ${method}`)), 15000); });
+    const ev = async (expression) => { const r = await call('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }); if (r.result?.exceptionDetails) throw new Error(JSON.stringify(r.result.exceptionDetails)); return r.result?.result?.value; };
+
+    await call('Page.enable'); await call('Runtime.enable');
+    await call('Emulation.setDeviceMetricsOverride', { width: 400, height: 800, deviceScaleFactor: 2, mobile: true });
+    await call('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+    await call('Page.addScriptToEvaluateOnNewDocument', { source: `
+      window.__sent = [];
+      const __orig = WebSocket.prototype.send;
+      const __block = new Set(['move','down','up','wheel','key','text']);
+      WebSocket.prototype.send = function (d) {
+        try { const m = JSON.parse(d); if (__block.has(m.t)) { window.__sent.push(m); return; } } catch {}
+        return __orig.call(this, d);
+      };` });
+    await call('Page.navigate', { url: `http://localhost:${PORT}/` });
+    for (let i = 0; i < 40 && !(await ev("!document.getElementById('vSetup').hidden").catch(() => false)); i++) await sleep(250);
+    if (!(await ev('Array.isArray(window.__sent)'))) throw new Error('girdi engelleyici kurulamadı, test durduruldu');
+    await ev(`(() => { const f = document.getElementById('setupForm'); f.username.value='deneme'; f.password.value='deneme123'; f.password2.value='deneme123'; f.requestSubmit(); })()`);
+    for (let i = 0; i < 40 && !(await ev("!document.getElementById('vHome').hidden")); i++) await sleep(250);
+    await ev("document.getElementById('modeControl').click()");
+    for (let i = 0; i < 60 && !(await ev("document.getElementById('screen').width > 0")); i++) await sleep(250);
+    check('görüntüleyici açıldı, kare çizildi', await ev("document.getElementById('screen').width > 0"));
+    check('Dokunmatik (window.Dokunmatik) yüklendi', await ev('!!window.Dokunmatik'));
+    check('tuş çubuğu düğmesi eklendi', await ev("!!document.getElementById('tusBtn')"));
+    check('touch-only düğmeler (any-pointer: coarse) görünüyor', await ev("getComputedStyle(document.getElementById('touchModeBtn')).display !== 'none'"));
+    await ev("localStorage.removeItem('touchMode')");
+
+    const st = await ev("(() => { const r = document.getElementById('stage').getBoundingClientRect(); const c = document.getElementById('screen'); return { l: r.left, t: r.top, w: r.width, h: r.height, nw: c.width, nh: c.height }; })()");
+    const box = (() => { const s = Math.min(st.w / st.nw, st.h / st.nh); const cw = st.nw * s, ch = st.nh * s; return { ox: (st.w - cw) / 2, oy: (st.h - ch) / 2, cw, ch }; })();
+    const P = (fx, fy) => ({ x: st.l + box.ox + fx * box.cw, y: st.t + box.oy + fy * box.ch }); // görüntüdeki oran -> sayfa
+    const sent = async () => { const s = await ev('window.__sent.splice(0)'); return s; };
+    const touch = async (type, pts) => call('Input.dispatchTouchEvent', { type, touchPoints: pts.map((p, i) => ({ x: p.x, y: p.y, id: i, radiusX: 1, radiusY: 1, force: 1 })) });
+    const tap = async (p) => { await touch('touchStart', [p]); await sleep(40); await touch('touchEnd', []); };
+    const drag = async (pts, steps = 8, ms = 16) => {
+      // pts: [[başlangıç...], [bitiş...]] parmak listeleri
+      const [a, b] = pts;
+      await touch('touchStart', a);
+      for (let i = 1; i <= steps; i++) { await sleep(ms); await touch('touchMove', a.map((p, k) => ({ x: p.x + (b[k].x - p.x) * i / steps, y: p.y + (b[k].y - p.y) * i / steps }))); }
+      await sleep(ms); await touch('touchEnd', []);
+    };
+    await sent();
+
+    // ---- Doğrudan mod ----
+    check('varsayılan mod Doğrudan', /Doğrudan/.test(await ev("document.getElementById('touchModeBtn').textContent")));
+    await tap(P(0.25, 0.75));
+    await sleep(100);
+    let s = await sent();
+    const mv = s.find((m) => m.t === 'move');
+    check('doğrudan: dokunuş -> dokunulan noktaya move + sol tık', mv && Math.abs(mv.x - 0.25) < 0.01 && Math.abs(mv.y - 0.75) < 0.01 && s.some((m) => m.t === 'down' && m.b === 'left') && s.some((m) => m.t === 'up' && m.b === 'left'), JSON.stringify(s));
+    // iki parmak dikey kaydırma (yakınlaştırma yok) -> tekerlek
+    const c0 = P(0.5, 0.5);
+    await drag([[{ x: c0.x - 40, y: c0.y - 60 }, { x: c0.x + 40, y: c0.y - 60 }], [{ x: c0.x - 40, y: c0.y + 60 }, { x: c0.x + 40, y: c0.y + 60 }]]);
+    s = await sent();
+    check('doğrudan: iki parmak dikey kaydırma -> tekerlek', s.some((m) => m.t === 'wheel' && m.dy > 0) && !s.some((m) => m.t === 'down'), JSON.stringify(s));
+    check('kaydırma yakınlaştırmadı', (await ev("document.getElementById('screen').style.transform")) === '');
+    // sıkıştırma
+    await drag([[{ x: c0.x - 30, y: c0.y }, { x: c0.x + 30, y: c0.y }], [{ x: c0.x - 90, y: c0.y }, { x: c0.x + 90, y: c0.y }]], 10);
+    const tr = await ev("document.getElementById('screen').style.transform");
+    const z = Number((tr.match(/scale\(([\d.]+)\)/) || [])[1]);
+    check('sıkıştırma ile yakınlaştı (~3x)', z > 2.5 && z <= 4, tr);
+    check('yakınlaştırma düğmesi görünür', await ev("!document.getElementById('zoomBtn').hidden"), await ev("document.getElementById('zoomBtn').textContent"));
+    s = await sent();
+    check('sıkıştırma girdi göndermedi', s.length === 0, JSON.stringify(s));
+    // yakınlaştırılmışken dokunuş: toNorm dönüşümü hesaba katmalı -> merkezdeki dokunuş hâlâ ~ (0.5, 0.5) (sıkıştırma ortası merkezdi)
+    await tap(c0);
+    await sleep(100);
+    s = await sent();
+    const mv2 = s.find((m) => m.t === 'move');
+    check('yakınlaştırılmış dokunuş doğru noktaya', mv2 && Math.abs(mv2.x - 0.5) < 0.01 && Math.abs(mv2.y - 0.5) < 0.02, JSON.stringify(mv2));
+    // sahnenin sol kenarına yakın dokunuş: 3x'te görüntünün ~ 0.5 - (0.5 - kenar)/3 kısmı
+    const edgeP = { x: st.l + 20, y: c0.y };
+    await tap(edgeP);
+    await sleep(100);
+    s = await sent();
+    const exp = await ev(`(() => { const r = document.getElementById('screen').getBoundingClientRect(); const c = document.getElementById('screen'); const sc = Math.min(r.width / c.width, r.height / c.height); const w = c.width * sc; const ox = r.left + (r.width - w) / 2; return (${edgeP.x} - ox) / w; })()`);
+    const mv3 = s.find((m) => m.t === 'move');
+    check('yakınlaştırılmış kenar dokunuşu ölçekli', mv3 && Math.abs(mv3.x - exp) < 0.005 && mv3.x > 0.3, `${mv3 && mv3.x.toFixed(3)} beklenen ${exp.toFixed(3)}`);
+    // yakınlaştırılmışken iki parmak kaydırma -> görünüm kayar, tekerlek yok
+    const before = await ev("document.getElementById('screen').style.transform");
+    await drag([[{ x: c0.x - 40, y: c0.y }, { x: c0.x + 40, y: c0.y }], [{ x: c0.x + 20, y: c0.y }, { x: c0.x + 100, y: c0.y }]]);
+    s = await sent();
+    const after = await ev("document.getElementById('screen').style.transform");
+    check('yakınlaştırılmışken iki parmak kaydırma görünümü kaydırır', before !== after && !s.some((m) => m.t === 'wheel'), `${before} -> ${after}`);
+    // iki parmak çift dokunuş -> 1x
+    const two = [{ x: c0.x - 40, y: c0.y }, { x: c0.x + 40, y: c0.y }];
+    await touch('touchStart', two); await sleep(40); await touch('touchEnd', []);
+    await sleep(80);
+    await touch('touchStart', two); await sleep(40); await touch('touchEnd', []);
+    await sleep(50);
+    check('iki parmak çift dokunuş -> 1x', (await ev("document.getElementById('screen').style.transform")) === '' && await ev("document.getElementById('zoomBtn').hidden"));
+    await sleep(400); await sent();
+    // uzun basma -> sağ tık
+    await touch('touchStart', [P(0.6, 0.4)]); await sleep(700); await touch('touchEnd', []);
+    await sleep(50);
+    s = await sent();
+    check('doğrudan: uzun basma -> sağ tık', s.some((m) => m.t === 'down' && m.b === 'right') && !s.some((m) => m.b === 'left'), JSON.stringify(s));
+    // sürükleme -> sol tuşla sürükleme
+    await drag([[P(0.3, 0.3)], [P(0.6, 0.6)]]);
+    await sleep(50);
+    s = await sent();
+    check('doğrudan: sürükleme -> down, move, up', s[1]?.t === 'down' && s.at(-1).t === 'up' && s.filter((m) => m.t === 'move').length >= 2, s.map((m) => m.t).join(','));
+
+    // ---- Touchpad modu ----
+    await ev("document.getElementById('touchModeBtn').click()");
+    check('mod değişti: Touchpad', /Touchpad/.test(await ev("document.getElementById('touchModeBtn').textContent")) && (await ev("localStorage.getItem('touchMode')")) === 'touchpad');
+    check('touchpad imleç göstergesi', await ev("(() => { const e = document.getElementById('tpCursor'); return !!e; })()"));
+    await sent();
+    // tek parmak: göreli hareket (yavaş)
+    await drag([[{ x: c0.x, y: c0.y + 100 }], [{ x: c0.x + 50, y: c0.y + 100 }]], 10, 40);
+    await sleep(50);
+    s = await sent();
+    let last = s.filter((m) => m.t === 'move').at(-1);
+    check('touchpad: sürükleme imleci göreli taşır (yukarı/aşağı yok, tık yok)', last && last.x > 0.5 && Math.abs(last.y - 0.5) < 0.01 && !s.some((m) => m.t === 'down'), JSON.stringify(last));
+    const slowDx = last.x - 0.5;
+    check('touchpad imleç göstergesi görünür', await ev("!document.getElementById('tpCursor').hidden"));
+    // hızlı aynı mesafe -> daha uzağa
+    await drag([[{ x: c0.x - 25, y: c0.y + 100 }], [{ x: c0.x + 25, y: c0.y + 100 }]], 3, 5);
+    await sleep(50);
+    s = await sent();
+    const last2 = s.filter((m) => m.t === 'move').at(-1);
+    check('touchpad: hızlı kaydırma daha uzağa (ivme)', last2 && last2.x - last.x > slowDx * 1.3, `yavaş ${slowDx.toFixed(3)}, hızlı ${(last2.x - last.x).toFixed(3)}`);
+    last = last2;
+    // dokunuş -> (beklemeden sonra) imleç yerinde sol tık
+    await tap({ x: st.l + 30, y: st.t + 30 });
+    s = await sent();
+    check('touchpad: dokunuş tıkı hemen gitmez (çift dokunuş beklenir)', !s.some((m) => m.t === 'down'));
+    await sleep(400);
+    s = await sent();
+    const mvc = s.find((m) => m.t === 'move');
+    check('touchpad: dokunuş -> imlecin yerinde sol tık', mvc && Math.abs(mvc.x - last.x) < 1e-9 && s.filter((m) => m.t === 'down' && m.b === 'left').length === 1, JSON.stringify(s));
+    // çift dokunuş -> çift tık
+    await tap(c0); await sleep(80); await tap(c0); await sleep(50);
+    s = await sent();
+    check('touchpad: çift dokunuş -> çift tık', s.filter((m) => m.t === 'down' && m.b === 'left').length === 2, s.map((m) => m.t).join(','));
+    await sleep(400); await sent();
+    // iki parmak dokunuş -> sağ tık
+    await touch('touchStart', two); await sleep(40); await touch('touchEnd', []);
+    await sleep(50);
+    s = await sent();
+    check('touchpad: iki parmak dokunuş -> sağ tık', s.some((m) => m.t === 'down' && m.b === 'right'), JSON.stringify(s));
+    await sleep(400); await sent();
+    // dokun + dokunup sürükle -> sol tuşla sürükleme
+    await tap(c0); await sleep(80);
+    await drag([[c0], [{ x: c0.x + 60, y: c0.y + 40 }]], 8, 20);
+    await sleep(50);
+    s = await sent();
+    const seq = s.map((m) => m.t);
+    check('touchpad: çift dokunup sürükleme -> down ... up (tık yok)', seq.filter((t) => t === 'down').length === 1 && seq.at(-1) === 'up' && seq.indexOf('down') < seq.lastIndexOf('move'), seq.join(','));
+    // iki parmak kaydırma -> tekerlek
+    await drag([[{ x: c0.x - 40, y: c0.y + 60 }, { x: c0.x + 40, y: c0.y + 60 }], [{ x: c0.x - 40, y: c0.y - 60 }, { x: c0.x + 40, y: c0.y - 60 }]]);
+    s = await sent();
+    check('touchpad: iki parmak kaydırma -> tekerlek (yukarı itince aşağı)', s.some((m) => m.t === 'wheel' && m.dy < 0) && !s.some((m) => m.t === 'down'), JSON.stringify(s));
+    // touchpad + yakınlaştırma: imleç kenara giderse görünüm takip eder
+    await drag([[{ x: c0.x - 30, y: c0.y }, { x: c0.x + 30, y: c0.y }], [{ x: c0.x - 90, y: c0.y }, { x: c0.x + 90, y: c0.y }]], 10);
+    const tz = await ev("document.getElementById('screen').style.transform");
+    for (let i = 0; i < 4; i++) await drag([[{ x: c0.x - 100, y: c0.y + 100 }], [{ x: c0.x + 100, y: c0.y + 100 }]], 4, 8);
+    const tz2 = await ev("document.getElementById('screen').style.transform");
+    const curInside = await ev("(() => { const c = document.getElementById('tpCursor').getBoundingClientRect(), s = document.getElementById('stage').getBoundingClientRect(); return c.left >= s.left - 10 && c.right <= s.right + 10; })()");
+    check('touchpad: yakınlaştırılmışken görünüm imleci takip eder', tz !== tz2 && curInside, `${tz} -> ${tz2}`);
+    await ev("document.getElementById('zoomBtn').click()");
+    check('yakınlaştırma düğmesi 1x yapar', (await ev("document.getElementById('screen').style.transform")) === '');
+    await sleep(400); await sent();
+
+    // ---- Kalem: pen kaynaklı fare olayları yok sayılır ----
+    await ev("document.getElementById('touchModeBtn').click()"); // doğrudan moda dön
+    await call('Input.dispatchMouseEvent', { type: 'mousePressed', x: c0.x, y: c0.y, button: 'left', clickCount: 1, pointerType: 'pen' });
+    await call('Input.dispatchMouseEvent', { type: 'mouseReleased', x: c0.x, y: c0.y, button: 'left', clickCount: 1, pointerType: 'pen' });
+    await sleep(50);
+    s = await sent();
+    check('kalem (pointerType pen) fare olayları çekirdekte yok sayılır', !s.some((m) => m.t === 'down'), JSON.stringify(s));
+    await call('Input.dispatchMouseEvent', { type: 'mousePressed', x: c0.x, y: c0.y, button: 'left', clickCount: 1, pointerType: 'mouse' });
+    await call('Input.dispatchMouseEvent', { type: 'mouseReleased', x: c0.x, y: c0.y, button: 'left', clickCount: 1, pointerType: 'mouse' });
+    await sleep(50);
+    s = await sent();
+    check('normal fare hâlâ çalışır', s.some((m) => m.t === 'down') && s.some((m) => m.t === 'up'), JSON.stringify(s));
+
+    // ---- Tuş çubuğu ----
+    await ev("document.getElementById('tusBtn').click()");
+    check('tuş çubuğu açıldı', await ev("!document.querySelector('.tus-cubugu').hidden"));
+    const sw = await ev("(() => { const b = document.querySelector('.tus-cubugu'); return { sw: b.scrollWidth, cw: b.clientWidth, overflow: getComputedStyle(b).overflowX }; })()");
+    check('tuş çubuğu yatay kaydırılabilir', sw.sw > sw.cw && sw.overflow === 'auto', JSON.stringify(sw));
+    const bodyScroll = await ev('document.documentElement.scrollWidth <= window.innerWidth');
+    check('sayfa yatay taşmıyor', bodyScroll);
+    await sent();
+    await ev("document.querySelector('.tus-cubugu button[data-vk=\"27\"]').click()");
+    s = await sent();
+    check('Esc düğmesi', JSON.stringify(s) === '[{"t":"key","vk":27,"down":true},{"t":"key","vk":27,"down":false}]', JSON.stringify(s));
+    await ev("document.querySelector('.tus-cubugu button[data-vk=\"17\"]').click()");
+    check('Ctrl yapışkan vurgulandı', await ev("document.querySelector('.tus-cubugu button[data-vk=\"17\"]').classList.contains('on')"));
+    await ev("document.getElementById('kbInput').focus()");
+    await call('Input.insertText', { text: 'c' });
+    await sleep(50);
+    s = await sent();
+    check('Ctrl + ekran klavyesi "c" -> Ctrl+C', JSON.stringify(s.map((m) => `${m.t}:${m.vk ?? m.s}:${m.down ? 1 : 0}`)) === JSON.stringify(['key:17:1', 'key:67:1', 'key:67:0', 'key:17:0']), JSON.stringify(s));
+    check('Ctrl bırakıldı (vurgu kalktı)', await ev("!document.querySelector('.tus-cubugu button[data-vk=\"17\"]').classList.contains('on')"));
+    await call('Input.insertText', { text: 'ş' });
+    await sleep(50);
+    s = await sent();
+    check('değiştiricisiz yazı çekirdekten metin olarak gider', JSON.stringify(s) === '[{"t":"text","s":"ş"}]', JSON.stringify(s));
+    await ev("document.querySelector('.tus-cubugu button[data-vk=\"18\"]').click()");
+    await ev("document.querySelector('.tus-cubugu button[data-vk=\"115\"]').click()");
+    s = await sent();
+    check('Alt + F4 düğmeleri', JSON.stringify(s.map((m) => `${m.vk}${m.down ? 'v' : '^'}`)) === '["18v","115v","115^","18^"]', JSON.stringify(s));
+    await ev("document.querySelector('.tus-cubugu button[data-vk=\"91\"]').click()");
+    await ev("document.querySelector('.tus-cubugu button[data-vk=\"91\"]').click()");
+    s = await sent();
+    check('değiştiriciye ikinci dokunuş iptal eder', s.length === 0 && await ev("!document.querySelector('.tus-cubugu button[data-vk=\"91\"]').classList.contains('on')"));
+    const reg = await ev("navigator.serviceWorker.ready.then((r) => !!r.active && r.scope)");
+    check('service worker kaydedildi ve etkin (localhost)', !!reg, String(reg));
+    // Yeniden yükleme: SW denetiminde sayfa yine ağdan gelip çalışmalı
+    await call('Page.reload');
+    for (let i = 0; i < 40 && !(await ev("!!navigator.serviceWorker.controller && !document.getElementById('vHome').hidden").catch(() => false)); i++) await sleep(250);
+    check('SW denetiminde yeniden yükleme + giriş çalışıyor', await ev("!!navigator.serviceWorker.controller && !document.getElementById('vHome').hidden"));
+    check('sayfada yakalanmamış hata yok', exceptions.length === 0, JSON.stringify(exceptions));
+    cdp.close();
+  } catch (e) {
+    console.log('HATA', e.stack || e);
+    fail++;
+  } finally {
+    if (browser) kill(browser.pid);
+    await sleep(500);
+    try { fs.rmSync(profile, { recursive: true, force: true }); } catch { /* tarayıcı dosyaları bırakıyor olabilir */ }
+    console.log(`\n${pass} kontrol geçti, ${fail} hata`);
+    process.exit(fail ? 1 : 0);
+  }
+})();

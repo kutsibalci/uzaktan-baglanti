@@ -472,11 +472,19 @@
   const BTN = ['left', 'middle', 'right'];
   const heldButtons = new Set();
 
-  stage.addEventListener('mousemove', (e) => queueMove(e.clientX, e.clientY));
+  // Kalem (pointerType 'pen') olaylarını kalem özelliği işler; tarayıcının kalem için ürettiği fare olaylarını yok say.
+  // Pointer olayları uyumluluk fare olaylarından önce gelir.
+  let lastPointerType = 'mouse';
+  const notePointer = (e) => { lastPointerType = e.pointerType; };
+  stage.addEventListener('pointerdown', notePointer, true);
+  stage.addEventListener('pointermove', notePointer, true);
+  const fromPen = () => lastPointerType === 'pen';
+
+  stage.addEventListener('mousemove', (e) => { if (!fromPen()) queueMove(e.clientX, e.clientY); });
   stage.addEventListener('mousedown', (e) => {
     e.preventDefault();
     const b = BTN[e.button];
-    if (!b || !canInput()) return;
+    if (!b || !canInput() || fromPen()) return;
     moveNow(e.clientX, e.clientY);
     heldButtons.add(b);
     send({ t: 'down', b });
@@ -496,27 +504,137 @@
   }, { passive: false });
 
   // ---------- Dokunmatik ----------
-  // Tek dokunuş = sol tık, uzun basma = sağ tık, sürükleme = sol tuşla sürükleme, iki parmak = kaydırma.
+  // İki mod (araç çubuğundaki düğmeyle değişir, seçim hatırlanır):
+  //  Doğrudan: parmağın değdiği yer tıklanır. Tek dokunuş = sol tık, uzun basma = sağ tık,
+  //            sürükleme = sol tuşla sürükleme, iki parmak = kaydırma (yakınlaştırılmışken görünümü kaydırır).
+  //  Touchpad: dizüstü touchpad'i gibi. Tek parmak imleci göreli (ivmeli) taşır, dokunuş = sol tık,
+  //            iki parmak dokunuş = sağ tık, iki parmak kaydırma = tekerlek, çift dokunup sürükleme = sol tuşla sürükleme.
+  // Her iki modda: iki parmak sıkıştırma = yakınlaştırma (1x–4x), iki parmak çift dokunuş = 1x.
+  // Kalem dokunuşları (touchType 'stylus') burada işlenmez; kalem özelliği pointer olaylarıyla işler.
+  // Hesaplar public/dokunmatik.js içinde (window.Dokunmatik).
 
-  let touch = null;
+  const T = window.Dokunmatik;
   const LONG_PRESS_MS = 550;
   const DRAG_THRESHOLD = 10;
+  const DOUBLE_TAP_MS = 300;
+  let touchMode = storage.get('touchMode') === 'touchpad' ? 'touchpad' : 'direct';
+  let gesture = null;              // o anki dokunma hareketi
+  let view = { z: 1, tx: 0, ty: 0 };  // yakınlaştırma: translate(tx, ty) scale(z)
+  let cursor = { x: 0.5, y: 0.5 };    // touchpad sanal imleci (0..1)
+  let tapTimer = null;             // touchpad: bekleyen tek tık (çift dokunup sürükleme olabilir)
+  let rightTimer = null;           // touchpad: bekleyen sağ tık (iki parmak çift dokunuş olabilir)
+  let lastTwoTap = 0;
+
+  const tpCursor = document.createElement('div');
+  tpCursor.id = 'tpCursor';
+  tpCursor.hidden = true;
+  stage.appendChild(tpCursor);
+
+  const fingers = (list) => [...list].filter((t) => t.touchType !== 'stylus');
+  const canView = () => stream?.started && visible('vViewer');
+  const viewBox = () => T.contentBox(stage.clientWidth, stage.clientHeight, canvas.width, canvas.height);
+  function local(t) {
+    const r = stage.getBoundingClientRect();
+    return { x: t.clientX - r.left, y: t.clientY - r.top };
+  }
+  const midOf = (a, b) => { const p = local(a), q = local(b); return { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }; };
+  const distOf = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+
+  function applyView() {
+    canvas.style.transform = view.z > 1 ? `translate(${view.tx}px, ${view.ty}px) scale(${view.z})` : '';
+    $('zoomBtn').hidden = view.z <= 1;
+    $('zoomBtn').textContent = `${view.z.toFixed(1)}× ✕`;
+    drawCursor();
+  }
+  function setView(v) {
+    view = T.clampView(v, viewBox());
+    applyView();
+  }
+
+  // Touchpad imlecinin yerel göstergesi (karşıdan gelen görüntüdeki imleç gecikmeli olabilir).
+  function drawCursor() {
+    tpCursor.hidden = touchMode !== 'touchpad' || !canInput() || !canvas.width;
+    if (tpCursor.hidden) return;
+    const b = viewBox();
+    tpCursor.style.left = `${(b.ox + cursor.x * b.cw) * view.z + view.tx}px`;
+    tpCursor.style.top = `${(b.oy + cursor.y * b.ch) * view.z + view.ty}px`;
+  }
+
+  let cursorQueued = false;
+  function sendCursor() {
+    drawCursor();
+    if (cursorQueued) return;
+    cursorQueued = true;
+    requestAnimationFrame(() => { cursorQueued = false; if (canInput()) send({ t: 'move', x: cursor.x, y: cursor.y }); });
+  }
+  function clickAtCursor(b, times = 1) {
+    if (!canInput()) return;
+    send({ t: 'move', x: cursor.x, y: cursor.y });
+    for (let i = 0; i < times; i++) click(b);
+  }
+
+  function setTouchMode(mode) {
+    touchMode = mode;
+    storage.set('touchMode', mode);
+    $('touchModeBtn').textContent = mode === 'touchpad' ? '🖱 Touchpad' : '👆 Doğrudan';
+    $('touchModeBtn').title = mode === 'touchpad' ? 'Dokunmatik: touchpad modu (değiştir)' : 'Dokunmatik: doğrudan mod (değiştir)';
+    drawCursor();
+  }
+  setTouchMode(touchMode);
+  $('touchModeBtn').addEventListener('click', () => setTouchMode(touchMode === 'touchpad' ? 'direct' : 'touchpad'));
+  $('zoomBtn').addEventListener('click', () => setView({ z: 1, tx: 0, ty: 0 }));
+  window.addEventListener('resize', () => setView(view));
+
+  function resetTouch() {
+    clearTimeout(tapTimer); clearTimeout(rightTimer);
+    tapTimer = rightTimer = null;
+    gesture = null;
+    cursor = { x: 0.5, y: 0.5 };
+    setView({ z: 1, tx: 0, ty: 0 });
+  }
+  on('viewer:start', resetTouch);
+  on('viewer:stop', resetTouch);
+
+  // Bekleyen tek parmak hareketini bitirir (ikinci parmak gelince ya da iptalde).
+  function endSingle() {
+    if (!gesture || gesture.two) return;
+    clearTimeout(gesture.timer);
+    if (gesture.dragging) send({ t: 'up', b: 'left' });
+  }
+  function flushTap() {
+    if (!tapTimer) return;
+    clearTimeout(tapTimer);
+    tapTimer = null;
+    clickAtCursor('left');
+  }
 
   stage.addEventListener('touchstart', (e) => {
     e.preventDefault();
-    if (!canInput()) return;
-    if (e.touches.length === 2) {
-      if (touch?.timer) clearTimeout(touch.timer);
-      if (touch?.dragging) send({ t: 'up', b: 'left' });
-      touch = { scroll: true, y: avgY(e.touches), acc: 0 };
+    if (!canView()) return;
+    const f = fingers(e.touches);
+    if (f.length >= 2) {
+      if (gesture?.two) return;
+      endSingle();
+      flushTap();
+      gesture = { two: true, d0: distOf(f[0], f[1]), m0: midOf(f[0], f[1]), start: { ...view }, kind: null, t0: Date.now(), acc: 0 };
+      gesture.wy = gesture.m0.y;
       return;
     }
-    if (e.touches.length !== 1) return;
-    const t = e.touches[0];
-    touch = { x0: t.clientX, y0: t.clientY, dragging: false, long: false };
-    touch.timer = setTimeout(() => {
-      touch.long = true;
-      moveNow(touch.x0, touch.y0);
+    if (f.length !== 1 || gesture) return;
+    const t = f[0];
+    if (touchMode === 'touchpad') {
+      gesture = { pad: true, id: t.identifier, x0: t.clientX, y0: t.clientY, x: t.clientX, y: t.clientY, time: Date.now(), t0: Date.now(), moved: false, dragging: false, second: !!tapTimer };
+      if (tapTimer) { clearTimeout(tapTimer); tapTimer = null; }
+      drawCursor();
+      return;
+    }
+    if (!canInput()) return;
+    gesture = { id: t.identifier, x0: t.clientX, y0: t.clientY, dragging: false, long: false };
+    const g = gesture;
+    g.timer = setTimeout(() => {
+      if (gesture !== g) return;
+      g.long = true;
+      moveNow(g.x0, g.y0);
       click('right');
       navigator.vibrate?.(30);
     }, LONG_PRESS_MS);
@@ -524,44 +642,111 @@
 
   stage.addEventListener('touchmove', (e) => {
     e.preventDefault();
-    if (!touch) return;
-    if (touch.scroll) {
-      if (e.touches.length < 2) return;
-      const y = avgY(e.touches);
-      touch.acc += y - touch.y;
-      touch.y = y;
-      const steps = Math.trunc(touch.acc / 30);
-      if (steps) { send({ t: 'wheel', dy: steps * 120, dx: 0 }); touch.acc -= steps * 30; }
+    if (!gesture) return;
+    const f = fingers(e.touches);
+    if (gesture.two) {
+      if (f.length < 2) return;
+      const g = gesture;
+      const d = distOf(f[0], f[1]), m = midOf(f[0], f[1]);
+      if (!g.kind) g.kind = T.classifyTwoFinger(g.d0, d, g.m0, m);
+      if (g.kind === 'pinch') {
+        view = T.pinchView(g.start, g.d0, d, g.m0, m, viewBox());
+        applyView();
+      } else if (g.kind === 'pan') {
+        // Doğrudan modda yakınlaştırılmışken görünüm kayar; aksi halde tekerlek.
+        if (view.z > 1 && touchMode === 'direct') {
+          setView({ z: view.z, tx: g.start.tx + m.x - g.m0.x, ty: g.start.ty + m.y - g.m0.y });
+        } else if (canInput()) {
+          g.acc += m.y - g.wy;
+          g.wy = m.y;
+          const steps = Math.trunc(g.acc / 30);
+          if (steps) { send({ t: 'wheel', dy: steps * 120, dx: 0 }); g.acc -= steps * 30; }
+        }
+      }
       return;
     }
-    const t = e.touches[0];
-    if (!touch.dragging && !touch.long && Math.hypot(t.clientX - touch.x0, t.clientY - touch.y0) > DRAG_THRESHOLD) {
-      clearTimeout(touch.timer);
-      touch.dragging = true;
-      moveNow(touch.x0, touch.y0);
+    const t = f.find((x) => x.identifier === gesture.id);
+    if (!t) return;
+    if (gesture.pad) return padMove(t);
+    if (!gesture.dragging && !gesture.long && Math.hypot(t.clientX - gesture.x0, t.clientY - gesture.y0) > DRAG_THRESHOLD) {
+      clearTimeout(gesture.timer);
+      gesture.dragging = true;
+      moveNow(gesture.x0, gesture.y0);
       send({ t: 'down', b: 'left' });
     }
-    if (touch.dragging) queueMove(t.clientX, t.clientY);
+    if (gesture.dragging) queueMove(t.clientX, t.clientY);
   }, { passive: false });
+
+  function padMove(t) {
+    const g = gesture, now = Date.now();
+    let dx = t.clientX - g.x, dy = t.clientY - g.y, dt = now - g.time;
+    if (!g.moved) {
+      if (Math.hypot(t.clientX - g.x0, t.clientY - g.y0) <= T.TAP_MOVE) return;
+      // Eşik aşılınca baştan beri olan hareket uygulanır (dokunuşta titreme imleci oynatmasın).
+      g.moved = true;
+      dx = t.clientX - g.x0; dy = t.clientY - g.y0; dt = now - g.t0;
+      if (g.second && canInput()) {
+        // Çift dokunup sürükleme: sol tuş basılı.
+        g.dragging = true;
+        send({ t: 'move', x: cursor.x, y: cursor.y });
+        send({ t: 'down', b: 'left' });
+      }
+    }
+    g.x = t.clientX; g.y = t.clientY; g.time = now;
+    if (!canInput()) return;
+    const b = viewBox();
+    cursor = T.moveCursor(cursor, dx, dy, dt, b.cw, b.ch, view.z);
+    if (view.z > 1) {
+      view = T.followCursor(view, { x: b.ox + cursor.x * b.cw, y: b.oy + cursor.y * b.ch }, b);
+      applyView();
+    }
+    sendCursor();
+  }
 
   stage.addEventListener('touchend', (e) => {
     e.preventDefault();
-    if (!touch || e.touches.length > 0) return;
-    clearTimeout(touch.timer);
-    if (touch.dragging) {
+    if (!gesture || fingers(e.touches).length > 0) return;
+    const g = gesture;
+    gesture = null;
+    const now = Date.now();
+    if (g.two) {
+      if (g.kind || now - g.t0 > T.TAP_MS * 1.5) return;
+      // İki parmak dokunuş: çift ise 1x'e dön, tek ise (touchpad) sağ tık.
+      if (now - lastTwoTap < DOUBLE_TAP_MS + T.TAP_MS) {
+        lastTwoTap = 0;
+        clearTimeout(rightTimer); rightTimer = null;
+        setView({ z: 1, tx: 0, ty: 0 });
+        return;
+      }
+      lastTwoTap = now;
+      if (touchMode !== 'touchpad' || !canInput()) return;
+      // Yakınlaştırılmışken ikinci dokunuşu bekle (1x'e dönüş olabilir).
+      if (view.z > 1) rightTimer = setTimeout(() => { rightTimer = null; clickAtCursor('right'); }, DOUBLE_TAP_MS);
+      else clickAtCursor('right');
+      return;
+    }
+    if (g.pad) {
+      if (g.dragging) { send({ t: 'up', b: 'left' }); return; }
+      if (g.moved || !canInput()) return;
+      if (g.second) { clickAtCursor('left', T.isTap(0, now - g.t0) ? 2 : 1); return; }
+      if (!T.isTap(0, now - g.t0)) return;
+      // Tek tık biraz beklenir: hemen ardından dokunup sürüklenirse sol tuşla sürükleme olur.
+      tapTimer = setTimeout(() => { tapTimer = null; clickAtCursor('left'); }, DOUBLE_TAP_MS);
+      return;
+    }
+    clearTimeout(g.timer);
+    if (g.dragging) {
       send({ t: 'up', b: 'left' });
-    } else if (!touch.long && !touch.scroll) {
-      moveNow(touch.x0, touch.y0);
+    } else if (!g.long) {
+      moveNow(g.x0, g.y0);
       click('left');
     }
-    touch = null;
   }, { passive: false });
 
-  function avgY(list) {
-    let s = 0;
-    for (const t of list) s += t.clientY;
-    return s / list.length;
-  }
+  stage.addEventListener('touchcancel', () => {
+    endSingle();
+    gesture = null;
+  });
 
   // ---------- Klavye ----------
   // Yazdırılabilir karakterler metin olarak gönderilir (klavye düzeninden bağımsız),
