@@ -101,7 +101,7 @@ let tray = null;
   check('kısayol başta yok (durum=1)', run(['--baslangic', 'durum']).status === 1);
   check('kısayol oluşturuldu', run(['--baslangic', 'ac']).status === 0 && fs.existsSync(lnk));
   const target = execFileSync('powershell.exe', ['-NoProfile', '-Command',
-    `(New-Object -ComObject WScript.Shell).CreateShortcut('${lnk.replace(/'/g, "''")}').TargetPath`], { encoding: 'utf8' }).trim();
+    `[Console]::OutputEncoding = [Text.Encoding]::UTF8; (New-Object -ComObject WScript.Shell).CreateShortcut('${lnk.replace(/'/g, "''")}').TargetPath`], { encoding: 'utf8' }).trim();
   check('kısayol Tepsi.exe\'yi gösteriyor', path.resolve(target).toLowerCase() === path.resolve(exe).toLowerCase(), target);
   check('kısayol durum=0', run(['--baslangic', 'durum']).status === 0);
   check('kısayol silindi', run(['--baslangic', 'kapat']).status === 0 && !fs.existsSync(lnk));

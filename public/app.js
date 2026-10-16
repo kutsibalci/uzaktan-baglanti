@@ -22,6 +22,9 @@
   let stream = null;           // { mode, screen } — aktif görüntüleme
   let lastAttempt = null;
   let frameCount = 0;
+  // Gecikme sayacı için son bir saniyenin ölçümleri (RC.stats() ile okunur).
+  let byteCount = 0, decodeSum = 0, decodeN = 0;
+  let lastStats = { fps: 0, kbps: 0, decodeMs: null, codec: '' };
   let codecLabel = '';
   let httpToken = null;       // özelliklerin HTTP istekleri için (X-Oturum başlığı)
 
@@ -336,26 +339,40 @@
     const u8 = new Uint8Array(ab);
     if (u8[0] > 2) { emit(`binary:${u8[0]}`, u8); return; } // özellik verisi görüntüden bağımsız
     if (!stream) return;
+    byteCount += u8.length;
+    const recv = performance.now();
     if (u8[0] === 1) {
       // JPEG: çizilince sunucuya bildir; sunucu ancak o zaman yeni kare yollar.
       createImageBitmap(new Blob([u8.subarray(1)], { type: 'image/jpeg' }))
-        .then((bmp) => { draw(bmp); bmp.close(); })
+        .then((bmp) => { draw(bmp); bmp.close(); addDecode(recv); })
         .catch(() => {})
         .finally(() => send({ t: 'ack' }));
     } else if (u8[0] === 2) {
-      decodeH264(u8[1] === 1, u8.subarray(2));
+      decodeH264(u8[1] === 1, u8.subarray(2), recv);
     }
+  }
+
+  // Karenin gelişinden ekrana çizilmesine kadar geçen süre (çözme + çizim).
+  function addDecode(recv) {
+    decodeSum += performance.now() - recv;
+    decodeN++;
   }
 
   // ---------- H.264 çözme ----------
 
   let decoder = null;
   let chunkTs = 0;
+  const recvTimes = new Map(); // kare zaman damgası -> geliş anı (çözme süresini ölçmek için)
 
   function configureDecoder(m) {
     closeDecoder();
     decoder = new VideoDecoder({
-      output: (frame) => { draw(frame); frame.close(); },
+      output: (frame) => {
+        draw(frame);
+        const recv = recvTimes.get(frame.timestamp);
+        if (recv !== undefined) { recvTimes.delete(frame.timestamp); addDecode(recv); }
+        frame.close();
+      },
       error: (e) => {
         console.warn('Çözücü hatası:', e);
         closeDecoder();
@@ -373,7 +390,7 @@
     }
   }
 
-  function decodeH264(key, data) {
+  function decodeH264(key, data, recv) {
     if (!decoder || decoder.state !== 'configured') return;
     // Çözücü geride kaldıysa (yavaş cihaz) kuyruğu boşaltıp anahtar kareden devam et.
     if (decoder.decodeQueueSize > 8 && !key) {
@@ -382,7 +399,10 @@
       return;
     }
     try {
-      decoder.decode(new EncodedVideoChunk({ type: key ? 'key' : 'delta', timestamp: (chunkTs += 33333), data }));
+      chunkTs += 33333;
+      if (recvTimes.size > 60) recvTimes.clear(); // çıktısı gelmeyen kareler birikmesin
+      recvTimes.set(chunkTs, recv);
+      decoder.decode(new EncodedVideoChunk({ type: key ? 'key' : 'delta', timestamp: chunkTs, data }));
     } catch {
       closeDecoder();
       send({ t: 'keyframe' });
@@ -392,6 +412,7 @@
   function closeDecoder() {
     if (decoder && decoder.state !== 'closed') { try { decoder.close(); } catch { /* zaten kapalı */ } }
     decoder = null;
+    recvTimes.clear();
   }
 
   function setStatus(on) {
@@ -401,7 +422,14 @@
 
   setInterval(() => {
     $('fps').textContent = stream ? `${frameCount} fps · ${codecLabel}` : '';
+    lastStats = {
+      fps: stream ? frameCount : 0,
+      kbps: Math.round((byteCount * 8) / 1000),
+      decodeMs: decodeN ? decodeSum / decodeN : null,
+      codec: stream ? codecLabel : '',
+    };
     frameCount = 0;
+    byteCount = 0; decodeSum = 0; decodeN = 0;
   }, 1000);
 
   $('backBtn').addEventListener('click', () => { send({ t: 'stop' }); goHome(); });
@@ -969,6 +997,8 @@
     on,
     state: () => ({ me: me && { ...me }, stream: stream && { ...stream }, screens: [...screens], connected: ws?.readyState === 1 }),
     canInput,
+    // Son bir saniyenin görüntü ölçümleri: { fps, kbps, decodeMs (geliş→çizim, ort.), codec }
+    stats: () => ({ ...lastStats }),
     // Kalem özelliği, kalem olaylarını kendisi işlediği sürece true dönen bir fonksiyon kaydeder.
     setPenActive(fn) { penActive = typeof fn === 'function' ? fn : () => false; },
     toNorm,

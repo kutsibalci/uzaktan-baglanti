@@ -489,9 +489,11 @@ async function captureLoop() {
 
     for (const [key, group] of groups) {
       let frame;
+      const t0 = Date.now();
       try { frame = await helper.request(`cap ${key}`); } catch { await sleep(300); continue; }
       const t = Date.now();
       for (const c of group) {
+        c.capMs = t - t0; // yakalama + JPEG sıkıştırma süresi (gecikme sayacı için)
         c.nextDue = t + 1000 / c.session.view.fps;
         if (!frame.length || c.readyState !== 1) continue;
         if (!c.needsFrame && c.lastFrame && frame.equals(c.lastFrame)) continue;

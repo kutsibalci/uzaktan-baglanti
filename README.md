@@ -14,6 +14,7 @@ Windows bilgisayarı telefondan, tabletten ya da başka bir bilgisayardan **tara
 - Bilgisayar sesini uzaktan dinleme (Opus; HTTPS ve güncel tarayıcı gerekir)
 - Gizlilik perdesi: kontrol sırasında bilgisayar ekranı karartılır, uzaktaki görüntü etkilenmez
 - Tablet kalemi: basınç, eğim, silgi
+- Gecikme sayacı: ağ, çözme ve tahmini toplam gecikme; deneme sonuçlarını kopyalanabilir özet olarak verir
 - Tepsi simgesi, Windows açılınca başlatma, bağlantı bildirimleri; yöneticiye güç menüsü (kilitle/uyku/yeniden başlat/kapat)
 - Dış sunucu, lisans, abonelik yok — internet olmadan da çalışır
 
@@ -51,7 +52,7 @@ Yönetici hesabıyla ana menüde **⏻ Güç** düğmesi bilgisayarı kilitler, 
 | Yol | Görevi |
 |---|---|
 | `server.js` | Sunucu: giriş, oturumlar, görüntü akışı, yönetim |
-| `lib/` | Hesap deposu, ağ/Tailscale, H.264 video, sanal ekran, yardımcı süreç |
+| `lib/` | Hesap deposu, ağ/Tailscale, H.264 video (+ `sps.js`: tarayıcıda kare bekletmeyi kapatan SPS düzeltmesi), sanal ekran, yardımcı süreç |
 | `helper/RemoteHelper.cs` | Ekran yakalama + fare/klavye (Windows'un kendi C# derleyicisiyle derlenir) |
 | `helper/Tepsi.cs` | Görev çubuğu simgesi; sunucuyu gizli başlatır (`tepsi-baslat.bat`) |
 | `helper/Pano.cs`, `Perde.cs`, `Ses.cs` | Pano izleme, gizlilik perdesi, ses yakalama (sunucu açılışta derler) |

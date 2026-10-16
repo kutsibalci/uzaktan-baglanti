@@ -29,7 +29,13 @@
 
 - [x] H.264 görüntü: ffmpeg (gdigrab) + NVIDIA/AMD/Intel donanım kodlayıcı (yoksa x264), tarayıcıda WebCodecs.
       VBR: durağan ekranda ~1 Mbps (JPEG ~25 Mbps). HTTPS/localhost dışında otomatik JPEG.
-      **(Gerçek tarayıcıda çözme henüz denenmedi; sunucu tarafı ffmpeg ile doğrulandı)**
+      **(Gerçek telefonda henüz denenmedi; bu bilgisayarda başsız Edge'de WebCodecs ile çözme doğrulandı)**
+- [x] Gecikme sayacı (`features/olcum.js`): araç çubuğunda gidiş-dönüş (RTT); dokununca yakalama / ağ / çözme / tahmini toplam,
+      kare hızı, bant, sunucu kuyruğu. "Özeti kopyala" oturum boyunca ortalama / orta / %95 / min / maks verir (deneme sonuçları için).
+      H.264'te yakalama + kodlama süresi ölçülmüyor (tahmin alt sınırdır); ekran yenileme dahil değil.
+- [x] H.264 kare bekletme düzeltmesi (`lib/sps.js`): NVENC SPS'e bitstream_restriction yazmıyordu → tarayıcı ~4 kare bekletiyordu.
+      Sayaçla bulundu: çözme 133 ms (x264: 2 ms). SPS'e max_num_reorder_frames=0 eklenince NVENC'te de ~2 ms.
+      AMF/x264 zaten yazıyor, onlara dokunulmuyor. **(Ölçüm başsız Edge'de; gerçek telefon çözücüsünde doğrulanmalı)**
 - [x] Telefon: touchpad (dokunmatik fare) modu, sıkıştırarak yakınlaştırma (1x–4x), mobil tuş çubuğu (yapışkan Ctrl/Alt/Shift/Win, F1–F12),
       PWA (ana ekrana ekle, ağ öncelikli service worker), `usb-baglan.bat` (adb reverse), kalem olaylarını çekirdekte yok sayma.
       **(henüz gerçek cihazda test edilmedi: gerçek telefon/tablette dokunma hissi ve eşikler (PINCH 24px, PAN 12px, TAP 250ms, çift dokunuş 300ms);
