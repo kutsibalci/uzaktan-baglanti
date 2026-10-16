@@ -3,7 +3,7 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const WebSocket = require(path.join(ROOT, 'node_modules', 'ws'));
 const fs = require('fs');
-const URL = 'ws://localhost:3999';
+const URL = `ws://localhost:${process.env.TEST_PORT || 3999}`;
 
 function client() {
   const ws = new WebSocket(URL);

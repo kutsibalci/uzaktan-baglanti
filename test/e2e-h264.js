@@ -9,7 +9,7 @@ let fails = 0;
 const check = (n, c, x = '') => { console.log(`${c ? 'OK  ' : 'FAIL'} ${n} ${x}`); if (!c) fails++; };
 
 function login(codecs, onReady) {
-  const ws = new WebSocket('ws://localhost:3999');
+  const ws = new WebSocket(`ws://localhost:${process.env.TEST_PORT || 3999}`);
   ws.on('message', (d, bin) => {
     if (bin) return onReady.frame?.(d);
     const m = JSON.parse(d.toString());

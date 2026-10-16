@@ -22,7 +22,7 @@ check('özel IP kabul', ['10.0.0.5', '172.20.1.1', '192.168.0.9', '100.64.0.1', 
 check('172.32 ve 100.128 özel değil', !net.isPrivate('172.32.0.1') && !net.isPrivate('100.128.0.1'));
 
 // Gerçek sunucuya tailscale-serve gibi bağlan: kurulum izni verilmemeli
-const ws = new WebSocket('ws://127.0.0.1:3999', { headers: { 'x-forwarded-for': '100.101.102.103', 'tailscale-user-login': 'x@y' } });
+const ws = new WebSocket(`ws://127.0.0.1:${process.env.TEST_PORT || 3999}`, { headers: { 'x-forwarded-for': '100.101.102.103', 'tailscale-user-login': 'x@y' } });
 ws.on('message', (d) => {
   const m = JSON.parse(d.toString());
   if (m.t !== 'hello') return;

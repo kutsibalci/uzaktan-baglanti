@@ -1,7 +1,7 @@
 // Tüm testleri çalıştırır:  node test/calistir.js            (hepsi)
 //                           node test/calistir.js ozellik-pano  (adı geçenler)
 // Her test paketi için temiz bir veri klasörüyle 3999 portunda ayrı bir sunucu başlatılır.
-// Yeni özellik testleri "test/ozellik-<ad>.js" adıyla eklenir; sunucu ws://localhost:3999'da hazırdır,
+// Yeni özellik testleri "test/ozellik-<ad>.js" adıyla eklenir; sunucu ws://localhost:<TEST_PORT>'da hazırdır (process.env.TEST_PORT, varsayılan 3999),
 // veri klasörü boştur (ilk bağlanan localhost istemcisi "setup" ile yönetici oluşturabilir).
 const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
@@ -9,7 +9,7 @@ const os = require('os');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
-const PORT = '3999';
+const PORT = process.env.TEST_PORT || '3999'; // paralel çalışan testler farklı port kullanmalı
 
 function staticChecks() {
   let ok = true;
@@ -43,7 +43,7 @@ function killTree(pid) {
 function startServer(dataDir) {
   return new Promise((resolve, reject) => {
     const p = spawn(process.execPath, ['server.js'], {
-      cwd: ROOT, env: { ...process.env, PORT, REMOTE_DATA_DIR: dataDir }, stdio: ['ignore', 'pipe', 'pipe'],
+      cwd: ROOT, env: { ...process.env, PORT, TEST_PORT: PORT, REMOTE_DATA_DIR: dataDir }, stdio: ['ignore', 'pipe', 'pipe'],
     });
     let out = '';
     const timer = setTimeout(() => reject(new Error(`sunucu başlamadı:\n${out}`)), 30000);
@@ -63,7 +63,7 @@ async function runSuite(file) {
   try {
     server = await startServer(dataDir);
     server.p.removeAllListeners('exit');
-    const r = spawnSync(process.execPath, [path.join(__dirname, file)], { cwd: ROOT, encoding: 'utf8', timeout: 180000 });
+    const r = spawnSync(process.execPath, [path.join(__dirname, file)], { cwd: ROOT, encoding: 'utf8', timeout: 180000, env: { ...process.env, TEST_PORT: PORT } });
     process.stdout.write(r.stdout || '');
     if (r.stderr) process.stdout.write(r.stderr);
     const ok = r.status === 0;
