@@ -23,6 +23,21 @@
   let lastAttempt = null;
   let frameCount = 0;
   let codecLabel = '';
+  let httpToken = null;       // özelliklerin HTTP istekleri için (X-Oturum başlığı)
+
+  // Özellik betikleri (public/features/*.js) için olay sistemi.
+  // Sunucudan gelen tanınmayan JSON mesajları türüne göre buraya iletilir;
+  // ayrıca yerel olaylar: 'auth', 'viewer:start', 'viewer:stop', 'admin', 'disconnect'.
+  const listeners = new Map();
+  function on(type, fn) {
+    if (!listeners.has(type)) listeners.set(type, []);
+    listeners.get(type).push(fn);
+  }
+  function emit(type, data) {
+    for (const fn of listeners.get(type) || []) {
+      try { fn(data); } catch (e) { console.error(`Özellik hatası (${type}):`, e); }
+    }
+  }
 
   // ---------- H.264 desteği (WebCodecs: yalnızca HTTPS veya localhost) ----------
 
@@ -81,6 +96,7 @@
     ws.onclose = (e) => {
       setStatus(false);
       releaseAll();
+      emit('disconnect', { code: e.code });
       if (e.code === 4000) { me = null; resumeToken = null; stream = null; showLogin(); return; }
       if (e.code === 4002) { resumeToken = null; stream = null; }
       if (visible('vViewer')) overlay('Bağlantı koptu, yeniden bağlanılıyor…');
@@ -112,6 +128,8 @@
         closeDecoder();
         codecLabel = 'JPEG';
         return;
+      default:
+        emit(m.t, m); // özellik modüllerinin mesajları
     }
   }
 
@@ -134,9 +152,11 @@
     me = { username: m.username, role: m.role, guest: m.guest };
     if (m.token) storage.set('deviceToken', m.token);
     resumeToken = m.resume;
+    httpToken = m.http || null;
     screens = m.screens || [];
     vddAvailable = m.vdd;
     setStatus(true);
+    emit('auth', { ...me, resumed: !!m.resumed });
     if (m.resumed && stream) {
       overlay('Yeniden bağlanıldı…');
       send({ t: 'start', ...startParams(stream.mode), screen: stream.screen, codecs: codecList() });
@@ -211,6 +231,7 @@
   // ---------- Ana menü ----------
 
   function goHome(error = '') {
+    if (stream) emit('viewer:stop');
     stream = null;
     closeDecoder();
     overlay('');
@@ -294,6 +315,7 @@
     $('toolbar').hidden = extend;
     $('showBtn').hidden = !extend;
     overlay('');
+    emit('viewer:start', { ...stream });
   }
 
   function applyRole() {
@@ -311,8 +333,9 @@
 
   // İkili mesajın ilk baytı: 1 = JPEG kare, 2 = H.264 kare ([2][anahtar kare mi][veri]).
   function onFrame(ab) {
-    if (!stream) return;
     const u8 = new Uint8Array(ab);
+    if (u8[0] > 2) { emit(`binary:${u8[0]}`, u8); return; } // özellik verisi görüntüden bağımsız
+    if (!stream) return;
     if (u8[0] === 1) {
       // JPEG: çizilince sunucuya bildir; sunucu ancak o zaman yeni kare yollar.
       createImageBitmap(new Blob([u8.subarray(1)], { type: 'image/jpeg' }))
@@ -654,6 +677,7 @@
   }
 
   function renderAdmin(m) {
+    emit('admin', m); // özellikler kendi bölümlerini m.features.<ad> ile günceller
     const msg = $('adminMsg');
     msg.textContent = m.error || m.ok || '';
     msg.className = `msg ${m.error ? 'err' : 'ok'}`;
@@ -735,5 +759,66 @@
     }
   });
 
-  connect();
+  // ---------- Özellik betikleri için arayüz ----------
+  // public/features/*.js dosyaları window.RC üzerinden çekirdeğe bağlanır.
+
+  function insertBefore(anchorId, el) {
+    const anchor = $(anchorId);
+    anchor.parentNode.insertBefore(el, anchor);
+    return el;
+  }
+
+  window.RC = {
+    send,
+    on,
+    state: () => ({ me: me && { ...me }, stream: stream && { ...stream }, screens: [...screens], connected: ws?.readyState === 1 }),
+    canInput,
+    toNorm,
+    moveNow,
+    queueMove,
+    click,
+    overlay,
+    esc,
+    fmtTime,
+    // Özellik HTTP adreslerine oturumla istek atar (ör. dosya yükleme).
+    fetch(url, opts = {}) {
+      return fetch(url, { ...opts, headers: { ...(opts.headers || {}), 'X-Oturum': httpToken || '' } });
+    },
+    // İndirme bağlantıları gibi başlık eklenemeyen yerler için.
+    authUrl(url) {
+      const u = new URL(url, location.href);
+      u.searchParams.set('oturum', httpToken || '');
+      return u.pathname + u.search;
+    },
+    ui: {
+      toolbar: (el) => insertBefore('fps', el),          // görüntüleyici araç çubuğuna öğe ekle
+      home: (el) => insertBefore('adminBtn', el),        // ana menü kartına öğe ekle
+      adminSection(title, el) {                          // yönetim paneline bölüm ekle
+        const h = document.createElement('h2');
+        h.textContent = title;
+        const box = document.createElement('div');
+        box.className = 'box';
+        box.appendChild(el);
+        const admin = document.querySelector('#vAdmin .admin');
+        admin.appendChild(h);
+        admin.appendChild(box);
+        return box;
+      },
+      stage: () => stage,
+      canvas: () => canvas,
+    },
+  };
+
+  // Özellik betiklerini yükle, sonra bağlan.
+  fetch('/api/features')
+    .then((r) => (r.ok ? r.json() : []))
+    .catch(() => [])
+    .then((list) => Promise.all(list.map((src) => new Promise((resolve) => {
+      const s = document.createElement('script');
+      s.src = src;
+      s.onload = resolve;
+      s.onerror = () => { console.error('Özellik yüklenemedi:', src); resolve(); };
+      document.body.appendChild(s);
+    }))))
+    .finally(connect);
 })();

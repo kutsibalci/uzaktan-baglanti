@@ -5,10 +5,11 @@ const os = require('os');
 const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 const store = require('./lib/store');
-const { Helper, askHost } = require('./lib/helper');
+const { Helper, askHost, buildExe } = require('./lib/helper');
 const { VirtualDisplays } = require('./lib/vdd');
 const { clientInfo, isPrivate, tailscaleInfo } = require('./lib/network');
 const { VideoManager, detectEncoders } = require('./lib/video');
+const ext = require('./lib/extensions');
 
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -55,15 +56,27 @@ function recordFailure(ip) {
 
 // ---------- HTTP (statik dosyalar) ----------
 
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
+const MIME = {
+  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
+  '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json; charset=utf-8',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
+};
 
 // İnternetten doğrudan gelen bağlantıları reddet (modemde yanlışlıkla port açılsa bile).
 // Yalnızca ev ağı, Tailscale ve bu bilgisayar kabul edilir.
 const allowed = (req) => isPrivate(req.socket.remoteAddress);
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
   if (!allowed(req)) { res.writeHead(403).end(); return; }
-  const urlPath = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+  const url = new URL(req.url, 'http://x');
+  if (url.pathname === '/api/features') {
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache' });
+    res.end(JSON.stringify(ext.clientFeatures()));
+    return;
+  }
+  if (await ext.handleHttp(req, res, url, clients)) return;
+  let urlPath;
+  try { urlPath = decodeURIComponent(url.pathname); } catch { res.writeHead(400).end(); return; }
   const file = path.normalize(path.join(PUBLIC_DIR, urlPath === '/' ? 'index.html' : urlPath));
   if (!file.startsWith(PUBLIC_DIR + path.sep)) { res.writeHead(403).end(); return; }
   fs.readFile(file, (err, data) => {
@@ -118,6 +131,7 @@ wss.on('connection', (ws, req) => {
     clearTimeout(authTimeout);
     if (!clients.delete(ws)) return;
     stopStream(ws);
+    ext.emit('close', ws);
     if (!ws.loggedOut && ws.resumeToken) {
       const { username, role, guest, deviceId, deviceName } = ws.session;
       resumeTokens.set(ws.resumeToken, { session: { username, role, guest, deviceId, deviceName }, expires: Date.now() + RESUME_MS });
@@ -240,11 +254,13 @@ async function doResume(ws, m) {
 async function finishAuth(ws, s, resumed = false) {
   ws.session = { ...s, view: { screen: null, ...QUALITY } };
   ws.resumeToken = crypto.randomBytes(24).toString('base64url');
+  ws.httpToken = crypto.randomBytes(24).toString('base64url'); // özelliklerin HTTP adresleri için (dosya aktarımı vb.)
   clients.add(ws);
   if (resumed) {
     console.log(`Yeniden bağlandı: ${s.username} (${ws.ip})`);
     const info = await helper.info();
-    sendJson(ws, { t: 'auth', ok: true, resumed: true, username: s.username, role: s.role, guest: !!s.guest, resume: ws.resumeToken, screens: info.screens, vdd: await vdd.available() });
+    sendJson(ws, { t: 'auth', ok: true, resumed: true, username: s.username, role: s.role, guest: !!s.guest, resume: ws.resumeToken, http: ws.httpToken, screens: info.screens, vdd: await vdd.available() });
+    ext.emit('auth', ws);
     return;
   }
   store.log('login', { user: s.username, ip: ws.ip, via: ws.via, device: s.deviceName || '', remembered: !!s.deviceId });
@@ -252,8 +268,9 @@ async function finishAuth(ws, s, resumed = false) {
   const info = await helper.info();
   sendJson(ws, {
     t: 'auth', ok: true, username: s.username, role: s.role, guest: !!s.guest, token: s.token, resume: ws.resumeToken,
-    screens: info.screens, vdd: await vdd.available(),
+    http: ws.httpToken, screens: info.screens, vdd: await vdd.available(),
   });
+  ext.emit('auth', ws);
 }
 
 // ---------- Oturum içi mesajlar ----------
@@ -289,6 +306,9 @@ async function handleSession(ws, m) {
       return;
     case 'admin': return handleAdmin(ws, m);
   }
+
+  // Özellik modüllerinin mesajları (features/*.js). Yetki kontrolü kayıt sırasında belirtilir.
+  if (await ext.handleMessage(ws, m)) return;
 
   if (!canControl || !ws.streaming) return;
   const screen = s.view.screen;
@@ -389,6 +409,7 @@ async function adminData() {
     online: [...clients].map((c) => ({ username: c.session.username, role: c.session.role, ip: c.ip, via: c.via, deviceId: c.session.deviceId || null })),
     tailscale: await tailscaleInfo(),
     port: PORT,
+    features: await ext.adminData(), // özellik modüllerinin yönetim verisi, özellik adına göre
   };
 }
 
@@ -482,6 +503,12 @@ function lanAddresses() {
 }
 
 captureLoop();
+const features = ext.init({
+  helper, video, store, clients, sendJson, buildExe, PORT,
+  dataDir: store.DATA_DIR,
+  broadcast(obj, filter = () => true) { for (const c of clients) if (filter(c)) sendJson(c, obj); },
+});
+if (features.length) console.log(`  Özellikler    : ${features.join(', ')}`);
 const encs = detectEncoders();
 console.log(encs.length
   ? `  H.264 kodlayıcı: ${encs.map((e) => e.label).join(', ')} (ilk çalışan kullanılır)`
