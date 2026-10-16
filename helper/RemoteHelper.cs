@@ -9,6 +9,9 @@
 //   wheel <dy> <dx>
 //   key <vk> <1|0>
 //   text <base64-utf8>
+//   pen <ekran> <nx> <ny> <basınç 0-1024> <hover|down|move|up|out> <eğimX -90..90> <eğimY -90..90> <silgi 0|1>
+//                                       -> sentetik tablet kalemi (Windows 10 1809+); geçersiz satır reddedilir
+//   pentest                             -> tip 2: JSON {"ok":bool,...} kalem cihazı oluşturulabiliyor mu (girdi göndermez)
 // Ayrıca: RemoteHelper.exe ask <base64 başlık> <base64 mesaj>  -> Evet=0, Hayır=1 çıkış kodu
 using System;
 using System.Collections.Generic;
@@ -193,6 +196,8 @@ class RemoteHelper
                 }
             case "key": Key((ushort)I(a[1]), a[2] == "1"); break;
             case "text": Text(B64(a[1])); break;
+            case "pen": Pen(a); break;
+            case "pentest": PenTest(); break;
         }
     }
 
@@ -350,5 +355,170 @@ class RemoteHelper
             }
         }
         if (inp.Length > 0) SendInput((uint)inp.Length, inp, Marshal.SizeOf(typeof(INPUT)));
+    }
+
+    // ---------- Tablet kalemi (sentetik işaretçi, Windows 10 1809+) ----------
+    // Yapılar winuser.h ile birebir. x64'te: POINTER_INFO 96, POINTER_PEN_INFO 120, POINTER_TYPE_INFO 152 bayt
+    // (POINTER_TYPE_INFO'daki birlik 8 bayta hizalı; en büyük üyesi POINTER_TOUCH_INFO 144 bayt).
+
+    [DllImport("user32.dll", SetLastError = true)] static extern IntPtr CreateSyntheticPointerDevice(int pointerType, uint maxCount, int mode);
+    [DllImport("user32.dll", SetLastError = true)] static extern bool InjectSyntheticPointerInput(IntPtr device, [In] POINTER_TYPE_INFO[] info, uint count);
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct POINTER_INFO
+    {
+        public int pointerType;
+        public uint pointerId, frameId, pointerFlags;
+        public IntPtr sourceDevice, hwndTarget;
+        public POINT ptPixelLocation, ptHimetricLocation, ptPixelLocationRaw, ptHimetricLocationRaw;
+        public uint dwTime, historyCount;
+        public int InputData;
+        public uint dwKeyStates;
+        public ulong PerformanceCount;
+        public int ButtonChangeType;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct POINTER_PEN_INFO
+    {
+        public POINTER_INFO pointerInfo;
+        public uint penFlags, penMask, pressure, rotation;
+        public int tiltX, tiltY;
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    struct POINTER_TYPE_INFO
+    {
+        [FieldOffset(0)] public int type;
+        [FieldOffset(8)] public POINTER_PEN_INFO penInfo;
+        [FieldOffset(148)] public int touchInfoTail; // birliğin dokunmatik üyesi daha büyük: yapı boyutu winuser.h ile aynı olsun
+    }
+
+    const int PT_PEN = 3, POINTER_FEEDBACK_DEFAULT = 1;
+    const uint PF_INRANGE = 0x2, PF_INCONTACT = 0x4, PF_PRIMARY = 0x2000, PF_DOWN = 0x10000, PF_UPDATE = 0x20000, PF_UP = 0x40000;
+    const uint PEN_FLAG_INVERTED = 0x2, PEN_FLAG_ERASER = 0x4;
+    const uint PEN_MASK_PRESSURE = 0x1, PEN_MASK_TILT_X = 0x4, PEN_MASK_TILT_Y = 0x8;
+
+    static IntPtr penDevice = IntPtr.Zero;
+    static string penDeviceError;
+    static DateTime penDeviceTriedAt = DateTime.MinValue;
+    static DateTime penErrorAt = DateTime.MinValue;
+    static bool penInRange, penContact;
+
+    // Cihaz bir kez oluşturulur ve yeniden kullanılır; başarısızsa en fazla 5 sn'de bir yeniden denenir.
+    static bool PenDevice()
+    {
+        if (penDevice != IntPtr.Zero) return true;
+        if (penDeviceError != null && (DateTime.UtcNow - penDeviceTriedAt).TotalSeconds < 5) return false;
+        penDeviceTriedAt = DateTime.UtcNow;
+        try
+        {
+            penDevice = CreateSyntheticPointerDevice(PT_PEN, 1, POINTER_FEEDBACK_DEFAULT);
+            penDeviceError = penDevice == IntPtr.Zero ? "CreateSyntheticPointerDevice başarısız (hata " + Marshal.GetLastWin32Error() + ")" : null;
+        }
+        catch (EntryPointNotFoundException)
+        {
+            penDeviceError = "Bu Windows sürümü sentetik kalemi desteklemiyor (Windows 10 1809 veya üstü gerekir)";
+        }
+        return penDevice != IntPtr.Zero;
+    }
+
+    // Saniyede yüzlerce kalem olayı gelebilir; günlüğü boğmamak için en fazla 2 sn'de bir yaz.
+    static void PenError(string msg)
+    {
+        if ((DateTime.UtcNow - penErrorAt).TotalSeconds < 2) return;
+        penErrorAt = DateTime.UtcNow;
+        Console.Error.WriteLine("hata: kalem: " + msg);
+    }
+
+    static bool ParseUnit(string s, out double v)
+    {
+        // Yalnızca "0.123" biçimi; NaN/Infinity aralık kontrolünü geçemez.
+        return double.TryParse(s, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out v) && v >= 0 && v <= 1;
+    }
+
+    static bool ParseInt(string s, int min, int max, out int v)
+    {
+        return int.TryParse(s, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out v) && v >= min && v <= max;
+    }
+
+    static void Pen(string[] a)
+    {
+        double nx, ny;
+        int pressure, tiltX, tiltY;
+        if (a.Length != 9) { PenError("argüman sayısı yanlış"); return; }
+        if (!ParseUnit(a[2], out nx) || !ParseUnit(a[3], out ny)) { PenError("konum geçersiz"); return; }
+        if (!ParseInt(a[4], 0, 1024, out pressure)) { PenError("basınç geçersiz"); return; }
+        string state = a[5];
+        if (state != "hover" && state != "down" && state != "move" && state != "up" && state != "out") { PenError("durum geçersiz"); return; }
+        if (!ParseInt(a[6], -90, 90, out tiltX) || !ParseInt(a[7], -90, 90, out tiltY)) { PenError("eğim geçersiz"); return; }
+        if (a[8] != "0" && a[8] != "1") { PenError("silgi geçersiz"); return; }
+        bool eraser = a[8] == "1";
+
+        var m = Find(a[1]);
+        if (m == null) return;
+        if (!PenDevice()) { PenError(penDeviceError); return; }
+        var b = m.Bounds;
+        int x = b.X + (int)Math.Round(nx * (b.Width - 1)), y = b.Y + (int)Math.Round(ny * (b.Height - 1));
+
+        // Geçerli olay sırası korunur: menzil (hover) -> temas (down/move) -> kalkış (up) -> menzil dışı (out).
+        if (state == "down" && penContact) state = "move";
+        if (state == "move" && !penContact) state = "hover";
+        switch (state)
+        {
+            case "down":
+                if (!penInRange && !PenSend(PF_INRANGE | PF_UPDATE, x, y, 0, tiltX, tiltY, eraser)) return;
+                penInRange = true;
+                penContact = PenSend(PF_INRANGE | PF_INCONTACT | PF_DOWN, x, y, pressure, tiltX, tiltY, eraser);
+                break;
+            case "move":
+                PenSend(PF_INRANGE | PF_INCONTACT | PF_UPDATE, x, y, pressure, tiltX, tiltY, eraser);
+                break;
+            case "hover":
+                if (penContact) { PenSend(PF_INRANGE | PF_UP, x, y, 0, tiltX, tiltY, eraser); penContact = false; }
+                penInRange = PenSend(PF_INRANGE | PF_UPDATE, x, y, 0, tiltX, tiltY, eraser);
+                break;
+            case "up":
+                if (!penContact) return;
+                PenSend(PF_INRANGE | PF_UP, x, y, 0, tiltX, tiltY, eraser);
+                penContact = false;
+                break;
+            case "out":
+                if (penContact) { PenSend(PF_INRANGE | PF_UP, x, y, 0, tiltX, tiltY, eraser); penContact = false; }
+                if (!penInRange) return;
+                PenSend(PF_UPDATE, x, y, 0, tiltX, tiltY, eraser);
+                penInRange = false;
+                break;
+        }
+    }
+
+    static bool PenSend(uint flags, int x, int y, int pressure, int tiltX, int tiltY, bool eraser)
+    {
+        bool contact = (flags & PF_INCONTACT) != 0;
+        var info = new POINTER_TYPE_INFO[1];
+        info[0].type = PT_PEN;
+        info[0].penInfo.pointerInfo.pointerType = PT_PEN;
+        info[0].penInfo.pointerInfo.pointerFlags = flags | PF_PRIMARY;
+        info[0].penInfo.pointerInfo.ptPixelLocation.x = x;
+        info[0].penInfo.pointerInfo.ptPixelLocation.y = y;
+        // Silgi ucu: menzildeyken INVERTED, temas halindeyken ayrıca ERASER.
+        info[0].penInfo.penFlags = eraser ? PEN_FLAG_INVERTED | (contact ? PEN_FLAG_ERASER : 0) : 0;
+        info[0].penInfo.penMask = PEN_MASK_PRESSURE | PEN_MASK_TILT_X | PEN_MASK_TILT_Y;
+        info[0].penInfo.pressure = contact ? (uint)pressure : 0;
+        info[0].penInfo.tiltX = tiltX;
+        info[0].penInfo.tiltY = tiltY;
+        if (InjectSyntheticPointerInput(penDevice, info, 1)) return true;
+        PenError("InjectSyntheticPointerInput başarısız (hata " + Marshal.GetLastWin32Error() + ")");
+        return false;
+    }
+
+    // Yalnızca cihazın oluşturulabildiğini sınar; hiçbir girdi göndermez.
+    static void PenTest()
+    {
+        bool ok = PenDevice();
+        Write(2, Encoding.UTF8.GetBytes(string.Format("{{\"ok\":{0},\"hata\":{1},\"boyut\":[{2},{3},{4}],\"x64\":{5}}}",
+            ok ? "true" : "false", Json(penDeviceError ?? ""),
+            Marshal.SizeOf(typeof(POINTER_INFO)), Marshal.SizeOf(typeof(POINTER_PEN_INFO)), Marshal.SizeOf(typeof(POINTER_TYPE_INFO)),
+            IntPtr.Size == 8 ? "true" : "false")));
     }
 }
