@@ -60,6 +60,10 @@ foreach ($f in 'server.js', 'package.json', 'package-lock.json', 'README.md', 'b
 }
 Copy-Item "$root\lib", "$root\public" $stage -Recurse
 Copy-Item "$root\helper\RemoteHelper.cs" "$stage\helper\"
+# Tepsi simgesi (tepsi-baslat.bat) ve özellik modülleri
+Copy-Item "$root\tepsi-baslat.bat" $stage
+Copy-Item "$root\helper\Tepsi.cs" "$stage\helper\"
+if (Test-Path "$root\features") { Copy-Item "$root\features" $stage -Recurse }
 
 # ---------- 3. Bağımlılıklar (ffmpeg dahil) ----------
 Write-Host "[3/5] Bağımlılıklar kuruluyor..."
@@ -79,6 +83,8 @@ Write-Host "[4/5] Yardımcı program derleniyor..."
 $csc = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 & $csc /nologo /optimize /target:exe "/out:$stage\helper\RemoteHelper.exe" /r:System.Drawing.dll /r:System.Windows.Forms.dll "$stage\helper\RemoteHelper.cs"
 if ($LASTEXITCODE -ne 0) { throw "Yardımcı program derlenemedi." }
+& $csc /nologo /optimize /target:winexe "/out:$stage\helper\Tepsi.exe" /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Web.Extensions.dll "$stage\helper\Tepsi.cs"
+if ($LASTEXITCODE -ne 0) { throw "Tepsi programı derlenemedi." }
 
 $commit = (git -C $root rev-parse --short HEAD 2>$null)
 @"

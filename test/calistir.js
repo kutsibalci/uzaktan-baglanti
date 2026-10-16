@@ -3,6 +3,9 @@
 // Her test paketi için temiz bir veri klasörüyle 3999 portunda ayrı bir sunucu başlatılır.
 // Yeni özellik testleri "test/ozellik-<ad>.js" adıyla eklenir; sunucu ws://localhost:<TEST_PORT>'da hazırdır (process.env.TEST_PORT, varsayılan 3999),
 // veri klasörü boştur (ilk bağlanan localhost istemcisi "setup" ile yönetici oluşturabilir).
+// Test dosyasının ilk satırlarında:  // @ortam AD=değer  -> sunucuya ve teste ortam değişkeni (ör. TRAY_TOKEN)
+//                                    // @sunucu yok      -> ortak sunucu başlatılmaz (test kendi sürecini yönetir)
+// Güç komutları testlerde asla çalışmasın diye sunucular her zaman REMOTE_GUC_KURU=1 ile başlatılır.
 const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
@@ -40,10 +43,23 @@ function killTree(pid) {
   spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore' });
 }
 
-function startServer(dataDir) {
+// Test dosyasının başındaki "// @ortam" ve "// @sunucu yok" satırları.
+function suiteOptions(file) {
+  const head = fs.readFileSync(path.join(__dirname, file), 'utf8').split(/\r?\n/).slice(0, 30);
+  const env = {};
+  let server = true;
+  for (const line of head) {
+    const m = line.match(/^\/\/ @ortam ([A-Z_][A-Z0-9_]*)=(\S*)\s*$/);
+    if (m) env[m[1]] = m[2];
+    if (/^\/\/ @sunucu yok\s*$/.test(line)) server = false;
+  }
+  return { env, server };
+}
+
+function startServer(dataDir, extraEnv = {}) {
   return new Promise((resolve, reject) => {
     const p = spawn(process.execPath, ['server.js'], {
-      cwd: ROOT, env: { ...process.env, PORT, TEST_PORT: PORT, REMOTE_DATA_DIR: dataDir }, stdio: ['ignore', 'pipe', 'pipe'],
+      cwd: ROOT, env: { ...process.env, ...extraEnv, PORT, TEST_PORT: PORT, REMOTE_DATA_DIR: dataDir, REMOTE_GUC_KURU: '1' }, stdio: ['ignore', 'pipe', 'pipe'],
     });
     let out = '';
     const timer = setTimeout(() => reject(new Error(`sunucu başlamadı:\n${out}`)), 30000);
@@ -59,15 +75,20 @@ function startServer(dataDir) {
 
 async function runSuite(file) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rc-test-'));
+  const opts = suiteOptions(file);
   let server;
   try {
-    server = await startServer(dataDir);
-    server.p.removeAllListeners('exit');
-    const r = spawnSync(process.execPath, [path.join(__dirname, file)], { cwd: ROOT, encoding: 'utf8', timeout: 180000, env: { ...process.env, TEST_PORT: PORT } });
+    if (opts.server) {
+      server = await startServer(dataDir, opts.env);
+      server.p.removeAllListeners('exit');
+    }
+    const r = spawnSync(process.execPath, [path.join(__dirname, file)], {
+      cwd: ROOT, encoding: 'utf8', timeout: 180000, env: { ...process.env, ...opts.env, TEST_PORT: PORT, REMOTE_GUC_KURU: '1' },
+    });
     process.stdout.write(r.stdout || '');
     if (r.stderr) process.stdout.write(r.stderr);
     const ok = r.status === 0;
-    if (!ok) console.log(`--- sunucu çıktısı (${file}) ---\n${server.log().slice(-3000)}`);
+    if (!ok && server) console.log(`--- sunucu çıktısı (${file}) ---\n${server.log().slice(-3000)}`);
     return ok;
   } catch (e) {
     console.log(`FAIL ${file}: ${e.message}`);

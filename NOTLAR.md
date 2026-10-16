@@ -31,6 +31,10 @@
       VBR: durağan ekranda ~1 Mbps (JPEG ~25 Mbps). HTTPS/localhost dışında otomatik JPEG.
       **(Gerçek tarayıcıda çözme henüz denenmedi; sunucu tarafı ffmpeg ile doğrulandı)**
 
+- [x] Tepsi simgesi (`tepsi-baslat.bat`): gizli sunucu, bağlantı bildirimi, bağlantı kesme, Windows açılınca başlatma,
+      izlenirken uyku engeli. Güç menüsü (kilitle/uyku/yeniden başlat/kapat, yalnızca yönetici).
+      **(Balon bildirimi, menü ve gerçek güç komutları elle denenmedi; testler kuru modda/günlükten doğrular)**
+
 ## Sıradaki
 1. İkinci ekranın gerçek tablet/telefonla testi
 2. ddagrab (Desktop Duplication) ile daha hızlı yakalama — DXGI çıkış sırası ↔ \\.\DISPLAYn eşlemesi lazım

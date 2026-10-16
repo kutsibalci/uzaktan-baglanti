@@ -31,12 +31,22 @@ Gereksinim: Windows 10/11, [Node.js](https://nodejs.org) 20 veya üstü.
 - `tailscale-kur.bat` — her yerden erişim + HTTPS (H.264 için gerekli)
 - `surucu-kur.bat` — ikinci ekran özelliği için sanal monitör sürücüsü
 
+## Tepsi simgesi (konsol penceresi olmadan)
+`tepsi-baslat.bat` sunucuyu arka planda başlatır ve görev çubuğunun sağına bir simge koyar (`baslat.bat` konsol modu olarak çalışmaya devam eder; ikisini aynı anda açmayın, ikisi de aynı portu kullanır).
+- Simgeye çift tıkla: arayüzü aç. Sağ tık menüsü: misafir kodunu kopyala, bağlı kişiler / bağlantıyı kes, **Windows açılınca başlat**, günlüğü aç, yeniden başlat, çıkış.
+- Biri bağlanınca/ayrılınca bildirim gösterir; biri ekranı izlerken bilgisayarın uykuya geçmesini engeller (ekranın kapanmasına izin verir).
+- Sunucu çıktısı `data\sunucu.log` dosyasındadır. Sunucu çökerse birkaç kez kendiliğinden yeniden başlatılır.
+- Komut satırı: `helper\Tepsi.exe --cikis` çalışan tepsiyi düzgün kapatır.
+
+Yönetici hesabıyla ana menüde **⏻ Güç** düğmesi bilgisayarı kilitler, uyutur, yeniden başlatır ya da kapatır (yeniden başlat/kapat 30 sn içinde iptal edilebilir). Kilitlenince ekran uzaktan görünmez.
+
 ## Dosyalar
 | Yol | Görevi |
 |---|---|
 | `server.js` | Sunucu: giriş, oturumlar, görüntü akışı, yönetim |
 | `lib/` | Hesap deposu, ağ/Tailscale, H.264 video, sanal ekran, yardımcı süreç |
 | `helper/RemoteHelper.cs` | Ekran yakalama + fare/klavye (Windows'un kendi C# derleyicisiyle derlenir) |
+| `helper/Tepsi.cs` | Görev çubuğu simgesi; sunucuyu gizli başlatır (`tepsi-baslat.bat`) |
 | `public/` | Tarayıcı arayüzü |
 | `data/` | Hesaplar ve hatırlanan cihazlar (repoya girmez) |
 | `tools/paketle.ps1` | Taşınabilir zip oluşturur |
