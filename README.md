@@ -9,6 +9,12 @@ Windows bilgisayarı telefondan, tabletten ya da başka bir bilgisayardan **tara
 - Yerel hesaplar: Yönetici / Kontrol / Salt izleme
 - Cihaz hatırlama, yeni cihaz için bilgisayarda onay penceresi, tek seferlik misafir kodu
 - Her yerden erişim: Tailscale (HTTPS)
+- Telefon: touchpad modu, sıkıştırarak yakınlaştırma, mobil tuş çubuğu (Ctrl/Alt/Win, F1–F12), ana ekrana eklenebilir (PWA), USB ile bağlantı (`usb-baglan.bat`)
+- Pano eşitleme (metin) ve dosya aktarımı (yükleme / klasör gezinme / indirme)
+- Bilgisayar sesini uzaktan dinleme (Opus; HTTPS ve güncel tarayıcı gerekir)
+- Gizlilik perdesi: kontrol sırasında bilgisayar ekranı karartılır, uzaktaki görüntü etkilenmez
+- Tablet kalemi: basınç, eğim, silgi
+- Tepsi simgesi, Windows açılınca başlatma, bağlantı bildirimleri; yöneticiye güç menüsü (kilitle/uyku/yeniden başlat/kapat)
 - Dış sunucu, lisans, abonelik yok — internet olmadan da çalışır
 
 ## Taşınabilir paket (önerilen)
@@ -48,7 +54,9 @@ Yönetici hesabıyla ana menüde **⏻ Güç** düğmesi bilgisayarı kilitler, 
 | `lib/` | Hesap deposu, ağ/Tailscale, H.264 video, sanal ekran, yardımcı süreç |
 | `helper/RemoteHelper.cs` | Ekran yakalama + fare/klavye (Windows'un kendi C# derleyicisiyle derlenir) |
 | `helper/Tepsi.cs` | Görev çubuğu simgesi; sunucuyu gizli başlatır (`tepsi-baslat.bat`) |
-| `public/` | Tarayıcı arayüzü |
+| `helper/Pano.cs`, `Perde.cs`, `Ses.cs` | Pano izleme, gizlilik perdesi, ses yakalama (sunucu açılışta derler) |
+| `features/` | Özellik modülleri (sunucu tarafı); bkz. [features/README.md](features/README.md) |
+| `public/` | Tarayıcı arayüzü (`public/features/` özelliklerin tarayıcı tarafı) |
 | `data/` | Hesaplar ve hatırlanan cihazlar (repoya girmez) |
 | `tools/paketle.ps1` | Taşınabilir zip oluşturur |
 | `.github/workflows/paket.yml` | Etiket gönderilince zip'i Releases'e koyar |

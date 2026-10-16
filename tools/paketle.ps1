@@ -55,15 +55,16 @@ Write-Host "      Node.js $nodeVer (SHA256 doğrulandı)"
 
 # ---------- 2. Uygulama dosyaları ----------
 Write-Host "[2/5] Uygulama dosyaları kopyalanıyor..."
-foreach ($f in 'server.js', 'package.json', 'package-lock.json', 'README.md', 'baslat.bat', 'surucu-kur.bat', 'tailscale-kur.bat') {
+foreach ($f in 'server.js', 'package.json', 'package-lock.json', 'README.md') {
   Copy-Item "$root\$f" $stage
 }
+# Kök klasördeki tüm .bat betikleri (baslat, tepsi-baslat, usb-baglan, surucu-kur, tailscale-kur...)
+Get-ChildItem "$root\*.bat" | Copy-Item -Destination $stage
 Copy-Item "$root\lib", "$root\public" $stage -Recurse
-Copy-Item "$root\helper\RemoteHelper.cs" "$stage\helper\"
-# Tepsi simgesi (tepsi-baslat.bat) ve özellik modülleri
-Copy-Item "$root\tepsi-baslat.bat" $stage
-Copy-Item "$root\helper\Tepsi.cs" "$stage\helper\"
+# Özellik modülleri (features\) olmadan pakette hiçbir özellik yüklenmez.
 if (Test-Path "$root\features") { Copy-Item "$root\features" $stage -Recurse }
+# Yerel programların kaynakları (RemoteHelper, Pano, Tepsi, Perde, Ses...)
+Copy-Item "$root\helper\*.cs" "$stage\helper\"
 
 # ---------- 3. Bağımlılıklar (ffmpeg dahil) ----------
 Write-Host "[3/5] Bağımlılıklar kuruluyor..."
@@ -79,12 +80,27 @@ try {
 } finally { Pop-Location }
 
 # ---------- 4. Yardımcı program ----------
-Write-Host "[4/5] Yardımcı program derleniyor..."
+Write-Host "[4/5] Yardımcı programlar derleniyor..."
 $csc = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
-& $csc /nologo /optimize /target:exe "/out:$stage\helper\RemoteHelper.exe" /r:System.Drawing.dll /r:System.Windows.Forms.dll "$stage\helper\RemoteHelper.cs"
-if ($LASTEXITCODE -ne 0) { throw "Yardımcı program derlenemedi." }
-& $csc /nologo /optimize /target:winexe "/out:$stage\helper\Tepsi.exe" /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Web.Extensions.dll "$stage\helper\Tepsi.cs"
-if ($LASTEXITCODE -ne 0) { throw "Tepsi programı derlenemedi." }
+# Ayarlar sunucunun api.buildExe çağrılarıyla aynı olmalı (features\*.js, tepsi-baslat.bat).
+# Listede olmayan helper\*.cs dosyaları buildExe varsayılanıyla (exe + Drawing/Forms) derlenir.
+$formsRefs = @('System.Drawing.dll', 'System.Windows.Forms.dll')
+$programs = @{
+  'RemoteHelper' = @{ target = 'exe';    refs = $formsRefs }
+  'Pano'         = @{ target = 'exe';    refs = $formsRefs }
+  'Perde'        = @{ target = 'winexe'; refs = $formsRefs }
+  'Ses'          = @{ target = 'exe';    refs = @() }
+  'Tepsi'        = @{ target = 'winexe'; refs = $formsRefs + 'System.Web.Extensions.dll' }
+}
+foreach ($cs in Get-ChildItem "$stage\helper\*.cs") {
+  $prog = $cs.BaseName
+  $opt = $programs[$prog]
+  if (-not $opt) { $opt = @{ target = 'exe'; refs = $formsRefs } }
+  $cscArgs = @('/nologo', '/optimize', "/target:$($opt.target)", "/out:$stage\helper\$prog.exe") + ($opt.refs | ForEach-Object { "/r:$_" }) + @($cs.FullName)
+  & $csc @cscArgs
+  if ($LASTEXITCODE -ne 0) { throw "$prog.cs derlenemedi." }
+  Write-Host "      $prog.exe ($($opt.target))"
+}
 
 $commit = (git -C $root rev-parse --short HEAD 2>$null)
 @"

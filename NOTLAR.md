@@ -31,17 +31,42 @@
       VBR: durağan ekranda ~1 Mbps (JPEG ~25 Mbps). HTTPS/localhost dışında otomatik JPEG.
       **(Gerçek tarayıcıda çözme henüz denenmedi; sunucu tarafı ffmpeg ile doğrulandı)**
 - [x] Telefon: touchpad (dokunmatik fare) modu, sıkıştırarak yakınlaştırma (1x–4x), mobil tuş çubuğu (yapışkan Ctrl/Alt/Shift/Win, F1–F12),
-      PWA (ana ekrana ekle, ağ öncelikli service worker), `usb-baglan.bat` (adb reverse).
-      **(Başsız Edge'de sahte dokunuşlarla doğrulandı; gerçek telefonda ve gerçek USB/adb ile denenmedi)**
-
+      PWA (ana ekrana ekle, ağ öncelikli service worker), `usb-baglan.bat` (adb reverse), kalem olaylarını çekirdekte yok sayma.
+      **(henüz gerçek cihazda test edilmedi: gerçek telefon/tablette dokunma hissi ve eşikler (PINCH 24px, PAN 12px, TAP 250ms, çift dokunuş 300ms);
+      touchType 'stylus' filtresi; iOS Safari (Apple Pencil, ana ekrana ekleme, tuş çubuğunda klavyenin açık kalması);
+      Android ekran klavyesi (Gboard) + yapışkan değiştirici; `usb-baglan.bat` hiç çalıştırılmadı (adb/USB yok);
+      PWA'nın gerçek cihazda kurulumu ve Tailscale HTTPS'te service worker; dokunmatik ekranlı bilgisayarda mod düğmeleri.
+      Yalnızca başsız Edge'de CDP sahte dokunuşlarıyla doğrulandı)**
+      Not: `adb reverse` ile gelen bağlantı 127.0.0.1'den geldiği için "bu bilgisayar" sayılır (onay penceresi çıkmaz; şifre yine gerekir).
+- [x] Pano eşitleme (yalnızca metin, `helper/Pano.cs`, iki yönlü, büyük metin `/api/pano/yaz` ile) ve dosya aktarımı
+      (8 GB'a kadar akışlı yükleme, klasör gezinme/indirme; yol geçişi, junction, ADS, aygıt adları engellenir).
+      **(henüz gerçek cihazda test edilmedi: telefon/tablet tarayıcısında hiç denenmedi (HTTP'de textarea yedeği, iOS/Android
+      pano izinleri, mobil dosya seçici ve indirme, gerçek sürükle-bırak); arayüzdeki "Kopyala"/"Bu cihazın panosunu gönder"
+      düğmeleri; 8 GB'a yakın ve 5 dakikadan uzun gerçek yükleme; Tailscale/başka bilgisayar üzerinden aktarım; panoyu kilitleyen
+      programla yeniden deneme; panoda resim varken davranış; rolü düşürülen yöneticide çalışan Pano.exe; kök içindeki sabit bağlantı (hard link))**
+      Not: misafir rolü "control" ise misafir de bilgisayar panosunu ve profil klasörünü görebilir (yönetimden otomatik pano kapatılabilir).
 - [x] Tepsi simgesi (`tepsi-baslat.bat`): gizli sunucu, bağlantı bildirimi, bağlantı kesme, Windows açılınca başlatma,
       izlenirken uyku engeli. Güç menüsü (kilitle/uyku/yeniden başlat/kapat, yalnızca yönetici).
-      **(Balon bildirimi, menü ve gerçek güç komutları elle denenmedi; testler kuru modda/günlükten doğrular)**
+      **(henüz gerçek cihazda test edilmedi: balon bildirimleri ve sağ tık menüsü gözle görülmedi, menü öğelerine tıklanmadı;
+      ikinci örneğin "arayüzü aç" sinyali; gerçek güç komutları HİÇ çalıştırılmadı (yalnızca kuru mod; hazırda bekletme açıkken
+      uyku yerine hazırda bekletme, Modern Standby davranışı); ekran kapalıyken yakalama; uyku engelinin powercfg ile doğrulanması;
+      `public/features/guc.js` gerçek tarayıcıda/telefonda; Tailscale'li durum; 2 MB günlük kırpma; port doluyken çökme döngüsü;
+      üretilmiş taşınabilir pakette tepsi)**
+- [x] Gizlilik perdesi (`helper/Perde.cs`): uzaktan kontrol sırasında bilgisayar ekranını siyah örter, yakalamaya girmez
+      (WDA_EXCLUDEFROMCAPTURE; doğrulanamazsa perde hiç açılmaz), Ctrl+Alt+Shift+P ile yerel kapatma.
+      Tablet kalemi: basınç, eğim, silgi (`RemoteHelper` içinde sentetik kalem aygıtı).
+      **(henüz gerçek cihazda test edilmedi: gerçek tablet kalemiyle uçtan uca girdi (gerçek kalem girdisi hiç enjekte edilmedi);
+      tarayıcı tarafı kalem olayları gerçek kalemli cihazda; perde açıkken ikinci bir cihazdan uzaktaki görüntü (yakalama katmanında
+      JPEG ve H.264'te görünmediği doğrulandı))**
+- [x] Ses aktarımı (`helper/Ses.cs`): WASAPI loopback → Opus (ffmpeg) → tarayıcıda WebCodecs AudioDecoder, ~80 ms tampon.
+      **(henüz gerçek cihazda test edilmedi: tarayıcıda çalma hiç denenmedi (çözme, tampon, çıtırtı, düğme durumu, mobil);
+      yalnızca sessizlikle denendi, gerçek sesin yakalama → ffmpeg yolu geçmedi; SILENT/DISCONTINUITY bayrakları; varsayılan aygıt
+      değişimi/kulaklık takıp çıkarma; 16/24/32 bit tamsayı karışım biçimleri; uçtan uca gecikme; iOS Safari AudioDecoder desteği)**
 
 ## Sıradaki
-1. İkinci ekranın gerçek tablet/telefonla testi
+1. Yukarıdaki özelliklerin gerçek telefon/tablet/kalemle denenmesi (ikinci ekran dahil)
 2. ddagrab (Desktop Duplication) ile daha hızlı yakalama — DXGI çıkış sırası ↔ \\.\DISPLAYn eşlemesi lazım
 3. Gerekirse herkese açık link (Cloudflare Tunnel) — şimdilik gerek yok, sadece kendi cihazlar
-5. Pano (kopyala-yapıştır) eşitleme, dosya aktarımı, ses
-6. Windows servisi olarak çalışma (UAC ve kilit ekranı, açılışta otomatik başlama)
-7. Kalem basıncı (tablet), USB ile bağlantı (adb reverse)
+4. Windows servisi olarak çalışma (UAC ve kilit ekranı)
+5. Yönetim günlüğünde 'dosya' ve 'guc' olaylarının okunur gösterimi (LOG_NAMES), özellik başına "misafire kapalı" seçeneği
+6. `adb reverse` bağlantılarını "bu bilgisayar"dan ayırt etme

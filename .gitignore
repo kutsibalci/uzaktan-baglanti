@@ -4,7 +4,7 @@ node_modules/
 # Kullanıcı hesapları, cihaz anahtarları, günlük — ASLA repoya girmemeli
 data/
 
-# Derlenen yardımcı program (sunucu açılışta kendisi derler)
+# Derlenen yerel programlar: RemoteHelper, Pano, Perde, Ses, Tepsi (sunucu / tepsi-baslat.bat açılışta derler)
 helper/*.exe
 
 # Taşınabilir paket çıktısı (tools\paketle.ps1)
