@@ -53,7 +53,8 @@ setTimeout(() => {
   let jpeg = 0;
   const ws2 = login(['jpeg'], { frame: (d) => { if (d[0] === 1 && d[1] === 0xff && d[2] === 0xd8) jpeg++; ws2.send('{"t":"ack"}'); } });
   setTimeout(() => {
-    check('WebCodecs olmayan istemci JPEG alıyor', jpeg > 3, `${jpeg} kare`);
+    // Sunucu değişmeyen kareyi tekrar göndermez; durağan masaüstünde 3 sn'de yalnızca birkaç kare gelir (3-4 görüldü).
+    check('WebCodecs olmayan istemci JPEG alıyor', jpeg >= 1, `${jpeg} kare`);
     ws2.close();
     console.log(fails ? `${fails} HATA` : 'hepsi geçti');
     process.exit(fails ? 1 : 0);
