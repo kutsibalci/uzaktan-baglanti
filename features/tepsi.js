@@ -5,9 +5,11 @@
 //   GET  /api/tepsi/durum    misafir kodu, port, bağlı kişiler, Tailscale adresi
 //   POST /api/tepsi/kes      {"id": 3} ya da {"hepsi": true} — bağlantıyı keser (hatırlanan cihaz kaydı da silinir)
 //   POST /api/tepsi/kapat    sunucuyu düzgün kapatır (tepsideki "Çıkış" / "Yeniden başlat")
-//   GET  /api/tepsi/olaylar  Server-Sent Events: baglandi, ayrildi, izleme-basladi, izleme-bitti
+//   GET  /api/tepsi/olaylar  Server-Sent Events: baglandi, ayrildi, izleme-basladi, izleme-bitti,
+//                            dosya-geldi ({ dosya: { ad, yer, boyut, kullanici, via } }, lib/olaylar üzerinden features/dosya.js'ten)
 const crypto = require('crypto');
 const { tailscaleInfo } = require('../lib/network');
+const olaylar = require('../lib/olaylar');
 
 const VIA_NAMES = { local: 'bu bilgisayar', lan: 'ev ağı', tailscale: 'Tailscale' };
 const MAX_STREAMS = 4;          // aynı anda açık olay akışı
@@ -89,6 +91,11 @@ module.exports.init = (api) => {
     const line = `data: ${JSON.stringify({ tur, izleyen: izleyenSayisi(), zaman: Date.now(), ...extra })}\n\n`;
     for (const res of streams) res.write(line);
   }
+
+  // Bilgisayara dosya gönderilince tepsi balon gösterir.
+  olaylar.on('dosya-geldi', (d) => publish('dosya-geldi', {
+    dosya: { ad: d.ad, yer: d.yer, boyut: d.boyut, kullanici: d.kullanici, via: d.via },
+  }));
 
   api.onAuth((ws) => {
     ws.tepsiId = nextId++;

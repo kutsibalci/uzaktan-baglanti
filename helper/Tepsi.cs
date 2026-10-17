@@ -617,6 +617,17 @@ class TepsiUygulamasi : ApplicationContext
         {
             Log("[tepsi] " + Yazi(k, "kullanici") + (tur == "izleme-basladi" ? " ekranı izliyor" : " izlemeyi bıraktı"));
         }
+        else if (tur == "dosya-geldi")
+        {
+            // Telefondan gönderilen dosya nereye kaydedildi: bilgisayarın başındaki kişi de görsün.
+            Dictionary<string, object> d = Nesne(o, "dosya");
+            if (d != null)
+            {
+                string metin = "Dosya geldi: " + Yazi(d, "ad") + " → " + Yazi(d, "yer");
+                Log("[tepsi] " + metin + " (" + Yazi(d, "kullanici") + ")");
+                if (Yazi(d, "via") != "local") Balon(metin);
+            }
+        }
         YoklaArkaPlanda();
     }
 

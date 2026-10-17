@@ -1,5 +1,8 @@
+// @ortam TRAY_TOKEN=dosya-testi-tepsi-belirteci-0123456789
 // Dosya aktarımı testi: yükleme (akış, ad temizleme, çakışma, yarıda kesme, sınır), gezinme, indirme,
-// yol geçişi saldırıları, yetkiler ve günlük.
+// yol geçişi saldırıları, yetkiler ve günlük. Kaydedilecek yer: ?klasor= ile yükleme ve kök dışı denemeler,
+// yeni klasör ucu, "bilgisayarda göster" (kuru mod: REMOTE_DOSYA_KURU=1, Gezgin AÇILMAZ), tepsi olay akışında
+// 'dosya-geldi' (TRAY_TOKEN tepsi uçlarını açar) ve başsız Edge'de panelin hedef satırı + seçimin hatırlanması.
 // ORTAM: Sunucuyu test/calistir.js başlatır ve her pakete geçici bir klasör verir (TEST_TMP). Sunucu ile bu test
 // aynı ortam değişkenlerini alır: REMOTE_UPLOAD_DIR = TEST_TMP\yuklenen, REMOTE_BROWSE_ROOT = TEST_TMP\kok.
 // Böylece gerçek İndirilenler ya da profil klasörüne hiç dokunulmaz. Elle çalıştırırken de bu üç değişkeni
@@ -90,6 +93,302 @@ function bellekMB(pid) {
   return m ? Number(m[1].replace(/[^\d]/g, '')) / 1024 : NaN;
 }
 
+const tepsiOlaylari = [];
+let tepsiAkis = null;
+const ekJunctionlar = []; // hedef testlerinin kurduğu junction'lar (sonda bağlantı olarak kaldırılır)
+const gercek = (p) => fs.realpathSync.native(p);
+const yukleK = (token, ad, veri, klasor) => istek('POST', `/api/dosya/yukle?ad=${encodeURIComponent(ad)}&klasor=${klasor}`, { token, govde: veri });
+const yeniKlasor = (token, yol, ad) => istek('POST', `/api/dosya/klasor?yol=${yol}&ad=${ad}`, { token });
+const goster = (token, sorgu) => istek('POST', `/api/dosya/goster?${sorgu}`, { token });
+const disariAdlari = () => fs.readdirSync(DISARI).sort().join(',');
+
+// Kaydedilecek yer: hedef bilgisi, ?klasor= ile yükleme, kök dışı denemeler, yeni klasör, bilgisayarda göster.
+async function hedefTestleri(T, V, { kopru, adsVar }) {
+  // Kısayol klasörleri (Belgeler/Documents bilerek yok: yalnızca var olanlar listelenmeli).
+  for (const k of ['Desktop', 'Downloads', 'Pictures']) fs.mkdirSync(path.join(KOK, k), { recursive: true });
+  const disariOnce = disariAdlari();
+
+  // ---------- Hedef bilgisi ----------
+  let r = await istek('GET', '/api/dosya/hedef', { token: T });
+  const ks = r.json?.kisayollar || [];
+  check('hedef bilgisi: varsayılan klasör ve tam yolu', r.status === 200 && r.json.varsayilan.tam === gercek(YUKLE) && r.json.varsayilan.yer === `${path.basename(TMP)} › yuklenen`,
+    JSON.stringify(r.json?.varsayilan));
+  check('hedef bilgisi: yalnızca var olan kısayollar (Türkçe adlarla)',
+    JSON.stringify(ks.map((k) => `${k.ad}=${k.yol}`)) === JSON.stringify(['Masaüstü=Desktop', 'İndirilenler=Downloads', 'Resimler=Pictures']), JSON.stringify(ks.map((k) => `${k.ad}=${k.yol}`)));
+  check('hedef bilgisi: kök adı', r.json?.kok?.ad === path.basename(KOK));
+  check('hedef bilgisi: salt izleme 403, oturumsuz 401', (await istek('GET', '/api/dosya/hedef', { token: V })).status === 403 && (await istek('GET', '/api/dosya/hedef')).status === 401);
+  r = await liste(T, 'Pictures');
+  check('liste cevabında kullanıcı dostu yer ve tam yol', r.json?.yer === 'Resimler' && r.json.tam === gercek(path.join(KOK, 'Pictures')), `${r.json?.yer} ${r.json?.tam}`);
+
+  // ---------- ?klasor= ile yükleme ----------
+  const foto = crypto.randomBytes(3000);
+  r = await yukleK(T, 'IMG_0676.jpeg', foto, 'Pictures');
+  const fotoYol = path.join(KOK, 'Pictures', 'IMG_0676.jpeg');
+  check('seçilen klasöre yüklendi (iPhone adı korunur)', r.status === 200 && r.json?.ad === 'IMG_0676.jpeg' && fs.existsSync(fotoYol) && fs.readFileSync(fotoYol).equals(foto), `${r.status} ${JSON.stringify(r.json)}`);
+  check('yükleme cevabı: yer, tam yol, köke göreli yol, kimlik', r.json?.yer === 'Resimler' && r.json.tam === gercek(fotoYol) && r.json.yol === 'Pictures/IMG_0676.jpeg' && /^[0-9a-f]{24}$/.test(r.json.id),
+    JSON.stringify(r.json));
+  const fotoId = r.json?.id;
+  r = await yukleK(T, 'IMG_0676.jpeg', foto, 'Pictures');
+  check('seçilen klasörde çakışma "IMG_0676 (1).jpeg"', r.json?.ad === 'IMG_0676 (1).jpeg' && fs.existsSync(path.join(KOK, 'Pictures', 'IMG_0676 (1).jpeg')), r.json?.ad);
+  r = await yukleK(T, 'IMG_0677.HEIC', Buffer.from('heic'), encodeURIComponent('Pictures'));
+  check('HEIC uzantısı olduğu gibi korunur', r.json?.ad === 'IMG_0677.HEIC');
+  r = await yukleK(T, 'kok.txt', Buffer.from('k'), '');
+  check('klasor= boş: kökün kendisi', r.status === 200 && r.json?.yer === path.basename(KOK) && fs.existsSync(path.join(KOK, 'kok.txt')), JSON.stringify(r.json));
+  r = await yukleK(T, 'ic.txt', Buffer.from('i'), 'ic-kopru');
+  check('kökün içine işaret eden junction klasörüne yükleme çalışır', r.status === 200 && fs.existsSync(path.join(KOK, 'alt', 'ic.txt')));
+  r = await yukleK(T, 'x.txt', Buffer.from('x'), encodeURIComponent('Pictures/Tatil'));
+  check('olmayan klasör 404 ve yükleme ucu klasör oluşturmaz', r.status === 404 && !fs.existsSync(path.join(KOK, 'Pictures', 'Tatil')), `(${r.status})`);
+  r = await yukleK(T, 'x.txt', Buffer.from('x'), 'a.txt');
+  check('dosyayı klasör diye vermek 400', r.status === 400);
+  r = await yukleK(V, 'x.txt', Buffer.from('x'), 'Pictures');
+  check('salt izleme ?klasor= ile yükleme 403', r.status === 403 && !fs.existsSync(path.join(KOK, 'Pictures', 'x.txt')));
+
+  const klasorSaldirilari = [
+    ['..', '..'],
+    ['..\\..', encodeURIComponent('..\\..')],
+    ['Pictures/../../disari', encodeURIComponent('Pictures/../../disari')],
+    ['%2e%2e (URL kodlu)', '%2e%2e'],
+    ['%2e%2e%2fdisari', '%2e%2e%2fdisari'],
+    ['%252e%252e (çift kodlu)', '%252e%252e'],
+    ['mutlak C:\\Windows\\Temp', encodeURIComponent('C:\\Windows\\Temp')],
+    ['sürücüye göreli C:', encodeURIComponent('C:')],
+    ['mutlak yol (dışarıdaki klasör)', encodeURIComponent(DISARI)],
+    ['eğik çizgiyle başlayan /disari', encodeURIComponent('/disari')],
+    ['UNC \\\\localhost\\c$', encodeURIComponent('\\\\localhost\\c$\\Windows\\Temp')],
+    ['UNC aygıt yolu \\\\?\\', encodeURIComponent(`\\\\?\\${DISARI}`)],
+    ['junction (mklink /J) kök dışına', encodeURIComponent('uzun-kopru-klasoru')],
+    ['ADS Pictures:gizli', encodeURIComponent('Pictures:gizli')],
+    ['ADS ::$INDEX_ALLOCATION', encodeURIComponent('Pictures::$INDEX_ALLOCATION')],
+    ['sondaki nokta "Pictures."', encodeURIComponent('Pictures.')],
+    ['sondaki boşluk "Pictures "', encodeURIComponent('Pictures ')],
+    ['"..." ', encodeURIComponent('...')],
+    ['aygıt adı CON', 'CON'],
+    ['NUL baytı', encodeURIComponent('Pictures\u0000')],
+  ];
+  try {
+    const kisa = execFileSync('cmd.exe', ['/d', '/c', `for %I in ("${kopru}") do @echo %~sI`], { encoding: 'utf8', windowsVerbatimArguments: true }).trim();
+    const kisaAd = path.basename(kisa);
+    if (kisaAd && kisaAd !== path.basename(kopru)) klasorSaldirilari.push([`8.3 kısa ad ${kisaAd}`, encodeURIComponent(kisaAd)]);
+    else console.log('BİLGİ bu birimde 8.3 kısa adlar kapalı; kısa ad denemesi atlandı');
+  } catch { console.log('BİLGİ kısa ad alınamadı; atlandı'); }
+  let engel = 0;
+  for (const [ad, k] of klasorSaldirilari) {
+    const x = await yukleK(T, 'saldiri.txt', Buffer.from('SALDIRI'), k);
+    const ok = x.status >= 400 && x.status < 500;
+    if (ok) engel++;
+    check(`?klasor= kök dışı reddedildi: ${ad}`, ok, `(${x.status}${x.json?.msg ? ` ${x.json.msg}` : ''})`);
+  }
+  check('?klasor= için en az 8 farklı kök dışı deneme', engel >= 8 && engel === klasorSaldirilari.length, `(${engel}/${klasorSaldirilari.length}, ADS ${adsVar ? 'var' : 'yok'})`);
+  check('kök dışına hiçbir dosya yazılmadı', disariAdlari() === disariOnce && !fs.existsSync(path.join(TMP, 'saldiri.txt')), disariAdlari());
+
+  // ---------- Yeni klasör ----------
+  r = await yeniKlasor(T, 'Pictures', encodeURIComponent('Tatil 2026'));
+  check('yeni klasör oluşturuldu', r.status === 200 && r.json?.yol === 'Pictures/Tatil 2026' && r.json.yer === 'Resimler › Tatil 2026' && !r.json.mevcut && fs.statSync(path.join(KOK, 'Pictures', 'Tatil 2026')).isDirectory(),
+    JSON.stringify(r.json));
+  r = await yeniKlasor(T, 'Pictures', encodeURIComponent('Tatil 2026'));
+  check('var olan klasör: mevcut=true', r.status === 200 && r.json?.mevcut === true);
+  const adlar = [
+    ['..\\..\\kotu', 'kotu'],
+    ['../../kotu2', 'kotu2'],
+    ['CON', '_CON'],
+    ['a:b', 'a_b'],
+    ['x. ', 'x'],
+    ['Yıl <2026>', 'Yıl _2026_'],
+  ];
+  for (const [gelen, beklenen] of adlar) {
+    r = await yeniKlasor(T, 'Pictures', encodeURIComponent(gelen));
+    check(`klasör adı temizlendi: ${JSON.stringify(gelen)}`, r.json?.ad === beklenen && fs.existsSync(path.join(KOK, 'Pictures', beklenen)), `→ ${JSON.stringify(r.json?.ad)} (${r.status})`);
+  }
+  check('temizlenen klasör adları kök dışına çıkmadı', !fs.existsSync(path.join(TMP, 'kotu')) && !fs.existsSync(path.join(TMP, 'kotu2')) && !fs.existsSync(path.join(KOK, 'kotu')));
+  for (const [ad, deger] of [['boş ad', ''], ['"..."', '...'], ['yalnızca boşluk', '%20%20']]) {
+    r = await yeniKlasor(T, '', deger);
+    check(`geçersiz klasör adı reddedildi: ${ad}`, r.status === 400, `(${r.status})`);
+  }
+  r = await yeniKlasor(T, '', 'a.txt');
+  check('aynı adda dosya varken 409', r.status === 409, `(${r.status})`);
+  for (const [ad, ust] of [['..', '..'], ['%2e%2e', '%2e%2e'], ['mutlak', encodeURIComponent(DISARI)], ['UNC', encodeURIComponent('\\\\localhost\\c$\\Windows\\Temp')], ['junction', 'uzun-kopru-klasoru'], ['olmayan', 'olmayan']]) {
+    r = await yeniKlasor(T, ust, 'yeni');
+    check(`yeni klasör kök dışında/olmayan üstte reddedildi: ${ad}`, r.status >= 400 && r.status < 500, `(${r.status})`);
+  }
+  check('yeni klasör ucu kök dışına klasör açmadı', disariAdlari() === disariOnce && !fs.existsSync(path.join(TMP, 'yeni')));
+  check('yeni klasör: salt izleme 403, oturumsuz 401', (await yeniKlasor(V, 'Pictures', 'v')).status === 403 && (await yeniKlasor('', 'Pictures', 'v')).status === 401 && !fs.existsSync(path.join(KOK, 'Pictures', 'v')));
+  r = await yukleK(T, 'tatil.jpg', Buffer.from('t'), encodeURIComponent('Pictures/Tatil 2026'));
+  check('yeni klasöre yükleme', r.status === 200 && r.json?.yer === 'Resimler › Tatil 2026' && fs.existsSync(path.join(KOK, 'Pictures', 'Tatil 2026', 'tatil.jpg')));
+
+  // ---------- Bilgisayarda göster (kuru mod) ----------
+  r = await goster(T, `id=${fotoId}`);
+  check('göster: kuru modda komut doğru, Gezgin açılmadı', r.status === 200 && r.json?.kuru === true && r.json.komut === `explorer.exe /select,"${gercek(fotoYol)}"`, JSON.stringify(r.json));
+  r = await goster(T, `id=${fotoId}`);
+  check('göster: peş peşe basma 429', r.status === 429, `(${r.status})`);
+  await sleep(1600);
+  r = await goster(T, `yol=${encodeURIComponent('Pictures/IMG_0676 (1).jpeg')}`);
+  check('göster: köke göreli doğrulanmış yol ile', r.status === 200 && r.json?.komut?.endsWith(`IMG_0676 (1).jpeg"`), JSON.stringify(r.json));
+  const gosterRet = [
+    ['bilinmeyen kimlik', 'id=0123456789abcdef01234567', 404],
+    ['kimlik yok', '', 404],
+    ['..', `yol=${encodeURIComponent('../disari/gizli.txt')}`],
+    ['%2e%2e', 'yol=%2e%2e%2fdisari%2fgizli.txt'],
+    ['mutlak yol', `yol=${encodeURIComponent(path.join(DISARI, 'gizli.txt'))}`],
+    ['UNC', `yol=${encodeURIComponent('\\\\localhost\\c$\\Windows\\win.ini')}`],
+    ['junction içinden', `yol=${encodeURIComponent('uzun-kopru-klasoru/gizli.txt')}`],
+    ['ADS', `yol=${encodeURIComponent('ads.txt:gizli')}`],
+    ['klasör (dosya değil)', `yol=${encodeURIComponent('Pictures')}`, 400],
+    ['tırnaklı ad enjeksiyonu', `yol=${encodeURIComponent('a.txt" /root,C:\\Windows')}`],
+  ];
+  for (const [ad, sorgu, beklenen] of gosterRet) {
+    const x = await goster(T, sorgu);
+    check(`göster reddedildi: ${ad}`, beklenen ? x.status === beklenen : x.status >= 400 && x.status < 500 && x.status !== 429, `(${x.status}${x.json?.msg ? ` ${x.json.msg}` : ''})`);
+  }
+  // Silinen dosya
+  r = await yukleK(T, 'silinecek.txt', Buffer.from('s'), 'Desktop');
+  fs.rmSync(path.join(KOK, 'Desktop', 'silinecek.txt'));
+  const silinen = await goster(T, `id=${r.json?.id}`);
+  check('göster: silinmiş dosya 404', silinen.status === 404, `(${silinen.status})`);
+  // Yükledikten sonra klasör kök dışına işaret eden bir junction ile değiştirilirse kimlik artık açmaz.
+  fs.mkdirSync(path.join(KOK, 'degisen'));
+  r = await yukleK(T, 'gizli.txt', Buffer.from('benim'), 'degisen');
+  fs.renameSync(path.join(KOK, 'degisen'), path.join(KOK, 'degisen-eski'));
+  fs.symlinkSync(DISARI, path.join(KOK, 'degisen'), 'junction');
+  ekJunctionlar.push(path.join(KOK, 'degisen'));
+  const degisen = await goster(T, `id=${r.json?.id}`);
+  check('göster: yolu junction ile değişen kayıt reddedildi', degisen.status === 403, `(${degisen.status} ${degisen.json?.msg || ''})`);
+  check('göster: salt izleme 403, oturumsuz 401', (await goster(V, `id=${fotoId}`)).status === 403 && (await goster('', `id=${fotoId}`)).status === 401);
+}
+
+// Başsız Edge (yoksa Chrome): panelde hedef satırı, klasör seçici, yeni klasör, seçimin hatırlanması, yükleme sonrası yer.
+// iOS Safari emüle EDİLEMEZ; burada yalnızca Chromium motoru ve telefon boyutlu görüntü alanı denenir.
+const BROWSERS = [
+  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+  'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+];
+const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''; r.on('data', (c) => d += c); r.on('end', () => { try { res(JSON.parse(d)); } catch (e) { rej(e); } }); }).on('error', rej));
+
+async function tarayiciKismi() {
+  const exe = BROWSERS.find((b) => fs.existsSync(b));
+  if (!exe) { console.log('OK   tarayıcı (Edge/Chrome) bulunamadı, tarayıcı kısmı atlandı'); return; }
+  const profil = fs.mkdtempSync(path.join(TMP, 'tarayici-'));
+  let tarayici;
+  try {
+    tarayici = require('child_process').spawn(exe, [
+      '--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profil}`, '--no-first-run', '--no-default-browser-check', '--mute-audio', 'about:blank',
+    ], { stdio: 'ignore' });
+    const portDosyasi = path.join(profil, 'DevToolsActivePort');
+    for (let i = 0; i < 80 && !fs.existsSync(portDosyasi); i++) await sleep(250);
+    const dbg = Number(fs.readFileSync(portDosyasi, 'utf8').split(/\r?\n/)[0]);
+    let hedefler = [];
+    for (let i = 0; i < 40; i++) { try { hedefler = await getJson(`http://127.0.0.1:${dbg}/json/list`); if (hedefler.some((x) => x.type === 'page')) break; } catch {} await sleep(250); }
+    const cdp = new WebSocket(hedefler.find((x) => x.type === 'page').webSocketDebuggerUrl);
+    await new Promise((r) => cdp.on('open', r));
+    let id = 0; const bekleyen = new Map(); const hatalar = [];
+    cdp.on('message', (d) => {
+      const m = JSON.parse(d);
+      if (m.method === 'Runtime.exceptionThrown') hatalar.push(m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text);
+      if (m.id && bekleyen.has(m.id)) { bekleyen.get(m.id)(m); bekleyen.delete(m.id); }
+    });
+    const call = (method, params = {}) => new Promise((r, j) => { const i = ++id; bekleyen.set(i, r); cdp.send(JSON.stringify({ id: i, method, params })); setTimeout(() => j(new Error(`CDP zaman aşımı: ${method}`)), 15000); });
+    const ev = async (expression) => { const r = await call('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }); if (r.result?.exceptionDetails) throw new Error(JSON.stringify(r.result.exceptionDetails)); return r.result?.result?.value; };
+    const bekle = async (ifade, ms = 8000) => { for (let i = 0; i < ms / 100; i++) { if (await ev(ifade).catch(() => false)) return true; await sleep(100); } return false; };
+    const P = (k) => `document.querySelector('#dosyaPanel [data-k="${k}"]')`;
+    const metin = (k) => ev(`${P(k)}.textContent`);
+    const tikla = (secici) => ev(`(() => { const b = ${secici}; if (!b) return false; b.click(); return true; })()`);
+    const dugmeMetinle = (kap, yazi) => `[...${P(kap)}.querySelectorAll('button')].find((b) => b.textContent.includes(${JSON.stringify(yazi)}))`;
+
+    await call('Page.enable'); await call('Runtime.enable'); await call('DOM.enable');
+    // Telefon boyutlu görüntü alanı (iPhone 13/14 genişliği) ve dokunma.
+    await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 3, mobile: true });
+    await call('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+
+    const girisYap = async () => {
+      await bekle("!document.getElementById('vLogin').hidden || !document.getElementById('vHome').hidden", 10000);
+      if (await ev("!document.getElementById('vLogin').hidden")) {
+        await ev(`(() => { const f = document.getElementById('tAccount'); f.username.value='ahmet'; f.password.value='gizli123'; f.requestSubmit(); })()`);
+      }
+      return bekle("!document.getElementById('vHome').hidden", 10000);
+    };
+    const paneliAc = async () => {
+      await tikla(`[...document.querySelectorAll('#vHome button')].find((b) => b.textContent.includes('Dosya aktarımı'))`);
+      return bekle(`!document.getElementById('dosyaPanel').hidden && ${P('hedefTam')}.textContent.length > 0`);
+    };
+
+    await call('Page.navigate', { url: `http://localhost:${PORT}/` });
+    check('tarayıcı: giriş yapıldı', await girisYap());
+    check('tarayıcı: panel açıldı', await paneliAc());
+    const vYer = `${path.basename(TMP)} › yuklenen`;
+    check('tarayıcı: "Kaydedilecek yer" satırı varsayılanı gösteriyor', (await metin('hedef')).includes('Kaydedilecek yer:') && (await metin('hedefAd')) === vYer && (await metin('hedefTam')) === gercek(YUKLE),
+      `${await metin('hedefAd')} | ${await metin('hedefTam')}`);
+    check('tarayıcı: telefon genişliğinde yatay taşma yok', await ev("(() => { const p = document.getElementById('dosyaPanel'); return p.scrollWidth <= p.clientWidth; })()"));
+
+    // Klasör seçici: Resimler → Tatil 2026 → yeni klasör "Telefon" → bu klasöre kaydet
+    await tikla(P('degistir'));
+    check('tarayıcı: seçici kısayolları', await bekle(`${P('kisayollar')}.textContent.includes('Resimler') && ${P('kisayollar')}.textContent.includes('Masaüstü') && !${P('kisayollar')}.textContent.includes('Belgeler')`),
+      await metin('kisayollar'));
+    await tikla(dugmeMetinle('kisayollar', 'Resimler'));
+    await bekle(`${P('sListe')}.textContent.includes('Tatil 2026')`);
+    await tikla(`[...${P('sListe')}.querySelectorAll('.girdi')].find((b) => b.dataset.ad === 'Tatil 2026')`);
+    check('tarayıcı: klasörde gezinme', await bekle(`${P('sYol')}.textContent.includes('Tatil 2026')`), await metin('sYol'));
+    await tikla(P('yeni'));
+    await ev(`${P('yeniAd')}.value = 'Telefon'; ${P('yeniForm')}.requestSubmit()`);
+    check('tarayıcı: yeni klasör oluşturuldu ve açıldı', await bekle(`${P('sYol')}.textContent.includes('Telefon')`) && fs.existsSync(path.join(KOK, 'Pictures', 'Tatil 2026', 'Telefon')),
+      `${await metin('sYol')} | ${await metin('sDurum')}`);
+    await tikla(P('buraya'));
+    const secilen = 'Resimler › Tatil 2026 › Telefon';
+    check('tarayıcı: seçim hedef satırında', (await metin('hedefAd')) === secilen && await ev(`${P('secici')}.hidden`), await metin('hedefAd'));
+    const kayitli = await ev("(() => { try { return JSON.parse(localStorage.getItem('rc-dosya-hedef')); } catch { return null; } })()");
+    check('tarayıcı: seçim bu cihazda saklandı', kayitli?.yol === 'Pictures/Tatil 2026/Telefon', JSON.stringify(kayitli));
+
+    // Sayfa yenilenince seçim hatırlanmalı.
+    await call('Page.reload', { ignoreCache: true });
+    await sleep(500);
+    check('tarayıcı: yenilemeden sonra giriş', await girisYap());
+    await paneliAc();
+    await sleep(500); // hedefYukle doğrulaması bitsin
+    check('tarayıcı: seçim yenilemeden sonra hatırlandı', (await metin('hedefAd')) === secilen && (await metin('hedefTam')) === gercek(path.join(KOK, 'Pictures', 'Tatil 2026', 'Telefon')),
+      `${await metin('hedefAd')} | ${await metin('hedefTam')}`);
+
+    // Dosya seçiciden yükleme (CDP ile dosya seçimi).
+    const fotoDosya = path.join(TMP, 'IMG_0676.jpeg');
+    fs.writeFileSync(fotoDosya, crypto.randomBytes(5000));
+    const { root } = (await call('DOM.getDocument', { depth: -1 })).result;
+    const { nodeId } = (await call('DOM.querySelector', { nodeId: root.nodeId, selector: '#dosyaPanel [data-k="girdi"]' })).result;
+    await call('DOM.setFileInputFiles', { nodeId, files: [fotoDosya] });
+    const beklenenDurum = `Kaydedildi: ${secilen} › IMG_0676.jpeg`;
+    check('tarayıcı: yükleme bitince tam yer gösterildi', await bekle(`${P('yuklemeler')}.querySelector('.durum').textContent === ${JSON.stringify(beklenenDurum)}`, 10000),
+      await ev(`${P('yuklemeler')}.textContent.replace(/\\s+/g, ' ')`));
+    check('tarayıcı: dosya seçilen klasöre kaydedildi', fs.existsSync(path.join(KOK, 'Pictures', 'Tatil 2026', 'Telefon', 'IMG_0676.jpeg')));
+    await sleep(1600); // göster ucunun peş peşe basma sınırı
+    await tikla(dugmeMetinle('yuklemeler', 'Bilgisayarda göster'));
+    check('tarayıcı: "Bilgisayarda göster" (kuru mod)', await bekle(`${P('yuklemeler')}.textContent.includes('Deneme modu')`), await ev(`${P('yuklemeler')}.textContent.replace(/\\s+/g, ' ')`));
+    check('tarayıcı: "Son gönderilenler" listesi yerle', await ev(`!${P('sonBolum')}.hidden && ${P('sonListe')}.textContent.includes('IMG_0676.jpeg') && ${P('sonListe')}.textContent.includes(${JSON.stringify(`${secilen} › IMG_0676.jpeg`)})`),
+      (await metin('sonListe')).replace(/\s+/g, ' '));
+    const son = await ev("(() => { try { return JSON.parse(localStorage.getItem('rc-dosya-son')); } catch { return null; } })()");
+    check('tarayıcı: son gönderilenler bu cihazda saklandı', Array.isArray(son) && son[0]?.ad === 'IMG_0676.jpeg' && son[0].id, JSON.stringify(son?.[0]));
+
+    // Seçilen klasör silinirse varsayılana dönülür.
+    fs.rmSync(path.join(KOK, 'Pictures', 'Tatil 2026', 'Telefon'), { recursive: true, force: true });
+    await tikla(P('kapat'));
+    await paneliAc();
+    check('tarayıcı: silinen klasör seçimi varsayılana döndü', await bekle(`${P('hedefAd')}.textContent === ${JSON.stringify(vYer)}`) && await ev("localStorage.getItem('rc-dosya-hedef') === null"),
+      await metin('hedefAd'));
+    // Varsayılana dön düğmesi
+    await tikla(P('degistir'));
+    await bekle(`${P('kisayollar')}.textContent.includes('Resimler')`);
+    await tikla(dugmeMetinle('kisayollar', 'Masaüstü'));
+    await bekle(`${P('buraya')}.textContent.includes('Masaüstü')`);
+    await tikla(P('buraya'));
+    check('tarayıcı: Masaüstü seçildi', (await metin('hedefAd')) === 'Masaüstü');
+    await tikla(P('degistir'));
+    await tikla(P('varsayilan'));
+    check('tarayıcı: "Varsayılana dön"', (await metin('hedefAd')) === vYer && await ev("localStorage.getItem('rc-dosya-hedef') === null"));
+    check('tarayıcı: sayfada yakalanmamış hata yok', hatalar.length === 0, JSON.stringify(hatalar));
+    cdp.close();
+  } finally {
+    if (tarayici) { try { execFileSync('taskkill', ['/pid', String(tarayici.pid), '/T', '/F'], { stdio: 'ignore' }); } catch { /* zaten kapandı */ } }
+    await sleep(500);
+    try { fs.rmSync(profil, { recursive: true, force: true }); } catch { /* tarayıcı dosyaları bırakıyor olabilir */ }
+  }
+}
+
 async function giris(username, password) {
   const c = client();
   await c.next(t('hello'));
@@ -117,6 +416,28 @@ async function giris(username, password) {
   fs.symlinkSync(path.join(KOK, 'alt'), yerelKopru, 'junction'); // kökün İÇİNE işaret eden junction
 
   try {
+    // Tepsi olay akışı (yalnızca bu bilgisayardan + belirteçle): yüklemeler 'dosya-geldi' olarak gelmeli.
+    tepsiAkis = await new Promise((resolve) => {
+      const req = http.get({ host: '127.0.0.1', port: PORT, path: '/api/tepsi/olaylar', headers: { 'X-Tepsi': process.env.TRAY_TOKEN || '' } }, (res) => {
+        let tampon = '';
+        res.setEncoding('utf8');
+        res.on('data', (d) => {
+          tampon += d;
+          let i;
+          while ((i = tampon.indexOf('\n\n')) >= 0) {
+            const blok = tampon.slice(0, i);
+            tampon = tampon.slice(i + 2);
+            const satir = blok.split('\n').find((l) => l.startsWith('data: '));
+            if (satir) { try { tepsiOlaylari.push(JSON.parse(satir.slice(6))); } catch { /* yok say */ } }
+          }
+        });
+        res.on('error', () => {});
+        resolve(res.statusCode === 200 ? req : null);
+      });
+      req.on('error', () => resolve(null));
+    });
+    check('tepsi olay akışı açıldı', !!tepsiAkis);
+
     // ---------- Oturumlar ----------
     const a = client();
     await a.next(t('hello'));
@@ -293,20 +614,32 @@ async function giris(username, password) {
     check('8 GB üstü 413', r.status === 413, `(${r.status})`);
     check('reddedilen büyük yükleme dosya bırakmadı', !fs.readdirSync(YUKLE).some((f) => f.startsWith('dev')));
 
+    await hedefTestleri(T, vr.http, { kopru, adsVar });
+    await tarayiciKismi();
+
+    const dosyaOlayi = tepsiOlaylari.find((o) => o.tur === 'dosya-geldi' && o.dosya?.ad === 'IMG_0676.jpeg');
+    check('tepsi olay akışında "dosya-geldi" (ad ve yer)', !!dosyaOlayi && dosyaOlayi.dosya.yer === 'Resimler' && dosyaOlayi.dosya.kullanici === 'ahmet' && dosyaOlayi.dosya.boyut > 0,
+      JSON.stringify(dosyaOlayi || tepsiOlaylari.map((o) => o.tur)));
+    const varsayilanOlay = tepsiOlaylari.find((o) => o.tur === 'dosya-geldi' && o.dosya?.ad === 'merhaba.txt');
+    check('varsayılan klasöre gelen dosyanın yeri ters eğik çizgiyle', !!varsayilanOlay && varsayilanOlay.dosya.yer === `${path.basename(TMP)}\\yuklenen`, JSON.stringify(varsayilanOlay?.dosya));
+    if (tepsiAkis) tepsiAkis.destroy();
+
     // ---------- Günlük ----------
     a.send({ t: 'admin', op: 'list' });
     const ad = await a.next(t('adminData'));
     const kayitlar = ad.log.filter((l) => l.event === 'dosya');
     check('yükleme günlüğe yazıldı', kayitlar.some((l) => l.islem === 'yukle' && l.ad === 'buyuk.bin' && l.boyut === BOYUT && l.user === 'ahmet' && l.ip));
-    check('indirme günlüğe yazıldı', kayitlar.some((l) => l.islem === 'indir' && l.ad === `alt/${turkceAd}` && l.boyut === turkceIcerik.length));
+    check('seçilen klasöre yükleme günlükte yeriyle', kayitlar.some((l) => l.islem === 'yukle' && l.ad === 'IMG_0676.jpeg' && l.klasor === 'Resimler'));
+    check('indirme günlüğe yazıldı',kayitlar.some((l) => l.islem === 'indir' && l.ad === `alt/${turkceAd}` && l.boyut === turkceIcerik.length));
 
     a.ws.close(); await a.closed;
     v.ws.close(); await v.closed;
     r = await liste(T, '');
     check('bağlantı kapanınca http anahtarı geçersiz', r.status === 401);
   } finally {
+    if (tepsiAkis) tepsiAkis.destroy();
     // Junction'ları bağlantı olarak kaldır (hedefleri silinmez); geri kalanını calistir.js temizler.
-    for (const j of [kopru, yerelKopru]) { try { fs.rmdirSync(j); } catch { /* yok */ } }
+    for (const j of [kopru, yerelKopru, ...ekJunctionlar]) { try { fs.rmdirSync(j); } catch { /* yok */ } }
   }
   console.log(`\n${pass} kontrol geçti`);
   process.exit();
