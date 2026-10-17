@@ -261,13 +261,14 @@
     show('vHome');
   }
 
-  function fillScreens(sel, list, current) {
+  // kisa: menüdeki dar seçici için "(ana)" eklenmez (yoksa ad kesiliyordu).
+  function fillScreens(sel, list, current, kisa = false) {
     sel.innerHTML = '';
     list.forEach((s, i) => {
       const o = document.createElement('option');
       o.value = s.name;
       // title sunucudan gelir ("Ekran 2 (1920×1080)", sanal ekranda "Sanal ekran (…)"); eski sunucu için yedek.
-      o.textContent = `${s.title || `Ekran ${i + 1} — ${s.w}×${s.h}`}${s.primary ? ' (ana)' : ''}`;
+      o.textContent = `${s.title || `Ekran ${i + 1} — ${s.w}×${s.h}`}${s.primary && !kisa ? ' (ana)' : ''}`;
       sel.appendChild(o);
     });
     if (current) sel.value = current;
@@ -318,7 +319,7 @@
     stream = { mode: m.mode, screen: m.screen, started: true };
     const extend = m.mode === 'extend';
     $('screenRow').hidden = extend || screens.length < 2;
-    fillScreens($('screenSel'), screens, m.screen);
+    fillScreens($('screenSel'), screens, m.screen, true);
     $('qualityRow').hidden = extend;
     document.body.classList.toggle('rc-genislet', extend); // .no-extend öğeler gizlenir
     codecLabel = m.codec === 'h264' ? `H.264${m.encoder ? ` (${m.encoder})` : ''}` : 'JPEG';
