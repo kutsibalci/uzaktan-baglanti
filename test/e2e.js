@@ -54,10 +54,11 @@ function check(name, cond, extra = '') {
   check('yayın başladı', st.mode === 'control' && !!st.screen, st.screen);
   const f1 = await c.next(t('frame'));
   check('ilk kare', f1.size > 1000, `${(f1.size / 1024).toFixed(0)} KB`);
-  let gotWithoutAck = false;
-  try { await c.next(t('frame'), 1200); gotWithoutAck = true; } catch {}
-  check('ack olmadan yeni kare gelmedi', !gotWithoutAck);
-  c.send({ t: 'ack' });
+  // En fazla 2 kare onaysız yolda olabilir (server.js JPEG_INFLIGHT): ack gelmezse üçüncüsü gelmez.
+  let extra = 0;
+  try { for (;;) { await c.next(t('frame'), 1200); extra++; } } catch {}
+  check('ack olmadan en fazla 1 kare daha geldi', extra <= 1, `${extra} kare`);
+  for (let i = 0; i <= extra; i++) c.send({ t: 'ack' });
 
   // 3. Yönetim
   c.send({ t: 'admin', op: 'addUser', username: 'izleyici', password: 'izle1234', role: 'view' });

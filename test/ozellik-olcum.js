@@ -59,7 +59,7 @@ async function wsKismi() {
   a.send({ t: 'olcum-ping', c: 12345.5 });
   const p = await a.next(t('olcum-pong'));
   check('pong istemci zamanını aynen döndürüyor', p.c === 12345.5, JSON.stringify(p));
-  check('pong alanları', 'capMs' in p && typeof p.kuyrukKB === 'number' && p.via === 'local', JSON.stringify(p));
+  check('pong alanları', 'capMs' in p && typeof p.kuyrukKB === 'number' && p.via === 'local' && 'ackMs' in p && 'kalite' in p, JSON.stringify(p));
   a.send({ t: 'olcum-ping', c: 'x' });
   let bozuk = true;
   try { await a.next(t('olcum-pong'), 800); } catch { bozuk = false; }
@@ -123,6 +123,10 @@ async function tarayiciKismi() {
     check('panel açıldı ve dolu', !panel.gizli && /\d+ ms/.test(panel.rtt) && /\d+ ms/.test(panel.toplam) && /\d+ fps/.test(panel.fps), JSON.stringify(panel));
     const ozet = await ev('RC.olcumOzet()');
     check('özet metni RTT istatistiği içeriyor', /RTT: ort \d/.test(ozet) && /Kare hızı: ort/.test(ozet), ozet.split('\n').slice(4, 6).join(' | '));
+    // Akıcılık alanları (ayrıntılı JPEG denemesi: test/ozellik-akicilik.js)
+    check('RC.stats: kare aralığı alanları var', ['intervalMs', 'jitterMs', 'maxIntervalMs', 'stutters'].every((k) => k in st), JSON.stringify(st));
+    check('özet ve panel akıcılık satırlarını içeriyor', /Kare aralığı: /.test(ozet) && /Takılma: /.test(ozet) && /Kalite \(JPEG\): /.test(ozet)
+      && (await ev(`!!document.querySelector('#olcumPanel [data-k="aralik"]') && !!document.querySelector('#olcumPanel [data-k="takilma"]')`)));
     console.log('     ' + ozet.split('\n').join('\n     '));
     await ev("document.getElementById('backBtn').click()");
     await sleep(300);
