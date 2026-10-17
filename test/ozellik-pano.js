@@ -64,7 +64,9 @@ function panoTemizle() {
   ps('Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Clipboard]::Clear()');
 }
 const metinDisiVar = () => ps("Add-Type -AssemblyName System.Windows.Forms; $d = [System.Windows.Forms.Clipboard]::GetDataObject(); if ($d -and ($d.GetDataPresent('Bitmap') -or $d.GetDataPresent('FileDrop'))) { 'EVET' } else { 'HAYIR' }") === 'EVET';
-const panoSurecSayisi = () => Number(ps(`@(Get-CimInstance Win32_Process -Filter "Name='Pano.exe'" | Where-Object { $_.ExecutablePath -eq '${PANO_EXE.replace(/'/g, "''")}' }).Count`));
+// Yalnızca test sunucusunun (PORT'u dinleyen node) başlattığı Pano.exe'ler sayılır;
+// aynı klasörden çalışan başka bir sunucunun (ör. kullanıcının 3000'deki) Pano.exe'si sayılmaz.
+const panoSurecSayisi = () => Number(ps(`$s = (Get-NetTCPConnection -LocalPort ${PORT} -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1).OwningProcess; @(Get-CimInstance Win32_Process -Filter "Name='Pano.exe'" | Where-Object { $_.ExecutablePath -eq '${PANO_EXE.replace(/'/g, "''")}' -and $_.ParentProcessId -eq $s }).Count`));
 
 function postMetin(token, body) {
   return new Promise((resolve, reject) => {
