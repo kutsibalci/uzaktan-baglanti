@@ -36,7 +36,7 @@
 - [x] H.264 kare bekletme düzeltmesi (`lib/sps.js`): NVENC SPS'e bitstream_restriction yazmıyordu → tarayıcı ~4 kare bekletiyordu.
       Sayaçla bulundu: çözme 133 ms (x264: 2 ms). SPS'e max_num_reorder_frames=0 eklenince NVENC'te de ~2 ms.
       AMF/x264 zaten yazıyor, onlara dokunulmuyor. **(Ölçüm başsız Edge'de; gerçek telefon çözücüsünde doğrulanmalı)**
-- [x] Telefon: touchpad (dokunmatik fare) modu, sıkıştırarak yakınlaştırma (1x–4x), mobil tuş çubuğu (yapışkan Ctrl/Alt/Shift/Win, F1–F12),
+- [x] Telefon: touchpad (dokunmatik fare) modu, sıkıştırarak yakınlaştırma (1x–4x), mobil tuş çubuğu (artık "Tuşlar" paneli, aşağıda),
       PWA (ana ekrana ekle, ağ öncelikli service worker), `usb-baglan.bat` (adb reverse), kalem olaylarını çekirdekte yok sayma.
       **(henüz gerçek cihazda test edilmedi: gerçek telefon/tablette dokunma hissi ve eşikler (PINCH 24px, PAN 12px, TAP 250ms, çift dokunuş 300ms);
       touchType 'stylus' filtresi; iOS Safari (Apple Pencil, ana ekrana ekleme, tuş çubuğunda klavyenin açık kalması);
@@ -73,9 +73,11 @@
       okuduğundan karenin yalnızca 1440 pikseli o ekrandı, gerisi siyahtı; H.264 bölgesi de sanal masaüstünün dışına taşıyordu.
       Şimdi tüm koordinatlar fiziksel (JPEG, gdigrab, fare, kalem aynı sistem). `info` ekranlara `dpi`/`scale`/`adapter`,
       sunucu `title` ("Ekran 2 (1920×1080)", sanal ekran için "Sanal ekran (…)") ve `virtual` ekler. `map` komutu: fareyi
-      oynatmadan eşlemeyi verir. Test: `test/ozellik-ekran.js`. **(gerçek telefonda ekran değiştirerek denenmedi; negatif konumlu
-      monitör ve sanal ekran sürücüsü bu bilgisayarda yok, yalnızca kodla/birim testle)**
-
+      oynatmadan eşlemeyi verir. Ekran seçicide sunucunun okunur adı görünür. Test: `test/ozellik-ekran.js`.
+      **(henüz gerçek cihazda test edilmedi: telefonda ikinci ekrana geçince tam göründüğü doğrulanmadı; gerçek fare/kalem hareketi
+      gönderilmedi (eşleme yalnızca `map` ile hesap olarak); negatif konumlu (solda/üstte) monitör ve sanal ekran sürücüsü bu bilgisayarda yok
+      (yalnızca birim testi); Per-Monitor v2 olmayan eski Windows yedekleri; oturum açıkken ölçek/çözünürlük değiştirme)**
+      Not: kullanıcının çalışan sunucusu eski RemoteHelper.exe'yi kullanır; düzeltme için sunucu yeniden başlatılmalı (kaynak yeni olduğundan exe yeniden derlenir).
 - [x] JPEG yolunda akıcılık (HTTP'den bağlanan telefon; ilk iPhone denemesinde "takılıyor" denmişti):
       2 kare onaysız yolda (ack penceresi), kare zamanlaması yakalamanın başından, ack gelince döngü hemen uyanır
       (Node zamanlayıcıları Windows'ta ~15.6 ms adımlı), yollar doluyken sıradaki kare önceden yakalanır;
@@ -88,7 +90,39 @@
       **(henüz gerçek cihazda test edilmedi: iPhone Safari + gerçek Wi-Fi'da hiç denenmedi (ölçümler taklit ağ ve başsız Edge);
       iOS'ta createImageBitmap/rAF zamanlaması ve çözme süresi; Otomatik kalitenin gerçek Wi-Fi'da salınıp salınmadığı;
       çoğaltma: UAC/kilit ekranı geçişi, ekran çözünürlüğü değişimi, HDR ekran, sanal ekran (IddCx) sürücüsü, uyku sonrası;
-      sabit kalite + yavaş hatta 2 kare penceresi gecikmeyi bir kare iletimi kadar artırıyor (taklitte 102 → ~115 ms))**
+      sabit kalite + yavaş hatta 2 kare penceresi gecikmeyi bir kare iletimi kadar artırıyor (taklitte 102 → ~115 ms);
+      yardımcı programda girdinin ayrı iş parçacığına alınmasının girdi gecikmesine etkisi ölçülmedi; H.264 yolu hâlâ gdigrab)**
+- [x] Doğrudan dokunma modu yeniden (ilk iPhone denemesinde "basılı tutuyor" denmişti: 10 px'i aşan her tek parmak hareketi
+      sol tuşla sürüklemeye başlıyordu, 'up' bazı yollarda kayboluyordu). Yeni hareketler: dokun = sol tık (art arda iki dokunuş aynı
+      noktaya gider → çift tık), hızlı sürükle = kaydırma (eksen kilitli), basılı tut (~0,45 sn, mavi halka) + sürükle = sürükleme,
+      basılı tut + bırak = sağ tık. Basılı düğme her durumda bırakılır: parmaklar kalkınca, touchcancel, sekme/uygulama değişince
+      (visibilitychange/pagehide/blur), kaçırılmış touchend'de, 'stop'tan önce; sunucu da izleme bitince/bağlantı kopunca bırakır.
+      Ekran klavyesi açılınca görüntüleyici görünür alana (visualViewport) yerleşir: görüntü klavyenin üstüne sığar, Tuşlar paneli
+      klavyenin üstünde kalır. **(henüz gerçek cihazda test edilmedi: gerçek iPhone Safari'de hiç denenmedi (başsız Edge CDP
+      dokunuşları); iOS'ta visualViewport.offsetTop + position:fixed yerleşimi, scrollTo(0,0) ve klavye animasyonu; sol üste taşınan
+      gizli #kbInput ile klavyenin açılması; Android Gboard; iOS'ta titreşim yok (yalnızca halka), eşikler 450 ms / 10 px / 30 px
+      gerçek elde denenmedi; sunucunun stop/kopmada düğme bırakması için otomatik test yok (gerçek girdi gerekirdi); iOS uyumluluk
+      fare olayları; dokunmatik ekranlı Windows dizüstünde fare + parmak)**
+- [x] Görüntüleyici arayüzü: telefonda tek satır araç çubuğu (geri, ●, ⌨, Tuşlar, dokunmatik modu, gecikme, ⋯ Menü);
+      kalite, ekran, pano, dosya, ses, perde, gecikme ayrıntısı, tam ekran, çubuğu gizle menüde durumlarıyla. Ortak panel kabuğu
+      (`RC.ui.panel`/`menuItem`/`closable`): köşede ✕, Esc, dışarı dokununca kapanır, kapatma dokunuşu bilgisayara tıklama gitmez.
+      Tek "Tuşlar" paneli (görüntünün altına kenetli, 3 sekme): Kısayollar (Kopyala/Yapıştır/Kes/Tümünü seç/Geri al/Yinele/Kaydet/
+      Bul/Alt+Tab/Alt+F4 onaylı/Win/Win+D/Win+E/Ctrl+Shift+Esc/Win+Shift+S/Kilitle), yapışkan Ctrl/Alt/Shift/Win + gezinme +
+      oklar, F1–F12. iPhone'da tam ekran yerine "Ana Ekrana Ekle" ipucu.
+      **(henüz gerçek cihazda test edilmedi: gerçek iPhone Safari'de olay sırası, dışarı dokunmada kapatma/yutma, Tuşlar paneline
+      basınca ekran klavyesinin açık kalması, menü içindeki select seçicisi, safe-area boşlukları, "Ana Ekrana Ekle" ipucu (yalnızca
+      UA taklidiyle); Android Chrome; Kilitle kısayolu gerçek bilgisayarda çalıştırılmadı (güç özelliğinin kilitle komutu, yalnızca
+      yönetici); ikinci ekran (genişletme) modunda gizlenen öğeler; dosya tam ekran paneli ve güç panelinin Esc ile kapanması)**
+- [x] Dosya gönderirken kaydedilecek yer: "Kaydedilecek yer: İndirilenler › Uzaktan Bağlantı" + tam yol, "Değiştir" ile klasör
+      seçici (Masaüstü/Belgeler/İndirilenler/Resimler kısayolları, gezinme, yeni klasör; seçim cihazda hatırlanır), yükleme sonrası
+      "Kaydedildi: … › IMG_0676.jpeg" + tam yol + "Bilgisayarda göster" (explorer /select), "Son gönderilenler" listesi, tepside
+      "Dosya geldi" balonu (`lib/olaylar.js` → `dosya-geldi`). Uçlar: `?klasor=` ile yükleme, `/api/dosya/hedef`, `/api/dosya/klasor`,
+      `/api/dosya/goster` (control rolü; yol doğrulaması gezinmeyle aynı). Testlerde `REMOTE_DOSYA_KURU=1`: Gezgin açılmaz.
+      **(henüz gerçek cihazda test edilmedi: gerçek iPhone Safari'de hiç denenmedi (fotoğraf seçicinin adı ve HEIC→JPEG, 16 px kutu,
+      seçici listesinin kaydırılması, gizli sekmede localStorage); explorer.exe /select hiç gerçekten çalıştırılmadı (boşluklu/Türkçe
+      yol); tepsi "Dosya geldi" balonu gözle görülmedi; OneDrive'a taşınmış Türkçe adlı klasör; seçilen klasörde yükleme sırasında
+      çökme olursa yarım dosya açılışta silinmez; sunucu yeniden başlayınca "Son gönderilenler"deki göster düğmesi göreli yola düşer)**
+      Not: ilk denemede gönderilen fotoğraf `%USERPROFILE%\Downloads\Uzaktan Bağlantı\IMG_0676.jpeg`'de.
 
 ## Sıradaki
 1. Yukarıdaki özelliklerin gerçek telefon/tablet/kalemle denenmesi (ikinci ekran dahil)

@@ -15,6 +15,7 @@ Her özellik iki parçadan oluşur ve çekirdek dosyalara (server.js, public/app
   `{ isPublic: true }` ile oturum kontrolü atlanır (ws = null) — kimlik doğrulamayı özellik kendisi yapar (ör. `api.clientInfo(req).isLocal` + gizli belirteç).
 - `api.onAuth(ws => {})`, `api.onClose(ws => {})`, `api.adminData(async () => ({ <ad>: {...} }))`
 - Çekirdek: `api.helper`, `api.video`, `api.store`, `api.clients`, `api.sendJson(ws, obj)`, `api.broadcast(obj, filtre)`, `api.buildExe(ad, {target})`, `api.dataDir`, `api.PORT`, `api.log(...)`, `api.guestCode()`, `api.kick(ws => bool, neden)`, `api.clientInfo(req)`
+- Özellikler arası olaylar: `require('../lib/olaylar')` (ortak EventEmitter; özellikler birbirini doğrudan require etmez). Şimdilik: `dosya-geldi` (dosya.js yayar → tepsi.js tepsi bildirimine çevirir).
 - `ws.session` → `{ username, role, guest, view: { screen, ... } }`, `ws.streaming`, `ws.isLocal`, `ws.via`
 
 ## Tarayıcı API (özet)
@@ -23,7 +24,7 @@ Her özellik iki parçadan oluşur ve çekirdek dosyalara (server.js, public/app
 - `RC.stats()` — son bir saniyenin görüntü ölçümleri `{ fps, kbps, decodeMs, codec, intervalMs, jitterMs, maxIntervalMs, stutters }` (gecikme sayacı kullanır; durağan ekrandan sonraki aralık sayılmaz — sunucu JPEG'de aynı kareyi göndermeyince bir kez `{ t: 'durgun' }` yollar)
 - `RC.state()`, `RC.canInput()`, `RC.toNorm(x, y)`, `RC.moveNow`, `RC.queueMove`, `RC.click(b)`, `RC.overlay(msg)`
 - `RC.fetch(url, opts)`, `RC.authUrl(url)`
-- `RC.ui.home(el)`, `RC.ui.adminSection(başlık, el)`, `RC.ui.stage()`, `RC.ui.canvas()`
+- `RC.ui.home(el)`, `RC.ui.adminSection(başlık, el)`, `RC.ui.stage()`, `RC.ui.canvas()`, `RC.ui.menuItem`, `RC.ui.panel`, `RC.ui.closable`, `RC.ui.toolbar` (aşağıda)
 
 ### Görüntüleyici arayüzü (araç çubuğu, menü, paneller)
 Telefonda çubukta yalnızca geri, ⌨, Tuşlar, dokunmatik modu, küçük gecikme sayacı ve **⋯ Menü** vardır; özellikler kendini menüye ekler.

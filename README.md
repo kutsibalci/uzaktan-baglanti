@@ -3,14 +3,17 @@
 Windows bilgisayarı telefondan, tabletten ya da başka bir bilgisayardan **tarayıcı ile** görüp kontrol etmeye yarayan, kendi bilgisayarında çalışan uzaktan masaüstü uygulaması. Karşı tarafa bir şey kurmak gerekmez.
 
 ## Özellikler
-- Uzaktan kontrol: fare, klavye (Türkçe karakterler dahil), dokunmatik
+- Uzaktan kontrol: fare, klavye (Türkçe karakterler dahil), dokunmatik; farklı ölçeklemeli (ör. %125 + %100) birden çok monitör
 - H.264 görüntü (NVIDIA / AMD / Intel donanım kodlayıcı), desteklenmeyen tarayıcılarda JPEG (hızlı ekran yakalama, ağa göre "Otomatik" kalite)
 - İkinci ekran (Spacedesk tarzı) — sanal monitör sürücüsü ile
 - Yerel hesaplar: Yönetici / Kontrol / Salt izleme
 - Cihaz hatırlama, yeni cihaz için bilgisayarda onay penceresi, tek seferlik misafir kodu
 - Her yerden erişim: Tailscale (HTTPS)
-- Telefon: touchpad modu, sıkıştırarak yakınlaştırma, mobil tuş çubuğu (Ctrl/Alt/Win, F1–F12), ana ekrana eklenebilir (PWA), USB ile bağlantı (`usb-baglan.bat`)
-- Pano eşitleme (metin) ve dosya aktarımı (yükleme / klasör gezinme / indirme)
+- Telefon: doğrudan dokunma (dokun = tık, hızlı sürükle = kaydırma, basılı tut + sürükle = sürükleme, basılı tut + bırak = sağ tık) ya da touchpad modu, sıkıştırarak yakınlaştırma,
+  ekran klavyesi açılınca görüntü klavyenin üstüne sığar, sade araç çubuğu + ⋯ menü (paneller ✕ / Esc / dışarı dokununca kapanır),
+  "Tuşlar" paneli (kısayollar: Kopyala, Alt+Tab, Win+D, Ctrl+Shift+Esc…; yapışkan Ctrl/Alt/Shift/Win, oklar, F1–F12), ana ekrana eklenebilir (PWA), USB ile bağlantı (`usb-baglan.bat`)
+- Pano eşitleme (metin) ve dosya aktarımı (yükleme / klasör gezinme / indirme); gönderirken kaydedilecek klasör görünür ve seçilebilir
+  (varsayılan İndirilenler › Uzaktan Bağlantı), "Bilgisayarda göster", son gönderilenler listesi, tepside "Dosya geldi" bildirimi
 - Bilgisayar sesini uzaktan dinleme (Opus; HTTPS ve güncel tarayıcı gerekir)
 - Gizlilik perdesi: kontrol sırasında bilgisayar ekranı karartılır, uzaktaki görüntü etkilenmez
 - Tablet kalemi: basınç, eğim, silgi
@@ -52,7 +55,7 @@ Yönetici hesabıyla ana menüde **⏻ Güç** düğmesi bilgisayarı kilitler, 
 | Yol | Görevi |
 |---|---|
 | `server.js` | Sunucu: giriş, oturumlar, görüntü akışı, yönetim |
-| `lib/` | Hesap deposu, ağ/Tailscale, H.264 video (+ `sps.js`: tarayıcıda kare bekletmeyi kapatan SPS düzeltmesi), sanal ekran, yardımcı süreç |
+| `lib/` | Hesap deposu, ağ/Tailscale, H.264 video (+ `sps.js`: tarayıcıda kare bekletmeyi kapatan SPS düzeltmesi), sanal ekran, yardımcı süreç, özellikler arası olaylar (`olaylar.js`) |
 | `helper/RemoteHelper.cs` | Ekran yakalama + fare/klavye (Windows'un kendi C# derleyicisiyle derlenir) |
 | `helper/Tepsi.cs` | Görev çubuğu simgesi; sunucuyu gizli başlatır (`tepsi-baslat.bat`) |
 | `helper/Pano.cs`, `Perde.cs`, `Ses.cs` | Pano izleme, gizlilik perdesi, ses yakalama (sunucu açılışta derler) |
