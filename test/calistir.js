@@ -5,7 +5,8 @@
 // veri klasörü boştur (ilk bağlanan localhost istemcisi "setup" ile yönetici oluşturabilir).
 // Test dosyasının ilk satırlarında:  // @ortam AD=değer  -> sunucuya ve teste ortam değişkeni (ör. TRAY_TOKEN)
 //                                    // @sunucu yok      -> ortak sunucu başlatılmaz (test kendi sürecini yönetir)
-// Güç komutları testlerde asla çalışmasın diye sunucular her zaman REMOTE_GUC_KURU=1 ile başlatılır.
+// Güç komutları ve "bilgisayarda göster" (Dosya Gezgini) testlerde asla çalışmasın diye sunucular her zaman
+// REMOTE_GUC_KURU=1 ve REMOTE_DOSYA_KURU=1 ile başlatılır.
 const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
@@ -56,11 +57,11 @@ function suiteOptions(file) {
   return { env, server };
 }
 
-// REMOTE_GUC_KURU=1: testlerde gerçek güç komutu (kapat/yeniden başlat) asla çalışmaz.
+// REMOTE_GUC_KURU=1 / REMOTE_DOSYA_KURU=1: testlerde gerçek güç komutu ve Dosya Gezgini asla çalışmaz.
 function startServer(dataDir, ortam = {}) {
   return new Promise((resolve, reject) => {
     const p = spawn(process.execPath, ['server.js'], {
-      cwd: ROOT, env: { ...process.env, ...ortam, PORT, TEST_PORT: PORT, REMOTE_DATA_DIR: dataDir, REMOTE_GUC_KURU: '1' }, stdio: ['ignore', 'pipe', 'pipe'],
+      cwd: ROOT, env: { ...process.env, ...ortam, PORT, TEST_PORT: PORT, REMOTE_DATA_DIR: dataDir, REMOTE_GUC_KURU: '1', REMOTE_DOSYA_KURU: '1' }, stdio: ['ignore', 'pipe', 'pipe'],
     });
     let out = '';
     const timer = setTimeout(() => reject(new Error(`sunucu başlamadı:\n${out}`)), 30000);
@@ -89,7 +90,7 @@ async function runSuite(file) {
       server.p.removeAllListeners('exit');
     }
     const r = spawnSync(process.execPath, [path.join(__dirname, file)], {
-      cwd: ROOT, encoding: 'utf8', timeout: 180000, env: { ...process.env, ...ortam, TEST_PORT: PORT, REMOTE_GUC_KURU: '1' },
+      cwd: ROOT, encoding: 'utf8', timeout: 180000, env: { ...process.env, ...ortam, TEST_PORT: PORT, REMOTE_GUC_KURU: '1', REMOTE_DOSYA_KURU: '1' },
     });
     process.stdout.write(r.stdout || '');
     if (r.stderr) process.stdout.write(r.stderr);
