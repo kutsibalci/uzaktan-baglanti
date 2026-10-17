@@ -23,7 +23,22 @@ Her özellik iki parçadan oluşur ve çekirdek dosyalara (server.js, public/app
 - `RC.stats()` — son bir saniyenin görüntü ölçümleri `{ fps, kbps, decodeMs, codec }` (gecikme sayacı kullanır)
 - `RC.state()`, `RC.canInput()`, `RC.toNorm(x, y)`, `RC.moveNow`, `RC.queueMove`, `RC.click(b)`, `RC.overlay(msg)`
 - `RC.fetch(url, opts)`, `RC.authUrl(url)`
-- `RC.ui.toolbar(el)`, `RC.ui.home(el)`, `RC.ui.adminSection(başlık, el)`, `RC.ui.stage()`, `RC.ui.canvas()`
+- `RC.ui.home(el)`, `RC.ui.adminSection(başlık, el)`, `RC.ui.stage()`, `RC.ui.canvas()`
+
+### Görüntüleyici arayüzü (araç çubuğu, menü, paneller)
+Telefonda çubukta yalnızca geri, ⌨, Tuşlar, dokunmatik modu, küçük gecikme sayacı ve **⋯ Menü** vardır; özellikler kendini menüye ekler.
+- `RC.ui.menuItem({ id, icon, label, state, title, order, onClick, pin, ctl, extend, keepOpen, hidden, disabled })` → `{ el, pinEl, set({...}) }`
+  - Menüde etiketli satır (simge + ad + sağda durum, ör. "Ses · kapalı"). `order` küçükten büyüğe (çekirdek: 1–2 kalite/ekran, 80 tam ekran, 90 çubuğu gizle; özellikler 10–60).
+  - `pin: true` → geniş ekranda (≥ 720 px) çubukta simge olarak da görünür (`pinEl`, kimliği `<id>Pin`). `ctl: true` → salt izleme rolünde gizli; `extend: false` → ikinci ekranda gizli.
+  - `keepOpen: true` → tıklayınca menü kapanmaz (aç/kapa satırları). Durum değişince `set({ icon, label, state, title, hidden, disabled, active, badge })`; `badge` satırda ve ⋯ düğmesinde nokta gösterir.
+- `RC.ui.panel(başlık, { id, anchor, dock, dismiss, className, onOpen, onClose })` → `{ el, head, body, open(), close(), toggle(), isOpen(), addAnchor(el), setTitle(t) }`
+  - Köşesinde ✕ olan ortak panel; içerik `body`'ye konur. Esc en son açılan paneli kapatır (bilgisayara Esc gitmez).
+  - Açılır panel (varsayılan) çubuğun altında açılır, dışarı dokununca kapanır; aynı anda tek açılır panel açık kalır. Görüntünün üstüne yapılan kapatma dokunuşu bilgisayara tıklama olarak gitmez. `anchor`: paneli açıp kapatan düğme(ler) — onlara dokunmak "dışarı" sayılmaz.
+  - `dock: 'bottom'` → görüntünün altına kenetlenir (ekranı örtmez), dışarı dokunmak kapatmaz (ör. Tuşlar paneli).
+- `RC.ui.closable(el, kapat, { dismiss, anchor })` — kendi kabuğu olan öğeyi (ör. tam ekran dosya paneli) Esc ile kapanacak şekilde kaydeder.
+- `RC.ui.toolbar(el)` — eski yol, geriye uyumlu: öğeyi çubuğun sağ ucuna (her genişlikte) ekler. Telefonda yer dar; yalnızca küçük göstergeler için (ör. gecikme sayacı), düğmeler için `menuItem` kullanın.
+- Salt izleme rolünde `<body>`'de `rc-salt`, ikinci ekranda `rc-genislet` sınıfı vardır (`.ctl` / `.no-extend` öğeler CSS ile gizlenir).
+- Özel tuşlar (kısayollar, yapışkan Ctrl/Alt/Shift/Win, oklar, F1–F12) `public/features/telefon.js`'teki "Tuşlar" panelindedir.
 
 ## İkili mesaj türleri (ilk bayt)
 1 = JPEG kare, 2 = H.264 kare (çekirdek). 3 = ses (Opus). Yeni tür eklerken buraya yazın.

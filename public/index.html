@@ -99,32 +99,19 @@
 
   <!-- Görüntüleyici -->
   <section id="vViewer" hidden>
+    <!-- Araç çubuğu: telefonda tek satır (geri, klavye, tuşlar, dokunmatik modu, ⋯ menü); geri kalanı menüde.
+         Geniş ekranda özelliklerin sabitlenen (pin) düğmeleri ve fps de çubukta görünür. -->
     <header id="toolbar">
-      <button id="backBtn" title="Ana menü">←</button>
+      <button id="backBtn" title="Ana menü" aria-label="Ana menü">←</button>
       <span id="status" class="status on" title="Bağlı">●</span>
-      <select id="quality" title="Görüntü kalitesi">
-        <option value="low">Düşük</option>
-        <option value="mid" selected>Orta</option>
-        <option value="high">Yüksek</option>
-      </select>
-      <select id="screenSel" title="Ekran" hidden></select>
-      <button id="kbBtn" class="ctl" title="Klavye">⌨</button>
+      <button id="kbBtn" class="ctl" title="Ekran klavyesi" aria-label="Ekran klavyesi">⌨</button>
       <button id="touchModeBtn" class="ctl touch-only" title="Dokunmatik modu"></button>
       <button id="zoomBtn" title="Yakınlaştırmayı sıfırla (1×)" hidden>1×</button>
-      <select id="keysSel" class="ctl" title="Özel tuşlar">
-        <option value="">Tuşlar…</option>
-        <option value="win">Windows</option>
-        <option value="alttab">Alt+Tab</option>
-        <option value="esc">Esc</option>
-        <option value="taskmgr">Görev Yöneticisi</option>
-        <option value="showdesk">Masaüstünü göster</option>
-        <option value="copy">Kopyala</option>
-        <option value="paste">Yapıştır</option>
-      </select>
       <span id="viewOnly" class="badge" hidden>Salt izleme</span>
-      <button id="fsBtn" title="Tam ekran">⛶</button>
-      <button id="hideBtn" title="Çubuğu gizle">▴</button>
-      <span id="fps" class="fps"></span>
+      <span class="tb-bosluk"></span>
+      <span id="tbPins" class="tb-pins tb-wide"></span>
+      <span id="fps" class="fps tb-wide"></span>
+      <button id="menuBtn" title="Menü" aria-label="Menü" aria-haspopup="dialog">⋯</button>
     </header>
     <button id="showBtn" hidden title="Çubuğu göster">▾</button>
     <div id="stage">
@@ -132,6 +119,24 @@
       <div id="overlay" hidden></div>
     </div>
     <textarea id="kbInput" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"></textarea>
+    <!-- Menü içeriği (app.js ortak panele taşır; özellikler RC.ui.menuItem ile satır ekler, data-order sırasıyla) -->
+    <div id="menuItems" class="menu-list">
+      <p id="menuInfo" class="menu-info" data-order="0"></p>
+      <label id="qualityRow" class="menu-row" data-order="1">
+        <span class="mi">🎚</span><span class="ml">Görüntü kalitesi</span>
+        <select id="quality" title="Görüntü kalitesi">
+          <option value="low">Düşük</option>
+          <option value="mid" selected>Orta</option>
+          <option value="high">Yüksek</option>
+        </select>
+      </label>
+      <label id="screenRow" class="menu-row" data-order="2" hidden>
+        <span class="mi">🖥</span><span class="ml">Ekran</span>
+        <select id="screenSel" title="Ekran"></select>
+      </label>
+      <div class="menu-sep" data-order="9"></div>
+      <div class="menu-sep" data-order="79"></div>
+    </div>
   </section>
 
   <!-- Yönetim paneli -->

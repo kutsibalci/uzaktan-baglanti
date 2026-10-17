@@ -1,4 +1,4 @@
-// Gecikme sayacı: araç çubuğunda gidiş-dönüş süresi (RTT); dokununca ayrıntılı panel.
+// Gecikme sayacı: araç çubuğunda küçük gidiş-dönüş süresi (RTT); ona ya da ⋯ menüsündeki satıra dokununca ayrıntılı panel.
 // Her saniye sunucuya ping atılır (olcum-ping → olcum-pong). Görüntü ölçümleri çekirdekten (RC.stats()) gelir.
 // Tahmini görüntü gecikmesi = yakalama (yalnızca JPEG'de ölçülür) + ağ (RTT/2) + çözme/çizim.
 // Oturum boyunca örnekler biriktirilir; "Kopyala" ile özet metin alınır (deneme sonuçlarını paylaşmak için).
@@ -8,11 +8,10 @@
 
   const style = document.createElement('style');
   style.textContent = `
-    #olcumBtn { font-variant-numeric: tabular-nums; }
-    #olcumBtn.iyi { color: var(--ok); } #olcumBtn.orta { color: var(--warn); } #olcumBtn.kotu { color: var(--error); }
-    #olcumPanel { position: fixed; right: 8px; top: 52px; z-index: 40; width: min(340px, calc(100vw - 16px));
-      background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px;
-      box-shadow: 0 6px 24px rgba(0,0,0,.5); font-size: 13px; }
+    #toolbar #olcumBtn { font-variant-numeric: tabular-nums; font-size: 12px; background: transparent; border-color: transparent;
+      padding: 0 6px; min-width: 0; flex: 0 1 auto; overflow: hidden; color: var(--muted); }
+    #toolbar #olcumBtn.iyi { color: var(--ok); } #toolbar #olcumBtn.orta { color: var(--warn); } #toolbar #olcumBtn.kotu { color: var(--error); }
+    #olcumPanel .rc-panel-ic { font-size: 13px; display: block; }
     #olcumPanel table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
     #olcumPanel td { padding: 2px 0; } #olcumPanel td:last-child { text-align: right; }
     #olcumPanel .toplam td { border-top: 1px solid var(--line); padding-top: 6px; font-weight: 600; }
@@ -29,10 +28,14 @@
   btn.hidden = true;
   RC.ui.toolbar(btn);
 
-  const panel = document.createElement('div');
-  panel.id = 'olcumPanel';
-  panel.hidden = true;
-  panel.innerHTML = `
+  // Ayrıntı paneli (ortak kabuk: ✕, Esc, dışarı dokununca kapanır) ve menü satırı
+  const kabuk = RC.ui.panel('Gecikme ayrıntısı', { id: 'olcumPanel', anchor: btn });
+  const panel = kabuk.el;
+  const menuSatiri = RC.ui.menuItem({
+    id: 'olcumMenu', icon: '⏱', label: 'Gecikme ayrıntısı', order: 60, hidden: true,
+    onClick: () => { kabuk.open(); ciz(); },
+  });
+  kabuk.body.innerHTML = `
     <table>
       <tr><td>Ağ gidiş-dönüş (RTT)</td><td data-k="rtt">–</td></tr>
       <tr><td>Yakalama + sıkıştırma</td><td data-k="cap">–</td></tr>
@@ -46,7 +49,6 @@
     </table>
     <p class="not" data-k="not"></p>
     <div class="btns"><button data-a="kopyala">📋 Özeti kopyala</button><button data-a="sifirla">Sıfırla</button></div>`;
-  document.body.appendChild(panel);
   const alan = (k) => panel.querySelector(`[data-k="${k}"]`);
 
   let zamanlayici = null;
@@ -75,6 +77,7 @@
     const st = RC.stats();
     btn.textContent = `⏱ ${son.rtt == null ? '–' : Math.round(son.rtt)} ms`;
     btn.className = son.rtt == null ? '' : son.rtt < 40 ? 'iyi' : son.rtt < 100 ? 'orta' : 'kotu';
+    menuSatiri.set({ state: son.rtt == null ? '' : `${Math.round(son.rtt)} ms` });
     if (panel.hidden) return;
     const h264 = /H\.264/.test(st.codec);
     alan('rtt').textContent = ms(son.rtt);
@@ -114,12 +117,14 @@
 
   function baslat() {
     btn.hidden = false;
+    menuSatiri.set({ hidden: false });
     if (!zamanlayici) zamanlayici = setInterval(tik, 1000);
     tik();
   }
   function durdur() {
     btn.hidden = true;
-    panel.hidden = true;
+    menuSatiri.set({ hidden: true });
+    kabuk.close();
     clearInterval(zamanlayici);
     zamanlayici = null;
   }
@@ -127,7 +132,7 @@
   RC.on('viewer:stop', durdur);
   RC.on('disconnect', () => { son.rtt = null; ciz(); });
 
-  btn.addEventListener('click', () => { panel.hidden = !panel.hidden; ciz(); });
+  btn.addEventListener('click', () => { kabuk.toggle(); ciz(); });
 
   function ozetMetni() {
     const st = RC.stats();
@@ -173,7 +178,7 @@
       } else {
         // Kopyalama engellendiyse metni elle seçilebilir halde göster.
         let ta = panel.querySelector('textarea');
-        if (!ta) { ta = document.createElement('textarea'); ta.rows = 8; ta.style.width = '100%'; ta.readOnly = true; panel.appendChild(ta); }
+        if (!ta) { ta = document.createElement('textarea'); ta.rows = 8; ta.style.width = '100%'; ta.readOnly = true; kabuk.body.appendChild(ta); }
         ta.value = metin;
         ta.select();
       }
