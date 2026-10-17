@@ -1,4 +1,4 @@
-// Pano eşitleme (yalnızca metin): araç çubuğunda 📋 düğmesi ve küçük panel.
+// Pano eşitleme (yalnızca metin): ⋯ menüsünde (geniş ekranda çubukta da) 📋 Pano ve küçük panel.
 // HTTP (güvenli olmayan) sayfalarda navigator.clipboard yoktur; o zaman metin seçili bir kutuda gösterilir
 // ve gönderilecek metin kutuya elle yapıştırılır.
 (() => {
@@ -8,33 +8,25 @@
 
   const stil = document.createElement('style');
   stil.textContent = `
-    #panoBtn { position: relative; }
-    #panoBtn .nokta { position: absolute; top: 2px; right: 2px; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
-    #panoPanel { position: fixed; top: 52px; right: 8px; z-index: 20; width: min(380px, calc(100vw - 16px));
-      background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; gap: 8px;
-      box-shadow: 0 8px 30px rgba(0,0,0,.5); max-height: calc(100vh - 70px); overflow: auto; }
     #panoPanel textarea { width: 100%; min-height: 90px; max-height: 40vh; resize: vertical; background: var(--bg); color: var(--text);
       border: 1px solid var(--line); border-radius: 8px; padding: 8px; font: 13px/1.4 ui-monospace, Consolas, monospace; }
-    #panoPanel h3 { margin: 0; font-size: 14px; }
-    #panoPanel .bas { display: flex; justify-content: space-between; align-items: center; }
+    #panoPanel .rc-panel-ic h3 { margin: 0; font-size: 14px; }
   `;
   document.head.appendChild(stil);
 
-  // ---------- Araç çubuğu düğmesi ----------
-  const btn = document.createElement('button');
-  btn.id = 'panoBtn';
-  btn.className = 'ctl'; // salt izleme rolünde çekirdek gizler
-  btn.title = 'Pano (kopyala-yapıştır)';
-  btn.innerHTML = '📋<span class="nokta" hidden></span>';
-  RC.ui.toolbar(btn);
-  const nokta = btn.querySelector('.nokta');
+  // ---------- Menü satırı (salt izleme rolünde çekirdek gizler: ctl) ----------
+  const item = RC.ui.menuItem({
+    id: 'panoBtn', icon: '📋', label: 'Pano (kopyala-yapıştır)', order: 10, pin: true, ctl: true,
+    onClick: () => (panel.hidden ? ac() : kapat()),
+  });
+  // Yeni metin geldi işareti (menü satırında ve ⋯ düğmesinde nokta)
+  const isaret = (yeni) => item.set({ badge: yeni });
 
   // ---------- Panel ----------
-  const panel = document.createElement('div');
-  panel.id = 'panoPanel';
-  panel.hidden = true;
-  panel.innerHTML = `
-    <div class="bas"><h3>Bilgisayarın panosu</h3><button class="small ghost" data-k="kapat">✕</button></div>
+  const kabuk = RC.ui.panel('Pano', { id: 'panoPanel', anchor: item.pinEl });
+  const panel = kabuk.el;
+  kabuk.body.innerHTML = `
+    <h3>Bilgisayarın panosu</h3>
     <textarea data-k="pc" readonly placeholder="Henüz metin yok. Bilgisayarda bir şey kopyalayın ya da Yenile'ye basın."></textarea>
     <div class="row gap wrap">
       <button class="small" data-k="kopyala">Kopyala</button>
@@ -46,7 +38,6 @@
     <div class="row gap wrap" data-k="gonderSatir" hidden><button class="small" data-k="gonder">Gönder</button></div>
     <p class="msg small" data-k="durum"></p>
   `;
-  document.body.appendChild(panel);
   const el = (k) => panel.querySelector(`[data-k="${k}"]`);
   const pcKutu = el('pc');
   const gidenKutu = el('giden');
@@ -60,19 +51,13 @@
 
   function ac() {
     if (!izinVar()) return;
-    // Telefonda araç çubuğu iki satıra inebilir; panel hep çubuğun altında açılsın.
-    const alt = btn.closest('header')?.getBoundingClientRect().bottom;
-    if (alt) panel.style.top = `${Math.round(alt) + 6}px`;
-    panel.style.maxHeight = `calc(100vh - ${Math.round(alt || 52) + 16}px)`;
-    panel.hidden = false;
-    nokta.hidden = true;
+    kabuk.open(); // ortak panel: çubuğun altında açılır, ✕ / Esc / dışarı dokununca kapanır
+    isaret(false);
     durum('');
     RC.send({ t: 'pano-al' });
   }
-  function kapat() { panel.hidden = true; }
+  function kapat() { kabuk.close(); }
 
-  btn.addEventListener('click', () => (panel.hidden ? ac() : kapat()));
-  el('kapat').addEventListener('click', kapat);
   el('yenile').addEventListener('click', () => RC.send({ t: 'pano-al' }));
 
   el('kopyala').addEventListener('click', async () => {
@@ -145,12 +130,12 @@
   RC.on('pano', (m) => {
     pcKutu.value = m.tooBig ? '' : (m.text || '');
     pcKutu.placeholder = m.tooBig ? 'Bilgisayarın panosundaki metin çok büyük (1 MB üstü).' : 'Bilgisayarın panosu boş.';
-    if (panel.hidden && !m.istek) nokta.hidden = false; // yeni metin geldi
+    if (panel.hidden && !m.istek) isaret(true); // yeni metin geldi
   });
   RC.on('pano-yazildi', yazildi);
   RC.on('viewer:stop', kapat);
   RC.on('disconnect', kapat);
-  RC.on('auth', (me) => { if (me.role === 'view') { kapat(); nokta.hidden = true; } });
+  RC.on('auth', (me) => { if (me.role === 'view') { kapat(); isaret(false); } });
 
   // ---------- Yönetim paneli ----------
   const ayar = document.createElement('div');

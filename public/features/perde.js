@@ -1,21 +1,17 @@
-// Gizlilik perdesi düğmesi (araç çubuğu). Yalnızca kontrol modunda ve kontrol yetkisinde görünür.
+// Gizlilik perdesi: ⋯ menüsünde "Gizlilik perdesi: kapalı/açık" (geniş ekranda çubukta 🕶). Yalnızca kontrol modunda ve kontrol yetkisinde görünür.
 // Perde açıkken bilgisayarın kendi ekranı kararır; uzaktan görüntü etkilenmez.
 (() => {
   const RC = window.RC;
   if (!RC) return;
 
-  const btn = document.createElement('button');
-  btn.id = 'perdeBtn';
-  btn.className = 'ctl';
-  btn.title = 'Gizlilik perdesi (bilgisayarın ekranını karart)';
-  btn.textContent = '🕶';
-  btn.hidden = true;
-  RC.ui.toolbar(btn);
-
-  // Perde açıkken düğmeyi vurgulamak için küçük bir stil.
-  const style = document.createElement('style');
-  style.textContent = '#perdeBtn.acik { background: var(--accent) !important; border-color: var(--accent) !important; }';
-  document.head.appendChild(style);
+  const item = RC.ui.menuItem({
+    id: 'perdeBtn', icon: '🕶', label: 'Gizlilik perdesi', state: 'kapalı', order: 40, pin: true, ctl: true, extend: false, keepOpen: true,
+    title: 'Gizlilik perdesi (bilgisayarın ekranını karart)', hidden: true,
+    onClick() {
+      if (!gorunur()) return;
+      RC.send({ t: 'perde', acik: !acik });
+    },
+  });
 
   let acik = false;
 
@@ -26,14 +22,8 @@
   }
 
   function guncelle() {
-    btn.hidden = !gorunur();
-    btn.classList.toggle('acik', acik);
+    item.set({ hidden: !gorunur(), active: acik, state: acik ? 'açık (ekran karartıldı)' : 'kapalı' });
   }
-
-  btn.addEventListener('click', () => {
-    if (!gorunur()) return;
-    RC.send({ t: 'perde', acik: !acik });
-  });
 
   RC.on('perde-durum', (m) => {
     acik = !!m.acik;

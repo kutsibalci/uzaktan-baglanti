@@ -1,6 +1,6 @@
 // Telefon özelliği, gerçek tarayıcı motorunda (başsız Edge / Chrome): dokunmatik modlar (dokun = tık, hızlı sürükle =
 // kaydırma, basılı tut + sürükle = sürükleme, uzun bas = sağ tık, her durumda 'up'), yakınlaştırma, kalem filtresi,
-// tuş çubuğu, ekran klavyesi açılınca görünür alana yerleşme (sahte visualViewport ile) ve service worker.
+// Tuşlar paneli, ekran klavyesi açılınca görünür alana yerleşme (sahte visualViewport ile) ve service worker.
 // iOS Safari emüle EDİLEMEZ: buradaki dokunuşlar Chromium'un CDP dokunma olaylarıdır. Girdi mesajları (move/down/up/wheel/key/text/kalem) sayfada YAKALANIR ve sunucuya
 // GİTMEZ: gerçek fare/klavye/kalem girdisi oluşmaz. "kalem-destek" sorgusu da yakalanır ve sayfada sahte cevap verilir. Edge ya da Chrome yoksa atlanır.
 // Sunucuyu test/calistir.js TEST_PORT'ta boş veri klasörüyle başlatır (localhost "setup" ile yönetici oluşturulur).
@@ -85,7 +85,7 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
     for (let i = 0; i < 60 && !(await ev("document.getElementById('screen').width > 0")); i++) await sleep(250);
     check('görüntüleyici açıldı, kare çizildi', await ev("document.getElementById('screen').width > 0"));
     check('Dokunmatik (window.Dokunmatik) yüklendi', await ev('!!window.Dokunmatik'));
-    check('tuş çubuğu düğmesi eklendi', await ev("!!document.getElementById('tusBtn')"));
+    check('Tuşlar düğmesi eklendi', await ev("!!document.getElementById('tusBtn')"));
     check('touch-only düğmeler (any-pointer: coarse) görünüyor', await ev("getComputedStyle(document.getElementById('touchModeBtn')).display !== 'none'"));
     await ev("localStorage.removeItem('touchMode')");
 
@@ -358,39 +358,40 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
     await ev("window.__fake({ t: 'kalem-destek', ok: true })");
     await ev("document.getElementById('overlay').hidden = true");
 
-    // ---- Tuş çubuğu ----
+    // ---- Tuşlar paneli (eski tuş çubuğu; ayrıntılı testler ozellik-arayuz-tarayici.js'te) ----
+    const T_ = (vk) => `document.querySelector('#tusPanel button[data-vk="${vk}"]')`;
     await ev("document.getElementById('tusBtn').click()");
-    check('tuş çubuğu açıldı', await ev("!document.querySelector('.tus-cubugu').hidden"));
-    const sw = await ev("(() => { const b = document.querySelector('.tus-cubugu'); return { sw: b.scrollWidth, cw: b.clientWidth, overflow: getComputedStyle(b).overflowX }; })()");
-    check('tuş çubuğu yatay kaydırılabilir', sw.sw > sw.cw && sw.overflow === 'auto', JSON.stringify(sw));
+    check('tuşlar paneli açıldı', await ev("!document.getElementById('tusPanel').hidden"));
+    await ev("document.querySelector('#tusPanel [data-sekme=\"gezinme\"]').click()");
     const bodyScroll = await ev('document.documentElement.scrollWidth <= window.innerWidth');
     check('sayfa yatay taşmıyor', bodyScroll);
     await sent();
-    await ev("document.querySelector('.tus-cubugu button[data-vk=\"27\"]').click()");
+    await ev(`${T_(27)}.click()`);
     s = await sent();
     check('Esc düğmesi', JSON.stringify(s) === '[{"t":"key","vk":27,"down":true},{"t":"key","vk":27,"down":false}]', JSON.stringify(s));
-    await ev("document.querySelector('.tus-cubugu button[data-vk=\"17\"]').click()");
-    check('Ctrl yapışkan vurgulandı', await ev("document.querySelector('.tus-cubugu button[data-vk=\"17\"]').classList.contains('on')"));
+    await ev(`${T_(17)}.click()`);
+    check('Ctrl yapışkan vurgulandı', await ev(`${T_(17)}.classList.contains('on')`));
     await ev("document.getElementById('kbInput').focus()");
     await call('Input.insertText', { text: 'c' });
     await sleep(50);
     s = await sent();
     check('Ctrl + ekran klavyesi "c" -> Ctrl+C', JSON.stringify(s.map((m) => `${m.t}:${m.vk ?? m.s}:${m.down ? 1 : 0}`)) === JSON.stringify(['key:17:1', 'key:67:1', 'key:67:0', 'key:17:0']), JSON.stringify(s));
-    check('Ctrl bırakıldı (vurgu kalktı)', await ev("!document.querySelector('.tus-cubugu button[data-vk=\"17\"]').classList.contains('on')"));
+    check('Ctrl bırakıldı (vurgu kalktı)', await ev(`!${T_(17)}.classList.contains('on')`));
     await call('Input.insertText', { text: 'ş' });
     await sleep(50);
     s = await sent();
     check('değiştiricisiz yazı çekirdekten metin olarak gider', JSON.stringify(s) === '[{"t":"text","s":"ş"}]', JSON.stringify(s));
-    await ev("document.querySelector('.tus-cubugu button[data-vk=\"18\"]').click()");
-    await ev("document.querySelector('.tus-cubugu button[data-vk=\"115\"]').click()");
+    await ev(`${T_(18)}.click()`);
+    await ev("document.querySelector('#tusPanel [data-sekme=\"f\"]').click()");
+    await ev(`${T_(115)}.click()`);
     s = await sent();
-    check('Alt + F4 düğmeleri', JSON.stringify(s.map((m) => `${m.vk}${m.down ? 'v' : '^'}`)) === '["18v","115v","115^","18^"]', JSON.stringify(s));
-    await ev("document.querySelector('.tus-cubugu button[data-vk=\"91\"]').click()");
-    await ev("document.querySelector('.tus-cubugu button[data-vk=\"91\"]').click()");
+    check('Alt (yapışkan) + F4 düğmeleri (sekme değişse de)', JSON.stringify(s.map((m) => `${m.vk}${m.down ? 'v' : '^'}`)) === '["18v","115v","115^","18^"]', JSON.stringify(s));
+    await ev("document.querySelector('#tusPanel [data-sekme=\"gezinme\"]').click()");
+    await ev(`${T_(91)}.click()`);
+    await ev(`${T_(91)}.click()`);
     s = await sent();
-    check('değiştiriciye ikinci dokunuş iptal eder', s.length === 0 && await ev("!document.querySelector('.tus-cubugu button[data-vk=\"91\"]').classList.contains('on')"));
-    // ---- Ekran klavyesi: görüntüleyici görünür alana (visualViewport) yerleşir ----
-    await ev("document.querySelector('.tus-cubugu') && (document.getElementById('tusBtn').click())"); // tuş çubuğunu kapat
+    check('değiştiriciye ikinci dokunuş iptal eder', s.length === 0 && await ev(`!${T_(91)}.classList.contains('on')`));
+    await ev("document.querySelector('#tusPanel .rc-x').click()");
     await ev("document.getElementById('kbInput').blur()");
     const rectOf = (sel) => ev(`(() => { const r = document.querySelector('${sel}').getBoundingClientRect(); return { top: r.top, bottom: r.bottom, h: r.height }; })()`);
     // Görüntünün (object-fit: contain) sahnedeki gerçek alanı, dönüşüm dahil.

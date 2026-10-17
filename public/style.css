@@ -59,13 +59,67 @@ input.code { font-size: 26px; letter-spacing: 8px; text-align: center; }
 /* Görünür alana (visualViewport) yerleşir: ekran klavyesi açılınca görüntü klavyenin üstünde kalır (app.js fitViewport).
    touch-action: manipulation: araç çubuğunda çift dokunma yakınlaştırması ve 300 ms tıklama gecikmesi olmasın. */
 #vViewer { position: fixed; left: 0; right: 0; top: var(--vv-top, 0px); height: var(--vv-h, 100%); display: flex; flex-direction: column; touch-action: manipulation; }
-#toolbar { display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: var(--panel); flex-wrap: wrap; }
-#toolbar button, #toolbar select { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 5px 9px; font-size: 14px; }
-.status { color: var(--error); }
+/* Dokunmatikte: çift dokunma yakınlaştırması / 300 ms gecikme olmasın, uzun basınca seçim/büyüteç çıkmasın */
+button, .menu-row { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+#toolbar, .rc-panel button, .menu-row { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+
+/* Araç çubuğu: her genişlikte tek satır; taşan olmasın diye öğeler küçülebilir */
+#toolbar { display: flex; align-items: center; gap: 4px; flex: none; flex-wrap: nowrap; overflow: hidden; background: var(--panel);
+  border-bottom: 1px solid var(--line); padding: 4px max(6px, env(safe-area-inset-right)) 4px max(6px, env(safe-area-inset-left)); }
+#toolbar button, #toolbar select { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 0 10px;
+  font-size: 15px; height: 40px; min-width: 40px; flex: none; position: relative; white-space: nowrap; }
+#toolbar button.on { background: var(--accent); border-color: var(--accent); }
+#toolbar button:disabled { opacity: .45; }
+@media (any-pointer: coarse) { #toolbar button { height: 44px; min-width: 44px; } }
+#menuBtn { font-size: 20px !important; font-weight: 700; }
+.tb-bosluk { flex: 1 1 0; min-width: 0; }
+.tb-pins { display: flex; gap: 4px; flex: none; }
+.tb-pins:empty { display: none; }
+#toolbar .tb-pin { padding: 0; width: 40px; }
+/* Telefonda (dar ekran) yalnızca en sık kullanılanlar çubukta; geri kalanı ⋯ menüde */
+@media (max-width: 719px) { .tb-wide { display: none !important; } }
+@media (max-width: 519px) { .tb-label { display: none; } }
+.status { color: var(--error); font-size: 10px; flex: none; padding: 0 2px; }
 .status.on { color: var(--ok); }
-.badge { background: #3f3f46; border-radius: 6px; padding: 2px 8px; font-size: 12px; }
-.fps { margin-left: auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
-#showBtn { position: fixed; top: 0; left: 50%; transform: translateX(-50%); z-index: 5; background: var(--panel); border-radius: 0 0 8px 8px; padding: 2px 14px; opacity: .6; }
+.badge { background: #3f3f46; border-radius: 6px; padding: 2px 8px; font-size: 12px; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.fps { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; flex: none; padding: 0 4px; }
+#showBtn { position: absolute; top: env(safe-area-inset-top); left: 50%; transform: translateX(-50%); z-index: 5; background: var(--panel); border-radius: 0 0 10px 10px; padding: 4px 18px; opacity: .7; }
+/* Salt izleme rolünde kontrol öğeleri, ikinci ekranda anlamsız öğeler gizli */
+body.rc-salt .ctl, body.rc-genislet .no-extend { display: none !important; }
+.mdot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); flex: none; }
+#toolbar .mdot { position: absolute; top: 3px; right: 3px; }
+
+/* Ortak panel (RC.ui.panel): başlık + ✕; açılır (drop) ya da görüntünün altına kenetli (dock) */
+.rc-panel { background: var(--panel); border: 1px solid var(--line); color: var(--text); display: flex; flex-direction: column; min-height: 0; }
+.rc-panel.drop { position: fixed; z-index: 40; top: 56px; right: max(8px, env(safe-area-inset-right)); width: min(380px, calc(100vw - 16px));
+  max-height: calc(100vh - 70px); border-radius: 14px; box-shadow: 0 10px 34px rgba(0,0,0,.55); }
+.rc-panel.dock { flex: none; border-width: 1px 0 0; padding-bottom: env(safe-area-inset-bottom); }
+.rc-panel-bas { display: flex; align-items: center; gap: 6px; flex: none; padding: 4px 4px 4px 14px; border-bottom: 1px solid var(--line); min-width: 0; }
+.rc-panel-bas h3 { margin: 0; font-size: 15px; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-x { flex: none; width: 44px; height: 44px; padding: 0; margin-left: auto; background: transparent; border: 0; border-radius: 10px; font-size: 18px; color: var(--muted); }
+.rc-x:hover, .rc-x:active { background: var(--panel2); color: var(--text); }
+.rc-panel-ic { padding: 10px 12px 12px; overflow: auto; display: grid; gap: 8px; align-content: start; min-height: 0;
+  -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+
+/* ⋯ Menü */
+.menu-list { display: grid; gap: 2px; }
+#vViewer > .menu-list { display: none; } /* panele taşınmadan önce görünmesin */
+.menu-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; padding: 6px 10px; margin: 0;
+  background: transparent; border: 0; border-radius: 10px; text-align: left; color: var(--text); font-size: 15px; cursor: pointer; }
+.menu-row:hover, .menu-row:active { background: var(--panel2); }
+.menu-row:disabled { opacity: .5; cursor: default; background: transparent; }
+.menu-row .mi { width: 26px; flex: none; text-align: center; font-size: 19px; }
+.menu-row .ml { flex: 1 1 auto; min-width: 0; }
+.menu-row .ms { flex: none; max-width: 50%; color: var(--muted); font-size: 13px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-row.on .ms { color: var(--ok); }
+.menu-row.on .mi { filter: drop-shadow(0 0 4px var(--accent)); }
+.menu-row select { flex: none; max-width: 55%; padding: 8px 10px; }
+.menu-sep { height: 1px; background: var(--line); margin: 4px 6px; }
+.menu-info { margin: 0 0 4px; padding: 2px 10px 6px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.menu-info::first-letter { color: var(--ok); }
+.menu-info.kopuk::first-letter { color: var(--error); }
+.menu-hint { margin: 2px 0; padding: 8px 10px; border-radius: 10px; background: var(--bg); color: var(--muted); font-size: 13px; }
+.menu-hint b { color: var(--text); font-weight: 600; }
 /* iOS: uzun basmada büyüteç/bağlam menüsü, metin seçimi, dokunma vurgusu ve çift dokunma yakınlaştırması olmasın. */
 #stage { flex: 1; min-height: 0; position: relative; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none;
   -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; background: #000; }

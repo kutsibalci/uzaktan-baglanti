@@ -1,4 +1,5 @@
-// Telefon deneyimi: mobil tuş çubuğu (yapışkan Ctrl/Alt/Shift/Win, ok tuşları, F1–F12 ...) ve PWA (service worker).
+// Telefon deneyimi: "Tuşlar" paneli (kısayollar, yapışkan Ctrl/Alt/Shift/Win + gezinme tuşları, F1–F12) ve PWA (service worker).
+// Panel görüntünün altına kenetlenir (ekranı örtmez); masaüstü tarayıcıda da kullanılır.
 // Dokunmatik fare modu ve yakınlaştırma çekirdekte (public/app.js "Dokunmatik" bölümü + public/dokunmatik.js).
 (() => {
   const MOD_VKS = new Set([16, 17, 18, 91]);
@@ -22,9 +23,44 @@
     return out;
   }
 
+  // Yapışkan değiştiriciler + kısayolun kendi değiştiricileri (tekrarsız, önce yapışkanlar): Shift yapışkanken Alt+Tab → Shift+Alt+Tab.
+  const mergeMods = (sticky, own = []) => [...sticky, ...own.filter((vk) => !sticky.includes(vk))];
+
+  // Kısayollar. Kilitle: Windows, programın gönderdiği Win+L'yi yok sayar; bu yüzden güç özelliğinin kilitle komutu
+  // (LockWorkStation, yalnızca yönetici) kullanılır.
+  const KISAYOLLAR = [
+    { k: 'kopyala', ad: 'Kopyala', ipucu: 'Ctrl+C', mods: [17], vk: 67 },
+    { k: 'yapistir', ad: 'Yapıştır', ipucu: 'Ctrl+V', mods: [17], vk: 86 },
+    { k: 'kes', ad: 'Kes', ipucu: 'Ctrl+X', mods: [17], vk: 88 },
+    { k: 'tumu', ad: 'Tümünü seç', ipucu: 'Ctrl+A', mods: [17], vk: 65 },
+    { k: 'geri', ad: 'Geri al', ipucu: 'Ctrl+Z', mods: [17], vk: 90 },
+    { k: 'yinele', ad: 'Yinele', ipucu: 'Ctrl+Y', mods: [17], vk: 89 },
+    { k: 'kaydet', ad: 'Kaydet', ipucu: 'Ctrl+S', mods: [17], vk: 83 },
+    { k: 'bul', ad: 'Bul', ipucu: 'Ctrl+F', mods: [17], vk: 70 },
+    { k: 'alttab', ad: 'Pencereler', ipucu: 'Alt+Tab', mods: [18], vk: 9 },
+    { k: 'altf4', ad: 'Kapat', ipucu: 'Alt+F4', mods: [18], vk: 115, onay: 'Bilgisayardaki etkin pencere kapatılsın mı? (Alt+F4)\n\nKaydedilmemiş işler kaybolabilir.' },
+    { k: 'win', ad: 'Başlat', ipucu: 'Win', mods: [], vk: 91 },
+    { k: 'masaustu', ad: 'Masaüstü', ipucu: 'Win+D', mods: [91], vk: 68 },
+    { k: 'gezgin', ad: 'Gezgin', ipucu: 'Win+E', mods: [91], vk: 69 },
+    { k: 'gorev', ad: 'Görev Yön.', ipucu: 'Ctrl+Shift+Esc', mods: [17, 16], vk: 27 },
+    { k: 'ekran', ad: 'Ekran alıntısı', ipucu: 'Win+Shift+S', mods: [91, 16], vk: 83 },
+    { k: 'kilitle', ad: 'Kilitle', ipucu: 'Win+L', guc: 'kilitle', yonetici: true, onay: 'Bilgisayar kilitlensin mi?\n\nKilitlenince ekran uzaktan görünmez (kilit ekranı desteği henüz yok); açmak için bilgisayarın başında şifre gerekir.' },
+  ];
+
+  // Gezinme grubu: 7 sütunlu ızgara; oklar sağda yön tuşu düzeninde. [etiket, vk, { mod, c: sütun, r: satır, s: genişlik, title }]
+  const GEZINME = [
+    ['Ctrl', 17, { mod: true, c: 1, r: 1 }], ['Alt', 18, { mod: true, c: 2, r: 1 }], ['Shift', 16, { mod: true, c: 3, r: 1 }], ['Win', 91, { mod: true, c: 4, r: 1 }],
+    ['Esc', 27, { c: 5, r: 1 }], ['Tab', 9, { c: 6, r: 1 }], ['Del', 46, { c: 7, r: 1, title: 'Delete (sil)' }],
+    ['Home', 36, { c: 1, r: 2 }], ['End', 35, { c: 2, r: 2 }], ['⌫', 8, { c: 3, r: 2, s: 2, title: 'Geri sil (Backspace)' }],
+    ['↑', 38, { c: 6, r: 2, title: 'Yukarı' }],
+    ['PgUp', 33, { c: 1, r: 3 }], ['PgDn', 34, { c: 2, r: 3 }], ['↵ Enter', 13, { c: 3, r: 3, s: 2 }],
+    ['←', 37, { c: 5, r: 3, title: 'Sol' }], ['↓', 40, { c: 6, r: 3, title: 'Aşağı' }], ['→', 39, { c: 7, r: 3, title: 'Sağ' }],
+  ];
+  const F_TUSLARI = Array.from({ length: 12 }, (_, i) => [`F${i + 1}`, 112 + i]);
+
   // Node testleri için saf fonksiyonlar (tarayıcıda module yok).
   if (typeof module === 'object' && module.exports) {
-    module.exports = { charToVk, comboMessages, MOD_VKS };
+    module.exports = { charToVk, comboMessages, mergeMods, MOD_VKS, KISAYOLLAR, GEZINME, F_TUSLARI };
     return;
   }
 
@@ -37,110 +73,192 @@
     navigator.serviceWorker.register('sw.js').catch((e) => console.warn('Service worker kaydedilemedi:', e));
   }
 
-  // ---------- Tuş çubuğu ----------
-
-  const KEYS = [
-    ['Esc', 27], ['Tab', 9],
-    ['Ctrl', 17, true], ['Alt', 18, true], ['Shift', 16, true], ['Win', 91, true],
-    '|',
-    ['←', 37], ['↑', 38], ['↓', 40], ['→', 39],
-    '|',
-    ['Home', 36], ['End', 35], ['PgUp', 33], ['PgDn', 34], ['Del', 46],
-    '|',
-    ...Array.from({ length: 12 }, (_, i) => [`F${i + 1}`, 112 + i]),
-  ];
+  // ---------- Tuşlar paneli ----------
 
   const style = document.createElement('style');
   style.textContent = `
-    .tus-cubugu { display: flex; gap: 6px; overflow-x: auto; padding: 6px 8px; background: var(--panel); border-top: 1px solid var(--line);
-      -webkit-overflow-scrolling: touch; scrollbar-width: none; touch-action: pan-x; user-select: none; -webkit-user-select: none; }
-    .tus-cubugu::-webkit-scrollbar { display: none; }
-    .tus-cubugu button { flex: 0 0 auto; min-width: 44px; padding: 8px 10px; font-size: 14px; border-radius: 8px;
-      background: var(--panel2); border: 1px solid var(--line); }
-    .tus-cubugu button.on { background: var(--accent); border-color: var(--accent); }
-    .tus-cubugu .ayrac { flex: 0 0 1px; background: var(--line); margin: 4px 2px; }
-    #tusBtn.on { background: var(--accent); border-color: var(--accent); }
+    #tusPanel .rc-panel-bas { padding-left: 6px; }
+    #tusPanel .rc-panel-bas h3 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    #tusPanel .tus-sekmeler { display: flex; gap: 4px; flex: 1 1 auto; min-width: 0; }
+    #tusPanel .tus-sekmeler button { flex: 1 1 0; min-width: 0; height: 40px; padding: 0 6px; border-radius: 10px; font-size: 14px;
+      background: transparent; border: 1px solid transparent; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; }
+    #tusPanel .tus-sekmeler button.active { background: var(--panel2); border-color: var(--line); color: var(--text); }
+    #tusPanel .tus-sekmeler button.yapiskan::after { content: ''; position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+    #tusPanel .rc-panel-ic { padding: 8px; height: var(--tus-yukseklik, 210px); } /* sabit: sekme değişince görüntü zıplamasın */
+    #tusPanel .tus-grup { display: grid; gap: 6px; width: 100%; max-width: 760px; margin: 0 auto; }
+    #tusPanel .tus-grup[data-grup="kisayol"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    #tusPanel .tus-grup[data-grup="gezinme"] { grid-template-columns: repeat(7, minmax(0, 1fr)); grid-template-rows: repeat(3, 44px); }
+    #tusPanel .tus-grup[data-grup="f"] { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+    @media (min-width: 720px) {
+      #tusPanel .tus-grup[data-grup="kisayol"] { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+      #tusPanel .tus-grup[data-grup="f"] { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+    }
+    #tusPanel .tus-grup button { min-width: 0; min-height: 44px; padding: 2px 4px; border-radius: 10px; font-size: 15px;
+      background: var(--panel2); border: 1px solid var(--line); line-height: 1.15; overflow: hidden; }
+    #tusPanel .tus-grup button:active { background: var(--line); }
+    #tusPanel .tus-grup button.mod { border-color: #4b5568; color: #c7d2fe; }
+    #tusPanel .tus-grup button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+    #tusPanel .tus-grup button.ok { font-size: 20px; }
+    #tusPanel .tus-grup[data-grup="kisayol"] button { display: grid; align-content: center; gap: 1px; padding: 4px 2px; }
+    #tusPanel .tus-grup[data-grup="kisayol"] b { font-weight: 500; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #tusPanel .tus-grup[data-grup="kisayol"] small { color: var(--muted); font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #tusPanel .tus-grup[data-grup="kisayol"] button.dikkat b { color: #fca5a5; }
   `;
   document.head.appendChild(style);
 
   const kbInput = document.getElementById('kbInput');
-  const toolbar = document.getElementById('toolbar');
 
+  // Araç çubuğu düğmesi (⌨'nin hemen yanında)
   const toggle = document.createElement('button');
   toggle.id = 'tusBtn';
-  toggle.className = 'ctl touch-only';
-  toggle.title = 'Tuş çubuğu (Esc, Ctrl, oklar, F1–F12 ...)';
-  toggle.textContent = 'Fn';
+  toggle.className = 'ctl'; // salt izleme rolünde çekirdek gizler
+  toggle.title = 'Özel tuşlar: kısayollar, Ctrl/Alt/Shift/Win, oklar, F1–F12';
+  toggle.setAttribute('aria-label', 'Özel tuşlar');
+  toggle.textContent = 'Tuşlar';
   document.getElementById('kbBtn').after(toggle);
 
-  const bar = document.createElement('div');
-  bar.className = 'tus-cubugu touch-only';
-  bar.hidden = true;
-  bar.setAttribute('role', 'toolbar');
-  bar.setAttribute('aria-label', 'Özel tuşlar');
-  const modButtons = new Map(); // vk -> düğme
-  for (const k of KEYS) {
-    if (k === '|') {
-      const s = document.createElement('span');
-      s.className = 'ayrac';
-      bar.appendChild(s);
-      continue;
-    }
-    const [label, vk, isMod] = k;
+  const SEKMELER = [['kisayol', 'Kısayollar'], ['gezinme', 'Ctrl · Oklar'], ['f', 'F1–F12']];
+  let sekme = 'kisayol';
+  try { if (SEKMELER.some(([k]) => k === localStorage.getItem('tusSekme'))) sekme = localStorage.getItem('tusSekme'); } catch { /* gizli sekme */ }
+
+  const panel = RC.ui.panel('Özel tuşlar', {
+    id: 'tusPanel', dock: 'bottom', className: 'ctl', anchor: toggle,
+    onOpen() { toggle.classList.add('on'); boyutla(); },
+    onClose() { toggle.classList.remove('on'); clearSticky(); },
+  });
+  const sekmeler = document.createElement('div');
+  sekmeler.className = 'tus-sekmeler';
+  sekmeler.setAttribute('role', 'tablist');
+  sekmeler.innerHTML = SEKMELER.map(([k, ad]) => `<button type="button" role="tab" data-sekme="${k}">${ad}</button>`).join('');
+  panel.head.insertBefore(sekmeler, panel.head.querySelector('.rc-x'));
+
+  const grup = (ad) => {
+    const g = document.createElement('div');
+    g.className = 'tus-grup';
+    g.dataset.grup = ad;
+    g.setAttribute('role', 'tabpanel');
+    panel.body.appendChild(g);
+    return g;
+  };
+  const tusDugmesi = (etiket, vk, o = {}) => {
     const b = document.createElement('button');
     b.type = 'button';
-    b.textContent = label;
+    b.textContent = etiket;
     b.dataset.vk = vk;
-    if (isMod) { b.dataset.mod = '1'; b.title = `${label} (yapışkan: sonraki tuşla birlikte basılır)`; modButtons.set(vk, b); }
-    bar.appendChild(b);
-  }
-  toolbar.after(bar);
+    if (o.title) b.title = o.title;
+    if (o.c) b.style.gridColumn = `${o.c} / span ${o.s || 1}`;
+    if (o.r) b.style.gridRow = String(o.r);
+    if (/^[←↑↓→]$/.test(etiket)) b.classList.add('ok');
+    return b;
+  };
 
-  let open = false;
-  try { open = localStorage.getItem('tusCubugu') === '1'; } catch { /* gizli sekme */ }
+  // (a) Kısayollar
+  const gKisayol = grup('kisayol');
+  for (const k of KISAYOLLAR) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.kisayol = k.k;
+    b.title = `${k.ad} (${k.ipucu})`;
+    b.innerHTML = `<b>${RC.esc(k.ad)}</b><small>${RC.esc(k.ipucu)}</small>`;
+    if (k.onay) b.classList.add('dikkat');
+    if (k.yonetici) b.dataset.yonetici = '1';
+    gKisayol.appendChild(b);
+  }
+  // (b) Değiştiriciler + gezinme
+  const gGezinme = grup('gezinme');
+  const modButtons = new Map(); // vk -> düğme
+  for (const [etiket, vk, o] of GEZINME) {
+    const b = tusDugmesi(etiket, vk, o);
+    if (o.mod) {
+      b.dataset.mod = '1';
+      b.classList.add('mod');
+      b.title = `${etiket} (yapışkan: sonraki tuşla birlikte basılır, ikinci dokunuş bırakır)`;
+      modButtons.set(vk, b);
+    }
+    gGezinme.appendChild(b);
+  }
+  // (c) F1–F12
+  const gF = grup('f');
+  for (const [etiket, vk] of F_TUSLARI) gF.appendChild(tusDugmesi(etiket, vk));
+
+  function sekmeSec(ad) {
+    sekme = ad;
+    try { localStorage.setItem('tusSekme', ad); } catch { /* gizli sekme */ }
+    sekmeler.querySelectorAll('button').forEach((b) => {
+      b.classList.toggle('active', b.dataset.sekme === ad);
+      b.setAttribute('aria-selected', String(b.dataset.sekme === ad));
+    });
+    panel.body.querySelectorAll('.tus-grup').forEach((g) => { g.hidden = g.dataset.grup !== ad; });
+  }
+  sekmeler.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-sekme]');
+    if (b) sekmeSec(b.dataset.sekme);
+  });
+  sekmeSec(sekme);
+
+  // Ekran klavyesi açıkken (iPhone'da görünür alan küçülür) panel görüntüyü tamamen kapatmasın.
+  function boyutla() {
+    const vh = window.visualViewport?.height || window.innerHeight;
+    panel.el.style.setProperty('--tus-yukseklik', `${Math.max(104, Math.min(210, Math.round(vh * 0.42) - 50))}px`);
+  }
+  window.visualViewport?.addEventListener('resize', () => { if (panel.isOpen()) boyutla(); });
+  window.addEventListener('resize', () => { if (panel.isOpen()) boyutla(); });
+
   const sticky = new Set(); // basılı tutulacak değiştiriciler (vk), seçilme sırasıyla
 
+  function stickyGoster() {
+    for (const [vk, b] of modButtons) b.classList.toggle('on', sticky.has(vk));
+    sekmeler.querySelector('[data-sekme="gezinme"]').classList.toggle('yapiskan', sticky.size > 0);
+  }
   function clearSticky() {
     sticky.clear();
-    for (const b of modButtons.values()) b.classList.remove('on');
+    stickyGoster();
   }
 
+  const isAdmin = () => RC.state().me?.role === 'admin';
   function refresh() {
     const st = RC.state();
-    const usable = !!st.stream && st.stream.mode !== 'extend' && st.me?.role !== 'view';
-    bar.hidden = !(open && usable);
-    toggle.classList.toggle('on', open);
-    if (bar.hidden) clearSticky();
+    const usable = !!st.stream && st.me?.role !== 'view';
+    if (!usable) panel.close();
+    gKisayol.querySelectorAll('[data-yonetici]').forEach((b) => { b.hidden = !isAdmin(); });
   }
 
   toggle.addEventListener('click', () => {
-    open = !open;
-    try { localStorage.setItem('tusCubugu', open ? '1' : '0'); } catch { /* gizli sekme */ }
-    refresh();
+    if (!RC.state().stream) return;
+    panel.toggle();
   });
   RC.on('viewer:start', refresh);
   RC.on('viewer:stop', refresh);
+  RC.on('auth', refresh);
   RC.on('disconnect', clearSticky);
 
-  function sendCombo(key) {
-    for (const m of comboMessages([...sticky], key)) RC.send(m);
+  function sendCombo(key, own = []) {
+    for (const m of comboMessages(mergeMods([...sticky], own), key)) RC.send(m);
     clearSticky();
   }
 
   // Ekran klavyesi açıksa düğmeye basınca kapanmasın: odak kbInput'ta kalsın.
   let kbWasFocused = false;
-  bar.addEventListener('pointerdown', () => { kbWasFocused = document.activeElement === kbInput; });
-  bar.addEventListener('mousedown', (e) => e.preventDefault());
-  bar.addEventListener('click', (e) => {
+  panel.el.addEventListener('pointerdown', () => { kbWasFocused = document.activeElement === kbInput; });
+  panel.el.addEventListener('mousedown', (e) => e.preventDefault());
+  panel.el.addEventListener('click', (e) => {
+    if (kbWasFocused && document.activeElement !== kbInput && !e.target.closest('.rc-x')) kbInput.focus();
+    const kb = e.target.closest('button[data-kisayol]');
+    if (kb) {
+      const k = KISAYOLLAR.find((x) => x.k === kb.dataset.kisayol);
+      if (!k || !RC.canInput()) return;
+      if (k.onay && !confirm(k.onay)) { clearSticky(); return; }
+      if (k.guc) { clearSticky(); RC.send({ t: 'guc', islem: k.guc }); return; }
+      sendCombo({ vk: k.vk }, k.mods);
+      return;
+    }
     const b = e.target.closest('button[data-vk]');
-    if (!b) return;
-    if (kbWasFocused && document.activeElement !== kbInput) kbInput.focus();
-    if (!RC.canInput()) return;
+    if (!b || !RC.canInput()) return;
     const vk = Number(b.dataset.vk);
     if (b.dataset.mod) {
       // Değiştirici: aç/kapat (ikinci dokunuş iptal eder).
       if (sticky.has(vk)) sticky.delete(vk); else sticky.add(vk);
-      b.classList.toggle('on', sticky.has(vk));
+      stickyGoster();
       return;
     }
     sendCombo({ vk });

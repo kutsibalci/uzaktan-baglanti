@@ -5,7 +5,9 @@
 
   const style = document.createElement('style');
   style.textContent = `
-    .guc-panel { background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; gap: 10px; }
+    .guc-panel { background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 6px 12px 12px; display: grid; gap: 10px; }
+    .guc-panel .guc-bas { display: flex; align-items: center; gap: 8px; }
+    .guc-panel .guc-bas p { flex: 1; }
     .guc-panel .guc-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .guc-panel .guc-btns button { background: var(--panel); border: 1px solid var(--line); }
     .guc-panel .guc-btns button.danger { background: #7f1d1d; border-color: #7f1d1d; }
@@ -39,13 +41,16 @@
   panel.className = 'guc-panel';
   panel.hidden = true;
   panel.innerHTML = `
-    <p class="muted small">Kilitlenince ekran uzaktan görünmez (kilit ekranı desteği henüz yok).</p>
+    <div class="guc-bas"><p class="muted small">Kilitlenince ekran uzaktan görünmez (kilit ekranı desteği henüz yok).</p>
+      <button type="button" class="rc-x" data-act="kapat" title="Kapat" aria-label="Kapat">✕</button></div>
     <div class="guc-btns">${SECENEKLER.map((s) => `<button class="small${s.tehlikeli ? ' danger' : ''}" data-islem="${s.islem}">${s.ad}</button>`).join('')}</div>
     <p class="msg"></p>`;
   const msg = panel.querySelector('.msg');
 
   btn.addEventListener('click', () => { panel.hidden = !panel.hidden; msg.textContent = ''; });
+  RC.ui.closable(panel, () => { panel.hidden = true; }); // Esc ile kapanır
   panel.addEventListener('click', (e) => {
+    if (e.target.closest('[data-act="kapat"]')) { panel.hidden = true; return; }
     const b = e.target.closest('button[data-islem]');
     if (!b) return;
     const s = SECENEKLER.find((x) => x.islem === b.dataset.islem);

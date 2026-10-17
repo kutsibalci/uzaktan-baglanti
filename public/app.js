@@ -266,7 +266,8 @@
     list.forEach((s, i) => {
       const o = document.createElement('option');
       o.value = s.name;
-      o.textContent = `Ekran ${i + 1} — ${s.w}×${s.h}${s.primary ? ' (ana)' : ''}`;
+      // title sunucudan gelir ("Ekran 2 (1920×1080)", sanal ekranda "Sanal ekran (…)"); eski sunucu için yedek.
+      o.textContent = `${s.title || `Ekran ${i + 1} — ${s.w}×${s.h}`}${s.primary ? ' (ana)' : ''}`;
       sel.appendChild(o);
     });
     if (current) sel.value = current;
@@ -316,9 +317,10 @@
     screens = m.screens || screens;
     stream = { mode: m.mode, screen: m.screen, started: true };
     const extend = m.mode === 'extend';
-    $('screenSel').hidden = extend || screens.length < 2;
+    $('screenRow').hidden = extend || screens.length < 2;
     fillScreens($('screenSel'), screens, m.screen);
-    $('quality').hidden = extend;
+    $('qualityRow').hidden = extend;
+    document.body.classList.toggle('rc-genislet', extend); // .no-extend öğeler gizlenir
     codecLabel = m.codec === 'h264' ? `H.264${m.encoder ? ` (${m.encoder})` : ''}` : 'JPEG';
     if (m.codec !== 'h264') closeDecoder();
     send({ t: 'settings', ...(extend ? EXTEND_SETTINGS : QUALITY[$('quality').value]) });
@@ -333,7 +335,8 @@
   function applyRole() {
     const viewOnly = me?.role === 'view';
     $('viewOnly').hidden = !viewOnly;
-    document.querySelectorAll('#toolbar .ctl').forEach((el) => { el.hidden = viewOnly; });
+    // .ctl öğeler (araç çubuğu, menü, paneller) salt izlemede CSS ile gizlenir; özelliklerin kendi hidden durumu bozulmaz.
+    document.body.classList.toggle('rc-salt', viewOnly);
   }
 
   // afterStill: bu kareden önce ekran durağandı (sunucu 'durgun' bildirdi); aradaki süre kare aralığı sayılmaz.
@@ -527,29 +530,249 @@
     stream.screen = e.target.value;
     send({ t: 'screen', name: e.target.value });
   });
-  $('fsBtn').addEventListener('click', () => {
-    if (document.fullscreenElement) document.exitFullscreen();
-    else document.documentElement.requestFullscreen?.().catch(() => {});
-  });
-  $('hideBtn').addEventListener('click', () => { $('toolbar').hidden = true; $('showBtn').hidden = false; });
   $('showBtn').addEventListener('click', () => { $('toolbar').hidden = false; $('showBtn').hidden = true; });
   $('kbBtn').addEventListener('click', () => { kbInput.value = ''; kbInput.focus(); });
+  // Özel tuşlar (Kısayollar / Ctrl·Oklar / F1–F12) public/features/telefon.js'teki "Tuşlar" panelinde.
 
-  const COMBOS = {
-    win: [91],
-    alttab: [18, 9],
-    esc: [27],
-    taskmgr: [17, 16, 27],
-    showdesk: [91, 68],
-    copy: [17, 67],
-    paste: [17, 86],
-  };
-  $('keysSel').addEventListener('change', (e) => {
-    const keys = COMBOS[e.target.value];
-    e.target.value = '';
-    if (!keys) return;
-    keys.forEach((vk) => send({ t: 'key', vk, down: true }));
-    [...keys].reverse().forEach((vk) => send({ t: 'key', vk, down: false }));
+  // ---------- Paneller ve menü ----------
+  // RC.ui.panel(başlık, seçenekler): köşesinde ✕ olan ortak panel. Esc ile, açılır (drop) panellerde dışarı dokununca da kapanır;
+  // aynı anda tek açılır panel açık kalır. Kenetli panel (dock: 'bottom') görüntünün altına yerleşir, ekranı örtmez,
+  // dışarı dokunmak onu kapatmaz (ekrana dokunup tıklamak sürebilsin). Görüntünün üstüne dokunup bir açılır paneli kapatan
+  // dokunuş bilgisayara tıklama olarak gitmez.
+  // RC.ui.closable(el, kapat): kendi kabuğu olan bir öğeyi (ör. tam ekran dosya paneli) Esc ile kapanacak şekilde kaydeder.
+  // RC.ui.menuItem({...}): ⋯ menüsüne satır ekler; pin: true ise geniş ekranda çubukta simge olarak da görünür.
+
+  const toolbarEl = $('toolbar');
+  const panels = []; // { el, close, drop, dismiss, anchors, openedAt }
+
+  function trackPanel(entry) {
+    entry.openedAt = entry.el.hidden ? 0 : performance.now();
+    new MutationObserver(() => { if (!entry.el.hidden) entry.openedAt = performance.now(); })
+      .observe(entry.el, { attributes: true, attributeFilter: ['hidden'] });
+    panels.push(entry);
+    return entry;
+  }
+  const openPanels = () => panels.filter((p) => !p.el.hidden && p.el.isConnected);
+
+  // Açılır panel çubuğun hemen altında açılır (çubuk gizliyse ekranın üstünde); yükseklik görünür alana sığar.
+  function placeDrop(el) {
+    const vh = window.visualViewport?.height || window.innerHeight;
+    const bar = visible('vViewer') && !toolbarEl.hidden ? Math.round(toolbarEl.getBoundingClientRect().bottom) : 0;
+    const top = bar + 6;
+    el.style.top = bar ? `${top}px` : `calc(${top}px + env(safe-area-inset-top))`;
+    el.style.maxHeight = `${Math.max(160, Math.round(vh - top - 8))}px`;
+  }
+  const relayout = () => { for (const p of openPanels()) if (p.drop) placeDrop(p.el); };
+  window.addEventListener('resize', relayout);
+  window.visualViewport?.addEventListener('resize', relayout);
+
+  function panel(title, opts = {}) {
+    const el = document.createElement('div');
+    el.className = `rc-panel ${opts.dock ? 'dock' : 'drop'}${opts.className ? ` ${opts.className}` : ''}`;
+    if (opts.id) el.id = opts.id;
+    el.hidden = true;
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', title);
+    el.innerHTML = '<div class="rc-panel-bas"><h3></h3><button type="button" class="rc-x" title="Kapat" aria-label="Kapat">✕</button></div><div class="rc-panel-ic"></div>';
+    const head = el.firstChild, body = el.lastChild;
+    head.querySelector('h3').textContent = title;
+    const anchors = new Set([].concat(opts.anchor || []).filter(Boolean));
+    const p = {
+      el, head, body,
+      isOpen: () => !el.hidden,
+      open() {
+        if (entry.drop) {
+          for (const o of openPanels()) if (o.drop && o !== entry) o.close();
+          placeDrop(el);
+        }
+        if (!el.hidden) return;
+        el.hidden = false;
+        opts.onOpen?.();
+      },
+      close() {
+        if (el.hidden) return;
+        el.hidden = true;
+        opts.onClose?.();
+      },
+      toggle() { if (el.hidden) p.open(); else p.close(); },
+      addAnchor(a) { if (a) anchors.add(a); },
+      setTitle(t) { head.querySelector('h3').textContent = t; el.setAttribute('aria-label', t); },
+    };
+    const entry = trackPanel({ el, drop: !opts.dock, dismiss: opts.dismiss ?? !opts.dock, anchors, close: () => p.close() });
+    head.querySelector('.rc-x').addEventListener('click', () => p.close());
+    if (opts.dock) $('stage').after(el);
+    else document.body.appendChild(el);
+    return p;
+  }
+
+  function closable(el, close, opts = {}) {
+    trackPanel({ el, close, drop: false, dismiss: !!opts.dismiss, anchors: new Set([].concat(opts.anchor || []).filter(Boolean)) });
+  }
+
+  // Dışarı dokununca kapanma. Kapatan dokunuş görüntünün üstündeyse o hareketin tamamı yutulur (bilgisayara gitmez).
+  let swallowing = false;
+  const inStage = (t) => t instanceof Node && stage.contains(t);
+  function onOutside(e) {
+    const t = e.target;
+    const start = e.type === 'pointerdown' || e.type === 'touchstart' || e.type === 'mousedown';
+    if (swallowing) {
+      if (inStage(t)) {
+        e.stopImmediatePropagation();
+        if (e.cancelable && e.type !== 'pointerdown') e.preventDefault();
+      }
+      const end = e.type === 'pointerup' || e.type === 'pointercancel' || e.type === 'mouseup' || e.type === 'touchcancel'
+        || (e.type === 'touchend' && !e.touches.length);
+      if (end) swallowing = false;
+      return;
+    }
+    if (!start) return;
+    let closed = false;
+    for (const p of openPanels()) {
+      if (!p.dismiss || p.el.contains(t) || [...p.anchors].some((a) => a.contains(t))) continue;
+      p.close();
+      closed = true;
+    }
+    if (closed && inStage(t)) {
+      swallowing = true;
+      e.stopImmediatePropagation();
+      if (e.cancelable && e.type !== 'pointerdown') e.preventDefault();
+    }
+  }
+  for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'mousedown', 'mousemove', 'mouseup',
+    'touchstart', 'touchmove', 'touchend', 'touchcancel']) {
+    window.addEventListener(type, onOutside, { capture: true, passive: false });
+  }
+  // Esc en son açılan paneli kapatır (bilgisayara Esc gitmez).
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' && e.keyCode !== 27) return;
+    const top = openPanels().sort((a, b) => b.openedAt - a.openedAt)[0];
+    if (!top) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    top.close();
+  }, true);
+
+  // ---- ⋯ Menü ----
+  const menuBtn = $('menuBtn');
+  const menuList = $('menuItems');
+  let menuTimer = null;
+  const menu = panel('Menü', {
+    id: 'menuPanel',
+    anchor: menuBtn,
+    onOpen() { menuBtn.classList.add('on'); menuInfo(); menuTimer = setInterval(menuInfo, 1000); },
+    onClose() { menuBtn.classList.remove('on'); clearInterval(menuTimer); },
+  });
+  menu.body.appendChild(menuList);
+  menuBtn.addEventListener('click', () => menu.toggle());
+  on('viewer:stop', () => menu.close());
+  on('disconnect', () => menu.close());
+
+  // Menünün başında küçük bağlantı bilgisi (telefonda fps çubukta gösterilmez).
+  function menuInfo() {
+    const s = lastStats;
+    const bagli = ws?.readyState === 1;
+    $('menuInfo').textContent = !bagli ? '● Bağlantı yok' : stream ? `● Bağlı · ${s.fps} fps · ${s.codec || codecLabel || '–'}` : '● Bağlı';
+    $('menuInfo').classList.toggle('kopuk', !bagli);
+  }
+
+  function addOrdered(parent, el, order) {
+    el.dataset.order = String(order);
+    const next = [...parent.children].find((c) => Number(c.dataset.order ?? 1e9) > order);
+    parent.insertBefore(el, next || null);
+  }
+
+  const menuItems = [];
+  function updateMenuBadge() {
+    let dot = menuBtn.querySelector('.mdot');
+    const any = menuItems.some((i) => i.st.badge && !i.st.hidden);
+    if (any && !dot) { dot = document.createElement('span'); dot.className = 'mdot'; menuBtn.appendChild(dot); }
+    if (dot) dot.hidden = !any;
+  }
+
+  // o: { id, icon, label, state, title, order (varsayılan 100), onClick(e), pin, ctl, extend (false: ikinci ekranda gizli),
+  //      keepOpen (tıklayınca menü açık kalsın; aç/kapa düğmeleri için), hidden, disabled }
+  // Dönen: { el, pinEl, set({ icon, label, state, title, hidden, disabled, active, badge }) }
+  function menuItem(o = {}) {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'menu-row';
+    if (o.id) row.id = o.id;
+    row.innerHTML = '<span class="mi"></span><span class="ml"></span><span class="ms"></span><span class="mdot" hidden></span>';
+    let pin = null;
+    if (o.pin) {
+      pin = document.createElement('button');
+      pin.type = 'button';
+      pin.className = 'tb-pin';
+      if (o.id) pin.id = `${o.id}Pin`;
+      pin.innerHTML = '<span class="pi"></span><span class="mdot" hidden></span>';
+    }
+    for (const e of [row, pin]) {
+      if (!e) continue;
+      if (o.ctl) e.classList.add('ctl');
+      if (o.extend === false) e.classList.add('no-extend');
+    }
+    const st = { icon: '', label: '', state: '', title: '', hidden: false, disabled: false, active: false, badge: false };
+    const item = { el: row, pinEl: pin, st };
+    item.set = (patch = {}) => {
+      Object.assign(st, patch);
+      row.querySelector('.mi').textContent = st.icon;
+      row.querySelector('.ml').textContent = st.label;
+      const ms = row.querySelector('.ms');
+      ms.textContent = st.state;
+      ms.hidden = !st.state;
+      row.title = st.title;
+      row.hidden = st.hidden;
+      row.disabled = st.disabled;
+      row.classList.toggle('on', st.active);
+      row.querySelector('.mdot').hidden = !st.badge;
+      if (pin) {
+        pin.querySelector('.pi').textContent = st.icon;
+        pin.title = st.title || (st.state ? `${st.label}: ${st.state}` : st.label);
+        pin.setAttribute('aria-label', pin.title);
+        pin.hidden = st.hidden;
+        pin.disabled = st.disabled;
+        pin.classList.toggle('on', st.active);
+        pin.querySelector('.mdot').hidden = !st.badge;
+      }
+      updateMenuBadge();
+      return item;
+    };
+    row.addEventListener('click', (e) => { if (!o.keepOpen) menu.close(); o.onClick?.(e); });
+    pin?.addEventListener('click', (e) => o.onClick?.(e));
+    menuItems.push(item);
+    addOrdered(menuList, row, Number(o.order ?? 100));
+    if (pin) addOrdered($('tbPins'), pin, Number(o.order ?? 100));
+    return item.set({ icon: o.icon || '', label: o.label || '', state: o.state || '', title: o.title || '', hidden: !!o.hidden, disabled: !!o.disabled });
+  }
+
+  // Tam ekran: iPhone'da Fullscreen API yok (yalnızca video için) — orada gösterilmez, yerine "Ana ekrana ekle" ipucu.
+  const docEl = document.documentElement;
+  const fsSupported = !!(docEl.requestFullscreen || docEl.webkitRequestFullscreen);
+  const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement;
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+  const standalone = navigator.standalone === true || window.matchMedia?.('(display-mode: standalone)').matches;
+  const fsItem = menuItem({
+    id: 'fsBtn', icon: '⛶', label: 'Tam ekran', order: 80, pin: true, hidden: !fsSupported,
+    onClick() {
+      if (fsElement()) (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
+      else {
+        try { (docEl.requestFullscreen || docEl.webkitRequestFullscreen).call(docEl)?.catch?.(() => {}); } catch { /* izin yok */ }
+      }
+    },
+  });
+  const fsChanged = () => fsItem.set({ label: fsElement() ? 'Tam ekrandan çık' : 'Tam ekran', active: !!fsElement() });
+  document.addEventListener('fullscreenchange', fsChanged);
+  document.addEventListener('webkitfullscreenchange', fsChanged);
+  if (isIOS && !standalone && !fsSupported) {
+    const hint = document.createElement('p');
+    hint.id = 'iosHint';
+    hint.className = 'menu-hint';
+    hint.innerHTML = '📲 <b>Tam ekran için:</b> Safari\'de Paylaş <span aria-hidden="true">⎙</span> → <b>Ana Ekrana Ekle</b>. Simgeden açınca adres çubuğu görünmez.';
+    addOrdered(menuList, hint, 81);
+  }
+  menuItem({
+    id: 'hideBtn', icon: '▴', label: 'Çubuğu gizle', state: 'üstteki ▾ ile geri gelir', order: 90, pin: true,
+    title: 'Çubuğu gizle', onClick() { toolbarEl.hidden = true; $('showBtn').hidden = false; },
   });
 
   const canInput = () => stream?.started && me?.role !== 'view' && visible('vViewer');
@@ -738,7 +961,7 @@
     cancelGesture();
     touchMode = mode;
     storage.set('touchMode', mode);
-    $('touchModeBtn').textContent = mode === 'touchpad' ? '🖱 Touchpad' : '👆 Doğrudan';
+    $('touchModeBtn').innerHTML = mode === 'touchpad' ? '🖱<span class="tb-label"> Touchpad</span>' : '👆<span class="tb-label"> Doğrudan</span>';
     $('touchModeBtn').title = mode === 'touchpad' ? 'Dokunmatik: touchpad modu (değiştir)' : 'Dokunmatik: doğrudan mod (değiştir)';
     drawCursor();
   }
@@ -1245,7 +1468,10 @@
       return u.pathname + u.search;
     },
     ui: {
-      toolbar: (el) => insertBefore('fps', el),          // görüntüleyici araç çubuğuna öğe ekle
+      toolbar: (el) => insertBefore('fps', el),          // araç çubuğunun sağ ucuna öğe ekle (her genişlikte görünür; yenilerde menuItem tercih edin)
+      menuItem,                                          // ⋯ menüsüne satır (pin: geniş ekranda çubukta da simge)
+      panel,                                             // ✕ ile kapanan ortak panel: { el, head, body, open, close, toggle, isOpen, addAnchor, setTitle }
+      closable,                                          // kendi kabuğu olan paneli Esc ile kapanacak şekilde kaydet
       home: (el) => insertBefore('adminBtn', el),        // ana menü kartına öğe ekle
       adminSection(title, el) {                          // yönetim paneline bölüm ekle
         const h = document.createElement('h2');

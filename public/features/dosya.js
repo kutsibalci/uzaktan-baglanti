@@ -34,11 +34,8 @@
   evBtn.textContent = '📁 Dosya aktarımı';
   RC.ui.home(evBtn);
 
-  const cubukBtn = document.createElement('button');
-  cubukBtn.className = 'ctl'; // salt izleme rolünde çekirdek gizler
-  cubukBtn.title = 'Dosya aktarımı';
-  cubukBtn.textContent = '📁';
-  RC.ui.toolbar(cubukBtn);
+  // Görüntüleyicide ⋯ menüsünde (geniş ekranda çubukta da); salt izleme rolünde çekirdek gizler (ctl).
+  RC.ui.menuItem({ id: 'dosyaBtn', icon: '📁', label: 'Dosya aktarımı', order: 20, pin: true, ctl: true, onClick: () => ac() });
 
   const izinVar = () => !!RC.state().me && RC.state().me.role !== 'view';
   const guncelle = () => { evBtn.hidden = !izinVar(); if (!izinVar()) kapat(); };
@@ -93,8 +90,8 @@
   }
   function kapat() { panel.hidden = true; }
   evBtn.addEventListener('click', () => ac());
-  cubukBtn.addEventListener('click', () => ac());
   el('kapat').addEventListener('click', kapat);
+  RC.ui.closable(panel, kapat); // Esc ile de kapanır
 
   const boyutYaz = (n) => {
     if (n == null) return '';

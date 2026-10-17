@@ -1,4 +1,4 @@
-// Bilgisayar sesini dinleme: araç çubuğunda 🔇/🔊 düğmesi.
+// Bilgisayar sesini dinleme: ⋯ menüsünde "Ses: kapalı/açık" satırı (geniş ekranda çubukta 🔇/🔊).
 // Sunucu Opus paketlerini [3][paket] ikili mesajlarıyla yollar; WebCodecs AudioDecoder ile çözülüp
 // Web Audio ile ardışık zamanlanarak çalınır (hedef tampon ~80 ms, 300 ms'yi aşarsa yeniden hizalanır).
 (() => {
@@ -7,16 +7,12 @@
   const PAKET_US = 20000;
   const DESTEK_YOK = 'Ses için HTTPS (Tailscale adresi) ve güncel tarayıcı gerekli';
 
-  const btn = document.createElement('button');
-  btn.id = 'sesBtn';
-  btn.textContent = '🔇';
-  btn.title = 'Bilgisayar sesi kapalı — açmak için dokunun';
-  btn.disabled = true;
-  RC.ui.toolbar(btn);
-
-  const style = document.createElement('style');
-  style.textContent = '#toolbar #sesBtn.on { border-color: var(--accent); } #toolbar #sesBtn:disabled { opacity: .45; }';
-  document.head.appendChild(style);
+  // Menü satırı; aç/kapa olduğu için tıklayınca menü açık kalır (durum görünsün).
+  const item = RC.ui.menuItem({
+    id: 'sesBtn', icon: '🔇', label: 'Ses', state: 'kapalı', order: 30, pin: true, keepOpen: true, disabled: true,
+    title: 'Bilgisayar sesi kapalı — açmak için dokunun',
+    onClick: () => (istek ? kapat() : ac()),
+  });
 
   let destek = false;
   let istek = false;     // kullanıcı sesi açtı mı (bağlantı kopsa da hatırlanır)
@@ -30,19 +26,21 @@
   const kaynaklar = new Set();
 
   (async () => {
-    if (!window.isSecureContext || !('AudioDecoder' in window) || !('AudioContext' in window)) { btn.title = DESTEK_YOK; return; }
+    if (!window.isSecureContext || !('AudioDecoder' in window) || !('AudioContext' in window)) { item.set({ title: DESTEK_YOK, state: 'HTTPS gerekli' }); return; }
     try {
       const r = await AudioDecoder.isConfigSupported({ codec: 'opus', sampleRate: 48000, numberOfChannels: 2 });
       destek = !!r.supported;
     } catch { /* desteklenmiyor */ }
-    btn.disabled = !destek;
-    if (!destek) btn.title = DESTEK_YOK;
+    item.set(destek ? { disabled: false } : { disabled: true, title: DESTEK_YOK, state: 'desteklenmiyor' });
   })();
 
   function arayuz(durum) {
-    btn.textContent = istek ? '🔊' : '🔇';
-    btn.classList.toggle('on', istek);
-    btn.title = durum || (istek ? 'Bilgisayar sesi açık — kapatmak için dokunun' : 'Bilgisayar sesi kapalı — açmak için dokunun');
+    item.set({
+      icon: istek ? '🔊' : '🔇',
+      active: istek,
+      state: durum || (istek ? 'açık' : 'kapalı'),
+      title: durum || (istek ? 'Bilgisayar sesi açık — kapatmak için dokunun' : 'Bilgisayar sesi kapalı — açmak için dokunun'),
+    });
   }
 
   function baglamOlustur() {
@@ -126,8 +124,6 @@
     if (ctx && ctx.state === 'running') ctx.suspend().catch(() => {});
     arayuz();
   }
-
-  btn.addEventListener('click', () => (istek ? kapat() : ac()));
 
   RC.on('ses-config', (m) => {
     if (!istek) return;
