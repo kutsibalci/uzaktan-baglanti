@@ -134,3 +134,4 @@
 7. Çekirdeğe izleme başlat/durdur kancası (`api.onStreamStop`): perde şimdilik izlemeyi bırakan/yetkisi düşen bağlantıyı saniyede bir yoklayarak kaldırıyor
 8. Tepsi menüsünde "kes" ile "kes ve cihazı unut" ayrımı: şimdilik tepsiden kesilen hatırlanan cihazın kaydı her zaman siliniyor (yeniden girişte şifre sorulur)
 9. Android Chrome'da kalemin ürettiği dokunma olaylarının ayıklanması (pointerdown 'pen' sonrası gelen dokunuş kimlikleri) gerçek S-Pen ile doğrulanmalı; salt izleme rolünde hatırlanan touchpad modunun yok sayılması için tarayıcı testi yok
+10. Çalışan sunucu yeniden başlatılmalı (tepsiden "Yeniden başlat"): eski RemoteHelper.exe hâlâ kullanımda; ikinci ekranın kırpılmaması (PerMonitorV2 DPI), DXGI yakalama ve iş parçacıklı girdi ancak açılışta exe yeniden derlenince devreye girer. Ardından iPhone'da ikinci ekran ve akıcılık yeniden denenmeli. Yatay iPhone + klavye + Tuşlar panelinde (tus-sikisik: araç çubuğu gizlenir) gerçek cihazda denenmeli.

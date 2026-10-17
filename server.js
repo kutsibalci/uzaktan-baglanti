@@ -318,6 +318,7 @@ async function handleSession(ws, m) {
       // Otomatik kalite (yalnızca JPEG): quality/maxWidth tavan olur, sunucu ağa göre altında bir seviye seçer.
       setAuto(ws, m.auto === true);
       ws.needsFrame = true;
+      ws.held = null; // önceden yakalanan kare eski ayarla: gönderilmesin
       wakeCapture();
       if (ws.streaming && s.view.codec === 'h264') await subscribeVideo(ws);
       return;
@@ -325,6 +326,7 @@ async function handleSession(ws, m) {
       if (typeof m.name === 'string' && SCREEN_NAME.test(m.name)) {
         s.view.screen = m.name;
         ws.needsFrame = true;
+        ws.held = null; // önceden yakalanan kare eski ekranın: gönderilmesin (bir an eski ekran görünürdü)
         wakeCapture();
         if (ws.streaming && s.view.codec === 'h264') await subscribeVideo(ws);
       }
@@ -647,17 +649,18 @@ async function captureLoop() {
     for (const c of due) {
       const p = jpegParams(c);
       const key = `${p.quality} ${p.maxWidth} ${c.session.view.screen}`;
-      if (!groups.has(key)) groups.set(key, { p, list: [] });
+      if (!groups.has(key)) groups.set(key, { p, screen: c.session.view.screen, list: [] });
       groups.get(key).list.push(c);
     }
 
-    for (const [key, { p, list }] of groups) {
+    for (const [key, { p, screen, list }] of groups) {
       let frame;
       const t0 = performance.now();
       try { frame = await helper.request(`cap ${key}`); } catch { await sleep(300); continue; }
       const t = performance.now();
       for (const c of list) {
         const v = c.session.view;
+        if (v.screen !== screen) continue; // yakalama sürerken ekran değişti: bu kare eski ekranın (döngü yenisini yakalar)
         c.capMs = Math.round(t - t0); // yakalama + JPEG sıkıştırma süresi (gecikme sayacı için)
         // Hedef aralığa göre ilerle; bir aralıktan fazla geride kalındıysa (ack beklendi) yeniden başla, toplu kare atma.
         const period = 1000 / v.fps;

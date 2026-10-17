@@ -421,6 +421,24 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
     check('iPhone klavyesi (sahte visualViewport): görüntüleyici görünür alanda', Math.abs(vr.top - 70) < 1 && Math.abs(vr.h - 430) < 1 && sr.bottom <= 501, JSON.stringify({ vr, sr }));
     check('görüntü klavyenin üstündeki alana sığdı', ir.top >= 70 - 1 && ir.bottom <= 500 + 1, JSON.stringify(ir));
     check('klavye açık sınıfı', await ev("document.getElementById('vViewer').classList.contains('kb-open')"));
+    // Yatay iPhone + klavye (~150 px görünür alan) + Tuşlar paneli: görüntü kaybolmasın, panel görünür alanda kalsın
+    await fakeVV({ height: 150, offsetTop: 0, scale: 1, width: 400 });
+    await sleep(100);
+    await ev("document.getElementById('tusBtn').click()");
+    await sleep(100);
+    vr = await rectOf('#vViewer'); sr = await rectOf('#stage');
+    let tp = await rectOf('#tusPanel');
+    check('dar görünür alan + Tuşlar: görüntüye yer kalır, panel görünür alanda', sr.h >= 40 && tp.bottom <= vr.top + 150 + 1 && tp.h >= 50,
+      JSON.stringify({ vr, sr, tp }));
+    check('dar görünür alanda çubuk gizlendi', await ev("document.getElementById('vViewer').classList.contains('tus-sikisik') && document.getElementById('toolbar').offsetHeight === 0"));
+    await fakeVV({ height: 430, offsetTop: 70, scale: 1, width: 400 });
+    await sleep(100);
+    sr = await rectOf('#stage'); tp = await rectOf('#tusPanel');
+    check('yer açılınca çubuk geri gelir, panel tam boy', !(await ev("document.getElementById('vViewer').classList.contains('tus-sikisik')")) && sr.h >= 90 && tp.bottom <= 501,
+      JSON.stringify({ sr, tp }));
+    await ev("document.querySelector('#tusPanel .rc-x').click()");
+    await sleep(100);
+    check('panel kapanınca çubuk görünür', await ev("document.getElementById('toolbar').offsetHeight > 0 && !document.getElementById('vViewer').classList.contains('tus-sikisik')"));
     // Sayfa sıkıştırılarak yakınlaştırılmışsa (scale ≠ 1) dokunulmaz
     await fakeVV({ height: 200, offsetTop: 0, scale: 2, width: 200 });
     await sleep(100);

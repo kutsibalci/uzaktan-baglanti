@@ -85,6 +85,12 @@
     #tusPanel .tus-sekmeler button.active { background: var(--panel2); border-color: var(--line); color: var(--text); }
     #tusPanel .tus-sekmeler button.yapiskan::after { content: ''; position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
     #tusPanel .rc-panel-ic { padding: 8px; height: var(--tus-yukseklik, 210px); } /* sabit: sekme değişince görüntü zıplamasın */
+    /* Yatay + klavye (boyutla): görüntüye yer kalsın diye çubuk gizlenir, panel başlığı küçülür; ✕ ile kapanınca geri gelir */
+    #vViewer.tus-sikisik #toolbar { display: none; }
+    #vViewer.tus-sikisik #tusPanel .rc-panel-bas { padding-top: 2px; padding-bottom: 2px; }
+    #vViewer.tus-sikisik #tusPanel .rc-x { height: 36px; }
+    #vViewer.tus-sikisik #tusPanel .tus-sekmeler button { height: 34px; }
+    #vViewer.tus-sikisik #tusPanel .rc-panel-ic { padding: 4px 8px; }
     #tusPanel .tus-grup { display: grid; gap: 6px; width: 100%; max-width: 760px; margin: 0 auto; }
     #tusPanel .tus-grup[data-grup="kisayol"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     #tusPanel .tus-grup[data-grup="gezinme"] { grid-template-columns: repeat(7, minmax(0, 1fr)); grid-template-rows: repeat(3, 44px); }
@@ -124,7 +130,7 @@
   const panel = RC.ui.panel('Özel tuşlar', {
     id: 'tusPanel', dock: 'bottom', className: 'ctl', anchor: toggle,
     onOpen() { toggle.classList.add('on'); boyutla(); },
-    onClose() { toggle.classList.remove('on'); clearSticky(); },
+    onClose() { toggle.classList.remove('on'); clearSticky(); boyutSifirla(); },
   });
   const sekmeler = document.createElement('div');
   sekmeler.className = 'tus-sekmeler';
@@ -196,10 +202,33 @@
   });
   sekmeSec(sekme);
 
-  // Ekran klavyesi açıkken (iPhone'da görünür alan küçülür) panel görüntüyü tamamen kapatmasın.
+  // Ekran klavyesi açıkken (iPhone'da görünür alan küçülür) panel görüntüyü tamamen kapatmasın: görüntüye en az
+  // SAHNE_MIN px bırakılır, panel gövdesi gerekirse tek sıraya (kaydırılabilir) iner. Yatay iPhone'da klavye açıkken
+  // görünür alan ~150 px kalır; o zaman araç çubuğu gizlenir ve panel başlığı küçülür (tus-sikisik), panel kapanınca
+  // ya da yer açılınca çubuk geri gelir. Klavye açıkken ev göstergesi klavyenin altında kaldığı için safe-area alt
+  // boşluğu kaldırılır.
+  const SAHNE_MIN = 90, GOVDE_MIN = 52;
+  const toolbarEl = document.getElementById('toolbar');
+  const vViewerEl = document.getElementById('vViewer');
   function boyutla() {
-    const vh = window.visualViewport?.height || window.innerHeight;
-    panel.el.style.setProperty('--tus-yukseklik', `${Math.max(104, Math.min(210, Math.round(vh * 0.42) - 50))}px`);
+    const layoutH = document.documentElement.clientHeight || window.innerHeight;
+    const a = window.Dokunmatik?.visibleArea(window.visualViewport, layoutH);
+    const vh = a ? a.height : layoutH;
+    panel.el.style.paddingBottom = a && a.covered > 80 ? '0px' : '';
+    vViewerEl.classList.remove('tus-sikisik');
+    const ideal = Math.max(104, Math.min(210, Math.round(vh * 0.42) - 50));
+    // Panel başlığı + alt boşluk + üst kenarlık
+    const disi = () => panel.head.offsetHeight + (parseFloat(getComputedStyle(panel.el).paddingBottom) || 0) + 1;
+    let h = Math.min(ideal, vh - toolbarEl.offsetHeight - disi() - SAHNE_MIN);
+    if (h < GOVDE_MIN + 8 && toolbarEl.offsetHeight) {
+      vViewerEl.classList.add('tus-sikisik');
+      h = Math.min(ideal, vh - disi() - SAHNE_MIN);
+    }
+    panel.el.style.setProperty('--tus-yukseklik', `${Math.max(GOVDE_MIN, Math.round(h))}px`);
+  }
+  function boyutSifirla() {
+    vViewerEl.classList.remove('tus-sikisik');
+    panel.el.style.paddingBottom = '';
   }
   window.visualViewport?.addEventListener('resize', () => { if (panel.isOpen()) boyutla(); });
   window.addEventListener('resize', () => { if (panel.isOpen()) boyutla(); });
