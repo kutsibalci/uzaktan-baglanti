@@ -87,6 +87,23 @@ function loadToNorm() {
   check('touchpad: imleç kenar payına girince görünüm kayar', sx <= 800 * 0.85 + 1e-6 && f.tx < z3.tx, `sx=${sx.toFixed(1)}`);
   check('touchpad: 1x iken görünüm sabit', T.followCursor({ z: 1, tx: 0, ty: 0 }, { x: 790, y: 10 }, b2).tx === 0);
   check('dokunuş eşiği', T.isTap(5, 100) && !T.isTap(30, 100) && !T.isTap(0, 900));
+  // Doğrudan mod: kaydırma çentikleri, çift tık yakalama, basılı tutma süresi
+  const w1 = T.wheelNotches(95), w2 = T.wheelNotches(-65), w3 = T.wheelNotches(12);
+  check('kaydırma: 30 px = 1 çentik, kalan korunur', w1.n === 3 && near(w1.rest, 5) && w2.n === -2 && near(w2.rest, -5) && w3.n === 0 && near(w3.rest, 12));
+  const prevTap = { x: 100, y: 200, time: 1000 };
+  check('çift dokunuş: yakın ve hızlı ikinci dokunuş ilkinin yerine', JSON.stringify(T.snapTap(prevTap, { x: 112, y: 210 }, 1300)) === '{"x":100,"y":200}');
+  check('çift dokunuş: uzak ya da geç dokunuş yerinde kalır', T.snapTap(prevTap, { x: 160, y: 200 }, 1300).x === 160 && T.snapTap(prevTap, { x: 105, y: 200 }, 1000 + T.SNAP_MS + 1).x === 105 && T.snapTap(null, { x: 1, y: 2 }, 0).x === 1);
+  check('basılı tutma süresi 350–450 ms', T.HOLD_MS >= 350 && T.HOLD_MS <= 450 && T.HOLD_MS > T.TAP_MS);
+  // Ekran klavyesi: görünür alan
+  const a1 = T.visibleArea({ height: 400, offsetTop: 0, scale: 1 }, 800);
+  check('klavye (görünür alan küçüldü): alt 400 px örtülü', a1 && a1.top === 0 && a1.height === 400 && a1.covered === 400, JSON.stringify(a1));
+  const a2 = T.visibleArea({ height: 400, offsetTop: 150, scale: 1 }, 800);
+  check('iOS sayfayı yukarı itti: görüntüleyici görünür alanın üstüne', a2.top === 150 && a2.height === 400 && a2.covered === 250, JSON.stringify(a2));
+  const a3 = T.visibleArea({ height: 900, offsetTop: 0, scale: 1 }, 800);
+  check('görünür alan sayfadan büyük olamaz', a3.height === 800 && a3.covered === 0, JSON.stringify(a3));
+  check('sayfa yakınlaştırılmışsa / bilgi yoksa dokunulmaz', T.visibleArea({ height: 400, offsetTop: 0, scale: 2 }, 800) === null && T.visibleArea(null, 800) === null && T.visibleArea({ height: 0 }, 800) === null);
+  const a4 = T.visibleArea({ height: 500, offsetTop: 0, scale: 1 }, 500);
+  check('Android (sayfa da küçüldü): örtülü alan yok', a4.height === 500 && a4.covered === 0);
 
   // ---------- 4. toNorm yakınlaştırmayı hesaba katıyor mu (getBoundingClientRect dönüşümlü kutuyu verir) ----------
   const mk = loadToNorm();

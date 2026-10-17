@@ -11,6 +11,10 @@
   const PAN_THRESHOLD = 12;    // px: orta nokta bu kadar kayarsa kaydırma
   const TAP_MOVE = 10;         // px: dokunuş sayılması için en fazla hareket
   const TAP_MS = 250;          // ms: dokunuş sayılması için en uzun süre
+  const HOLD_MS = 450;         // ms: doğrudan mod: bu kadar hareketsiz basılı tutunca "tutuldu" (sonra sürükle = sol tuşla sürükleme, bırak = sağ tık)
+  const WHEEL_STEP = 30;       // px: kaydırmada bir tekerlek çentiği (120) için parmak hareketi
+  const SNAP_PX = 30;          // px / ms: art arda iki dokunuş bu kadar yakınsa ikincisi ilkinin yerine gider (çift tık tutsun;
+  const SNAP_MS = 450;         //          Windows çift tıkı ancak birkaç piksel içinde sayar, parmak o kadar isabetli değil)
 
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
@@ -96,8 +100,32 @@
 
   const isTap = (dist, ms) => dist <= TAP_MOVE && ms <= TAP_MS;
 
+  // Kaydırma: biriken parmak hareketini (px) tekerlek çentiklerine çevirir. { n: çentik (işaretli), rest: kalan px }
+  function wheelNotches(acc, step = WHEEL_STEP) {
+    const n = Math.trunc(acc / step);
+    return { n, rest: acc - n * step };
+  }
+
+  // Çift tık için: önceki dokunuşa (prev: { x, y, time }) yakın ve hemen ardından gelen dokunuş onun yerine gider.
+  function snapTap(prev, p, now) {
+    if (prev && now - prev.time <= SNAP_MS && Math.hypot(p.x - prev.x, p.y - prev.y) <= SNAP_PX) return { x: prev.x, y: prev.y };
+    return { x: p.x, y: p.y };
+  }
+
+  // Ekran klavyesi: görüntüleyicinin yerleşeceği görünür alan. vv: { height, offsetTop, scale } (window.visualViewport),
+  // layoutH: sayfanın (yerleşim alanının) yüksekliği. { top, height, covered: alttan örtülen px (klavye) } ya da
+  // sayfa sıkıştırılarak yakınlaştırılmışsa / bilgi yoksa null (dokunulmaz).
+  function visibleArea(vv, layoutH) {
+    if (!vv || !(vv.height > 0) || !(layoutH > 0)) return null;
+    if (vv.scale && Math.abs(vv.scale - 1) > 0.01) return null;
+    const top = clamp(vv.offsetTop || 0, 0, Math.max(0, layoutH - 1));
+    const height = Math.max(1, Math.min(vv.height, layoutH - top));
+    return { top, height, covered: Math.max(0, layoutH - top - height) };
+  }
+
   return {
-    ZOOM_MIN, ZOOM_MAX, PINCH_THRESHOLD, PAN_THRESHOLD, TAP_MOVE, TAP_MS,
+    ZOOM_MIN, ZOOM_MAX, PINCH_THRESHOLD, PAN_THRESHOLD, TAP_MOVE, TAP_MS, HOLD_MS, WHEEL_STEP, SNAP_PX, SNAP_MS,
     clamp, accelGain, moveCursor, classifyTwoFinger, clampView, pinchView, followCursor, contentBox, isTap,
+    wheelNotches, snapTap, visibleArea,
   };
 });
