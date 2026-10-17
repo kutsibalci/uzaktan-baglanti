@@ -329,7 +329,12 @@ async function handleSession(ws, m) {
       break;
     case 'down':
     case 'up':
-      if (BUTTONS.has(m.b)) helper.send(`${m.t} ${m.b}`);
+      if (BUTTONS.has(m.b)) {
+        helper.send(`${m.t} ${m.b}`);
+        // Basılı düğmeler: bağlantı koparsa / izleme biterse stopStream bırakır (istemci 'up' gönderemeyebilir).
+        if (!ws.heldButtons) ws.heldButtons = new Set();
+        if (m.t === 'down') ws.heldButtons.add(m.b); else ws.heldButtons.delete(m.b);
+      }
       break;
     case 'wheel':
       helper.send(`wheel ${Math.round(clamp(m.dy, -1200, 1200, 0))} ${Math.round(clamp(m.dx, -1200, 1200, 0))}`);
@@ -400,6 +405,10 @@ async function subscribeVideo(ws) {
 }
 
 function stopStream(ws) {
+  if (ws.heldButtons?.size) {
+    for (const b of ws.heldButtons) helper.send(`up ${b}`);
+    ws.heldButtons.clear();
+  }
   ws.streaming = false;
   ws.lastFrame = null;
   video.unsubscribe(ws);

@@ -109,6 +109,8 @@
   }
 
   function send(obj) {
+    // Görüntüleme biterken basılı tuş/düğme kalmasın: sunucu 'stop'tan sonra girdi kabul etmez, önce bırakılır.
+    if (obj.t === 'stop') releaseAll();
     if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
   }
 
@@ -490,6 +492,11 @@
     const p = toNorm(cx, cy);
     if (p) { pendingMove = null; send({ t: 'move', ...p }); }
   }
+  // Bekleyen (rAF'a kalmış) hareketi hemen gönderir: düğme bırakılmadan önce son konuma gidilsin.
+  function flushMove() {
+    if (pendingMove && canInput()) send({ t: 'move', ...pendingMove });
+    pendingMove = null;
+  }
   function click(b) {
     send({ t: 'down', b });
     send({ t: 'up', b });
@@ -509,12 +516,17 @@
   stage.addEventListener('pointerdown', notePointer, true);
   stage.addEventListener('pointermove', notePointer, true);
   const fromPen = () => lastPointerType === 'pen' && penActive();
+  // Dokunuştan türetilen uyumluluk fare olayları (Safari/Chrome preventDefault edilmemiş bir dokunuş için
+  // mousemove/mousedown/mouseup/click üretir) yok sayılır: dokunuşu yalnızca dokunma işleyicileri işler,
+  // yoksa aynı dokunuş için ikinci bir 'down' giderdi. Dokunma olayı olmayan tarayıcıda dokunuş fare yoluyla çalışır.
+  const hasTouchEvents = 'ontouchstart' in window;
+  const fromTouch = () => hasTouchEvents && lastPointerType === 'touch';
 
-  stage.addEventListener('mousemove', (e) => { if (!fromPen()) queueMove(e.clientX, e.clientY); });
+  stage.addEventListener('mousemove', (e) => { if (!fromPen() && !fromTouch()) queueMove(e.clientX, e.clientY); });
   stage.addEventListener('mousedown', (e) => {
     e.preventDefault();
     const b = BTN[e.button];
-    if (!b || !canInput() || fromPen()) return;
+    if (!b || !canInput() || fromPen() || fromTouch()) return;
     moveNow(e.clientX, e.clientY);
     heldButtons.add(b);
     send({ t: 'down', b });
@@ -535,11 +547,18 @@
 
   // ---------- Dokunmatik ----------
   // İki mod (araç çubuğundaki düğmeyle değişir, seçim hatırlanır):
-  //  Doğrudan: parmağın değdiği yer tıklanır. Tek dokunuş = sol tık, uzun basma = sağ tık,
-  //            sürükleme = sol tuşla sürükleme, iki parmak = kaydırma (yakınlaştırılmışken görünümü kaydırır).
+  //  Doğrudan: parmağın değdiği yer tıklanır. Dokun-bırak = sol tık (çift dokunuş = çift tık), parmakla hızlı sürükleme =
+  //            kaydırma (tekerlek; ekranı telefonda kaydırır gibi), hareketsiz basılı tut (HOLD_MS, halka + titreşim) sonra
+  //            sürükle = sol tuşla sürükleme (seçme, pencere taşıma), basılı tut sonra bırak = sağ tık.
+  //            İki parmak = kaydırma (yakınlaştırılmışken görünümü kaydırır).
+  //            Neden: telefonda tek parmak sürüklemesi kaydırma demektir; eskiden her sürükleme sol tuşu basılı tutuyordu
+  //            ve sayfayı kaydırmak isteyince metin seçiliyor / pencere sürükleniyordu. Bilerek sürüklemek için önce kısa bir
+  //            "tut" gerekir — touchpad modundaki "dokun, sonra dokunup sürükle" ile aynı fikir: tuşa basmak ayrı bir hareket.
   //  Touchpad: dizüstü touchpad'i gibi. Tek parmak imleci göreli (ivmeli) taşır, dokunuş = sol tık,
   //            iki parmak dokunuş = sağ tık, iki parmak kaydırma = tekerlek, çift dokunup sürükleme = sol tuşla sürükleme.
   // Her iki modda: iki parmak sıkıştırma = yakınlaştırma (1x–4x), iki parmak çift dokunuş = 1x.
+  // Basılı düğme her durumda bırakılır: parmak kalkınca, touchcancel'da, sekme gizlenince/pencere odağı gidince,
+  // görüntüleyiciden çıkarken ('stop'tan önce), bağlantı koparken (sunucu da izleme bitince bırakır).
   // Kalem özelliği devredeyken kalem dokunuşları burada işlenmez (kalem özelliği pointer olaylarıyla işler).
   // Chromium'da Touch.touchType yok; bu yüzden kalemin pointerdown'ından hemen sonra gelen dokunuşlar kimlikleriyle
   // kalem olarak işaretlenir (Android Chrome kalem için dokunma olayı da üretir). Safari'de touchType 'stylus' da elenir.
@@ -547,21 +566,28 @@
   // Hesaplar public/dokunmatik.js içinde (window.Dokunmatik).
 
   const T = window.Dokunmatik;
-  const LONG_PRESS_MS = 550;
   const DRAG_THRESHOLD = 10;
   const DOUBLE_TAP_MS = 300;
   let touchMode = storage.get('touchMode') === 'touchpad' ? 'touchpad' : 'direct';
   let gesture = null;              // o anki dokunma hareketi
   let view = { z: 1, tx: 0, ty: 0 };  // yakınlaştırma: translate(tx, ty) scale(z)
   let cursor = { x: 0.5, y: 0.5 };    // touchpad sanal imleci (0..1)
+  let lastPoint = null;            // doğrudan mod: son dokunulan nokta (0..1; klavye açılınca görünür tutulur)
+  let lastTap = null;              // doğrudan mod: son dokunuşun yeri/zamanı (çift tık için)
   let tapTimer = null;             // touchpad: bekleyen tek tık (çift dokunup sürükleme olabilir)
   let rightTimer = null;           // touchpad: bekleyen sağ tık (iki parmak çift dokunuş olabilir)
   let lastTwoTap = 0;
+  const touchHeld = new Set();     // dokunuşla basılı tutulan fare düğmeleri
 
   const tpCursor = document.createElement('div');
   tpCursor.id = 'tpCursor';
   tpCursor.hidden = true;
   stage.appendChild(tpCursor);
+  // Doğrudan mod: "basılı tutuldu" göstergesi (şimdi sürüklersen sol tuşla sürükleme, bırakırsan sağ tık).
+  const holdRing = document.createElement('div');
+  holdRing.id = 'tpHold';
+  holdRing.hidden = true;
+  stage.appendChild(holdRing);
 
   const penTouchIds = new Set();
   const fingers = (list) => [...list].filter((t) => !penTouchIds.has(t.identifier) && !(t.touchType === 'stylus' && penActive()));
@@ -575,6 +601,18 @@
   }
   const midOf = (a, b) => { const p = local(a), q = local(b); return { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }; };
   const distOf = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+  const hasId = (list, id) => [...list].some((t) => t.identifier === id);
+
+  function press(b) {
+    if (touchHeld.has(b)) return;
+    touchHeld.add(b);
+    send({ t: 'down', b });
+  }
+  function release(b) {
+    if (!touchHeld.delete(b)) return;
+    flushMove();
+    send({ t: 'up', b });
+  }
 
   function applyView() {
     canvas.style.transform = view.z > 1 ? `translate(${view.tx}px, ${view.ty}px) scale(${view.z})` : '';
@@ -610,6 +648,7 @@
   }
 
   function setTouchMode(mode) {
+    cancelGesture();
     touchMode = mode;
     storage.set('touchMode', mode);
     $('touchModeBtn').textContent = mode === 'touchpad' ? '🖱 Touchpad' : '👆 Doğrudan';
@@ -621,21 +660,34 @@
   $('zoomBtn').addEventListener('click', () => setView({ z: 1, tx: 0, ty: 0 }));
   window.addEventListener('resize', () => setView(view));
 
+  // Süren dokunma hareketini bitirir ve dokunuşla basılı tutulan düğmeleri bırakır (asla basılı kalmasın).
+  function cancelGesture() {
+    if (gesture) clearTimeout(gesture.timer);
+    gesture = null;
+    holdRing.hidden = true;
+    for (const b of [...touchHeld]) release(b);
+  }
+
   function resetTouch() {
     clearTimeout(tapTimer); clearTimeout(rightTimer);
     tapTimer = rightTimer = null;
-    gesture = null;
+    cancelGesture();
     cursor = { x: 0.5, y: 0.5 };
+    lastPoint = lastTap = null;
     setView({ z: 1, tx: 0, ty: 0 });
   }
   on('viewer:start', resetTouch);
   on('viewer:stop', resetTouch);
+  // Sekme arka plana geçince (iOS'ta uygulama değiştirme, ekran kilidi) touchend gelmeyebilir.
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') releaseAll(); });
+  window.addEventListener('pagehide', () => releaseAll());
 
-  // Bekleyen tek parmak hareketini bitirir (ikinci parmak gelince ya da iptalde).
+  // Bekleyen tek parmak hareketini bitirir (ikinci parmak gelince).
   function endSingle() {
     if (!gesture || gesture.two) return;
     clearTimeout(gesture.timer);
-    if (gesture.dragging) send({ t: 'up', b: 'left' });
+    holdRing.hidden = true;
+    release('left');
   }
   function flushTap() {
     if (!tapTimer) return;
@@ -644,11 +696,20 @@
     clickAtCursor('left');
   }
 
+  function showHold(g) {
+    const p = local({ clientX: g.x0, clientY: g.y0 });
+    holdRing.style.left = `${p.x}px`;
+    holdRing.style.top = `${p.y}px`;
+    holdRing.hidden = false;
+  }
+
   stage.addEventListener('touchstart', (e) => {
     e.preventDefault();
     if (fromPen()) for (const t of e.changedTouches) penTouchIds.add(t.identifier);
     if (!canView()) return;
     const f = fingers(e.touches);
+    // Ekrandaki parmakların hepsi yeniyse önceki hareketin bitişi kaçırılmıştır (touchend/touchcancel gelmedi): bırak.
+    if (gesture && f.every((t) => hasId(e.changedTouches, t.identifier))) cancelGesture();
     if (f.length >= 2) {
       if (gesture?.two) return;
       endSingle();
@@ -666,15 +727,16 @@
       return;
     }
     if (!canInput()) return;
-    gesture = { id: t.identifier, x0: t.clientX, y0: t.clientY, dragging: false, long: false };
+    // kind: null (henüz karar yok) | 'scroll' (tekerlek) | 'hold' (basılı tutuldu) | 'drag' (sol tuşla sürükleme)
+    gesture = { id: t.identifier, x0: t.clientX, y0: t.clientY, x: t.clientX, y: t.clientY, kind: null, axis: null, acc: 0 };
+    lastPoint = toNorm(t.clientX, t.clientY);
     const g = gesture;
     g.timer = setTimeout(() => {
-      if (gesture !== g) return;
-      g.long = true;
-      moveNow(g.x0, g.y0);
-      click('right');
-      navigator.vibrate?.(30);
-    }, LONG_PRESS_MS);
+      if (gesture !== g || g.kind) return;
+      g.kind = 'hold';
+      showHold(g);
+      navigator.vibrate?.(25);
+    }, T.HOLD_MS);
   }, { passive: false });
 
   stage.addEventListener('touchmove', (e) => {
@@ -694,10 +756,10 @@
         if (view.z > 1 && curMode() === 'direct') {
           setView({ z: view.z, tx: g.start.tx + m.x - g.m0.x, ty: g.start.ty + m.y - g.m0.y });
         } else if (canInput()) {
-          g.acc += m.y - g.wy;
+          const w = T.wheelNotches(g.acc + m.y - g.wy);
+          g.acc = w.rest;
           g.wy = m.y;
-          const steps = Math.trunc(g.acc / 30);
-          if (steps) { send({ t: 'wheel', dy: steps * 120, dx: 0 }); g.acc -= steps * 30; }
+          if (w.n) send({ t: 'wheel', dy: w.n * 120, dx: 0 });
         }
       }
       return;
@@ -705,14 +767,35 @@
     const t = f.find((x) => x.identifier === gesture.id);
     if (!t) return;
     if (gesture.pad) return padMove(t);
-    if (!gesture.dragging && !gesture.long && Math.hypot(t.clientX - gesture.x0, t.clientY - gesture.y0) > DRAG_THRESHOLD) {
-      clearTimeout(gesture.timer);
-      gesture.dragging = true;
-      moveNow(gesture.x0, gesture.y0);
-      send({ t: 'down', b: 'left' });
-    }
-    if (gesture.dragging) queueMove(t.clientX, t.clientY);
+    directMove(t);
   }, { passive: false });
+
+  function directMove(t) {
+    const g = gesture;
+    const far = Math.hypot(t.clientX - g.x0, t.clientY - g.y0) > DRAG_THRESHOLD;
+    if (!g.kind) {
+      if (!far) return;
+      // Basılı tutmadan sürükleme: kaydırma. İmleç önce parmağın altına gider (tekerlek o pencereye gitsin).
+      clearTimeout(g.timer);
+      g.kind = 'scroll';
+      g.axis = Math.abs(t.clientX - g.x0) > Math.abs(t.clientY - g.y0) ? 'x' : 'y';
+      moveNow(g.x0, g.y0);
+      g.x = g.x0; g.y = g.y0;
+    }
+    if (g.kind === 'hold') {
+      if (!far) return;
+      g.kind = 'drag';
+      holdRing.hidden = true;
+      moveNow(g.x0, g.y0);
+      press('left');
+    }
+    if (g.kind === 'drag') { queueMove(t.clientX, t.clientY); return; }
+    // Kaydırma: parmak aşağı = içerik aşağı (yukarı kaydır, tekerlek +), parmak sola = sağa kaydır.
+    const w = T.wheelNotches(g.acc + (g.axis === 'x' ? t.clientX - g.x : t.clientY - g.y));
+    g.acc = w.rest;
+    g.x = t.clientX; g.y = t.clientY;
+    if (w.n && canInput()) send(g.axis === 'x' ? { t: 'wheel', dy: 0, dx: -w.n * 120 } : { t: 'wheel', dy: w.n * 120, dx: 0 });
+  }
 
   function padMove(t) {
     const g = gesture, now = Date.now();
@@ -726,7 +809,7 @@
         // Çift dokunup sürükleme: sol tuş basılı.
         g.dragging = true;
         send({ t: 'move', x: cursor.x, y: cursor.y });
-        send({ t: 'down', b: 'left' });
+        press('left');
       }
     }
     g.x = t.clientX; g.y = t.clientY; g.time = now;
@@ -743,9 +826,14 @@
   stage.addEventListener('touchend', (e) => {
     e.preventDefault();
     forgetPenTouches(e);
-    if (!gesture || fingers(e.touches).length > 0) return;
+    if (!gesture) return;
+    const left = fingers(e.touches).length;
+    // Tek parmak hareketi kendi parmağı kalkınca biter; iki parmak hareketi tüm parmaklar kalkınca.
+    if (gesture.two ? left > 0 : left > 0 && !hasId(e.changedTouches, gesture.id)) return;
     const g = gesture;
     gesture = null;
+    clearTimeout(g.timer);
+    holdRing.hidden = true;
     const now = Date.now();
     if (g.two) {
       if (g.kind || now - g.t0 > T.TAP_MS * 1.5) return;
@@ -764,7 +852,7 @@
       return;
     }
     if (g.pad) {
-      if (g.dragging) { send({ t: 'up', b: 'left' }); return; }
+      if (g.dragging) { release('left'); return; }
       if (g.moved || !canInput()) return;
       if (g.second) { clickAtCursor('left', T.isTap(0, now - g.t0) ? 2 : 1); return; }
       if (!T.isTap(0, now - g.t0)) return;
@@ -772,19 +860,23 @@
       tapTimer = setTimeout(() => { tapTimer = null; clickAtCursor('left'); }, DOUBLE_TAP_MS);
       return;
     }
-    clearTimeout(g.timer);
-    if (g.dragging) {
-      send({ t: 'up', b: 'left' });
-    } else if (!g.long) {
+    if (g.kind === 'drag') {
+      release('left');
+    } else if (g.kind === 'hold' && canInput()) {
       moveNow(g.x0, g.y0);
+      click('right');
+    } else if (!g.kind && canInput()) {
+      // Dokun-bırak: hemen sol tık (move + down + up). Hemen ardından yakına dokunulursa aynı yere (çift tık).
+      const p = T.snapTap(lastTap, { x: g.x0, y: g.y0 }, performance.now());
+      lastTap = { ...p, time: performance.now() };
+      moveNow(p.x, p.y);
       click('left');
     }
   }, { passive: false });
 
   stage.addEventListener('touchcancel', (e) => {
     forgetPenTouches(e);
-    endSingle();
-    gesture = null;
+    cancelGesture();
   });
 
   // ---------- Klavye ----------
@@ -859,6 +951,7 @@
   kbInput.addEventListener('input', () => { kbInput.value = ''; });
 
   function releaseAll() {
+    cancelGesture(); // dokunuşla basılı tutulanlar
     for (const vk of heldKeys) send({ t: 'key', vk, down: false });
     for (const [vk, st] of modState) if (st.sent) send({ t: 'key', vk, down: false });
     for (const b of heldButtons) send({ t: 'up', b });
@@ -867,6 +960,50 @@
     heldButtons.clear();
   }
   window.addEventListener('blur', releaseAll);
+
+  // ---------- Ekran klavyesi açıkken görünür alan ----------
+  // iPhone Safari'de ekran klavyesi sayfanın boyutunu değiştirmez: görünür alanı (visualViewport) küçültür ve çoğu
+  // zaman sayfayı yukarı iter; görüntünün altı klavyenin arkasında kalır. Görüntüleyici (position: fixed) görünür alana
+  // yerleştirilir (--vv-top / --vv-h): araç çubuğu üstte kalır, görüntü klavyenin üstündeki alana sığar. Yakınlaştırılmışken
+  // son dokunulan nokta (touchpad'de imleç) görünür tutulur. Android Chrome'da (klavye görünür alanı ya da sayfayı
+  // küçültür) aynı hesap çalışır. Sayfanın kendisi sıkıştırılarak yakınlaştırılmışsa (scale ≠ 1) dokunulmaz.
+  const vViewer = $('vViewer');
+  let fitQueued = false;
+  function fitViewport() {
+    fitQueued = false;
+    const vv = window.visualViewport;
+    // iOS'un yukarı ittiği sayfayı geri al (görüntüleyici görünür alanı zaten kendisi izliyor).
+    const se = document.scrollingElement || document.documentElement;
+    if (visible('vViewer') && (se.scrollTop || se.scrollLeft)) window.scrollTo(0, 0);
+    const a = T.visibleArea(vv && { height: vv.height, offsetTop: vv.offsetTop, scale: vv.scale }, document.documentElement.clientHeight);
+    if (!a) return;
+    vViewer.style.setProperty('--vv-top', `${Math.round(a.top)}px`);
+    vViewer.style.setProperty('--vv-h', `${Math.round(a.height)}px`);
+    vViewer.classList.toggle('kb-open', a.covered > 80);
+    if (!canView()) return;
+    // Sahne boyutu değişti: görünümü yeni sınırlara oturt, yakınlaştırılmışsa son noktayı görünür tut.
+    const b = viewBox();
+    const n = curMode() === 'touchpad' ? cursor : lastPoint;
+    view = n && view.z > 1 ? T.followCursor(view, { x: b.ox + n.x * b.cw, y: b.oy + n.y * b.ch }, b) : T.clampView(view, b);
+    applyView();
+  }
+  function queueFit() {
+    if (fitQueued) return;
+    fitQueued = true;
+    requestAnimationFrame(fitViewport);
+  }
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', queueFit);
+    window.visualViewport.addEventListener('scroll', queueFit);
+  }
+  window.addEventListener('resize', queueFit);
+  window.addEventListener('scroll', queueFit);
+  // Klavye açılıp kapanırken iOS boyutları animasyonla değiştirir; sonda bir kez daha ölç.
+  const fitLater = () => { queueFit(); setTimeout(queueFit, 350); };
+  kbInput.addEventListener('focus', fitLater);
+  kbInput.addEventListener('blur', fitLater);
+  on('viewer:start', queueFit);
+  queueFit();
 
   // ---------- Yönetim paneli ----------
 

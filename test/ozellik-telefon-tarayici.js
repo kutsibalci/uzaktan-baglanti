@@ -1,5 +1,7 @@
-// Telefon özelliği, gerçek tarayıcı motorunda (başsız Edge / Chrome): dokunmatik modlar, yakınlaştırma, kalem filtresi,
-// tuş çubuğu ve service worker. Girdi mesajları (move/down/up/wheel/key/text/kalem) sayfada YAKALANIR ve sunucuya
+// Telefon özelliği, gerçek tarayıcı motorunda (başsız Edge / Chrome): dokunmatik modlar (dokun = tık, hızlı sürükle =
+// kaydırma, basılı tut + sürükle = sürükleme, uzun bas = sağ tık, her durumda 'up'), yakınlaştırma, kalem filtresi,
+// tuş çubuğu, ekran klavyesi açılınca görünür alana yerleşme (sahte visualViewport ile) ve service worker.
+// iOS Safari emüle EDİLEMEZ: buradaki dokunuşlar Chromium'un CDP dokunma olaylarıdır. Girdi mesajları (move/down/up/wheel/key/text/kalem) sayfada YAKALANIR ve sunucuya
 // GİTMEZ: gerçek fare/klavye/kalem girdisi oluşmaz. "kalem-destek" sorgusu da yakalanır ve sayfada sahte cevap verilir. Edge ya da Chrome yoksa atlanır.
 // Sunucuyu test/calistir.js TEST_PORT'ta boş veri klasörüyle başlatır (localhost "setup" ile yönetici oluşturulur).
 const { spawn, spawnSync } = require('child_process');
@@ -62,10 +64,12 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
       const __block = new Set(['move','down','up','wheel','key','text']);
       // Sunucudan geliyormuş gibi mesaj ver (ör. kalem-destek cevabı).
       window.__fake = (m) => window.__ws && window.__ws.dispatchEvent(new MessageEvent('message', { data: JSON.stringify(m) }));
+      window.__all = []; // gönderilen tüm mesaj türleri, sırayla (ör. 'up' 'stop'tan önce mi)
       WebSocket.prototype.send = function (d) {
         window.__ws = this;
         try {
           const m = JSON.parse(d);
+          window.__all.push(m.t + (m.b ? ':' + m.b : ''));
           if (__block.has(m.t)) { window.__sent.push(m); return; }
           if (m.t === 'kalem') { window.__kalem.push(m.durum); return; }
           if (m.t === 'kalem-destek') { setTimeout(() => window.__fake({ t: 'kalem-destek', ok: window.__kalemDestek }), 0); return; }
@@ -107,6 +111,22 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
     let s = await sent();
     const mv = s.find((m) => m.t === 'move');
     check('doğrudan: dokunuş -> dokunulan noktaya move + sol tık', mv && Math.abs(mv.x - 0.25) < 0.01 && Math.abs(mv.y - 0.75) < 0.01 && s.some((m) => m.t === 'down' && m.b === 'left') && s.some((m) => m.t === 'up' && m.b === 'left'), JSON.stringify(s));
+    check('doğrudan: dokun-bırak tam olarak move, down, up (basılı kalmaz)', s.map((m) => `${m.t}${m.b ? ':' + m.b : ''}`).join(',') === 'move,down:left,up:left', JSON.stringify(s));
+    // Hemen ardından birkaç piksel yana dokunuş: aynı noktaya gider (Windows çift tıkı saysın).
+    await tap(P(0.25, 0.75)); await sleep(60);
+    const pA = P(0.25, 0.75);
+    await tap({ x: pA.x + 9, y: pA.y + 7 }); await sleep(60);
+    s = await sent();
+    const mvs = s.filter((m) => m.t === 'move');
+    check('doğrudan: çift dokunuş ikinci tıkı ilkinin yerine gönderir', mvs.length === 2 && mvs[0].x === mvs[1].x && mvs[0].y === mvs[1].y && s.filter((m) => m.t === 'down').length === 2 && s.filter((m) => m.t === 'up').length === 2, JSON.stringify(s));
+    await sleep(500);
+    // Dokunmadan türeyen uyumluluk fare olayı (Safari) çekirdekte ikinci bir 'down' göndermez.
+    await tap(P(0.4, 0.4)); await sleep(30);
+    await ev(`(() => { const el = document.getElementById('screen'); for (const t of ['mousedown', 'mouseup', 'click']) el.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, clientX: ${P(0.4, 0.4).x}, clientY: ${P(0.4, 0.4).y}, button: 0 })); })()`);
+    await sleep(30);
+    s = await sent();
+    check('doğrudan: dokunuştan türeyen fare olayları yok sayılır (tek down)', s.filter((m) => m.t === 'down').length === 1 && s.filter((m) => m.t === 'up').length === 1, JSON.stringify(s));
+    await sleep(500);
     // iki parmak dikey kaydırma (yakınlaştırma yok) -> tekerlek
     const c0 = P(0.5, 0.5);
     await drag([[{ x: c0.x - 40, y: c0.y - 60 }, { x: c0.x + 40, y: c0.y - 60 }], [{ x: c0.x - 40, y: c0.y + 60 }, { x: c0.x + 40, y: c0.y + 60 }]]);
@@ -149,16 +169,78 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
     await sleep(50);
     check('iki parmak çift dokunuş -> 1x', (await ev("document.getElementById('screen').style.transform")) === '' && await ev("document.getElementById('zoomBtn').hidden"));
     await sleep(400); await sent();
-    // uzun basma -> sağ tık
-    await touch('touchStart', [P(0.6, 0.4)]); await sleep(700); await touch('touchEnd', []);
+    // uzun basma -> (tutuldu göstergesi, henüz girdi yok) -> bırakınca sağ tık
+    await touch('touchStart', [P(0.6, 0.4)]); await sleep(650);
+    const ringOn = await ev("!document.getElementById('tpHold').hidden");
+    s = await sent();
+    check('doğrudan: basılı tutunca gösterge çıkar, düğme basılmaz', ringOn && !s.some((m) => m.t === 'down'), JSON.stringify(s));
+    await touch('touchEnd', []);
     await sleep(50);
     s = await sent();
-    check('doğrudan: uzun basma -> sağ tık', s.some((m) => m.t === 'down' && m.b === 'right') && !s.some((m) => m.b === 'left'), JSON.stringify(s));
-    // sürükleme -> sol tuşla sürükleme
-    await drag([[P(0.3, 0.3)], [P(0.6, 0.6)]]);
+    check('doğrudan: uzun basıp bırakma -> sağ tık', s.map((m) => `${m.t}${m.b ? ':' + m.b : ''}`).join(',') === 'move,down:right,up:right', JSON.stringify(s));
+    check('gösterge bırakınca kaybolur', await ev("document.getElementById('tpHold').hidden"));
+    // hızlı sürükleme (basılı tutmadan) -> kaydırma (tekerlek), sol tuş basılmaz
+    await drag([[P(0.5, 0.3)], [P(0.5, 0.75)]]);
     await sleep(50);
     s = await sent();
-    check('doğrudan: sürükleme -> down, move, up', s[1]?.t === 'down' && s.at(-1).t === 'up' && s.filter((m) => m.t === 'move').length >= 2, s.map((m) => m.t).join(','));
+    check('doğrudan: hızlı dikey sürükleme -> tekerlek (parmak aşağı = yukarı kaydır), down yok', s.some((m) => m.t === 'wheel' && m.dy > 0 && m.dx === 0) && !s.some((m) => m.t === 'down' || m.t === 'up'), JSON.stringify(s));
+    check('doğrudan: kaydırmadan önce imleç parmağın altına gider', s[0]?.t === 'move' && Math.abs(s[0].x - 0.5) < 0.01 && Math.abs(s[0].y - 0.3) < 0.01, JSON.stringify(s[0]));
+    await drag([[P(0.8, 0.5)], [P(0.2, 0.5)]]);
+    await sleep(50);
+    s = await sent();
+    check('doğrudan: hızlı yatay sürükleme -> yatay tekerlek (parmak sola = sağa)', s.some((m) => m.t === 'wheel' && m.dx > 0 && m.dy === 0) && !s.some((m) => m.t === 'down'), JSON.stringify(s));
+    // basılı tut + sürükle -> sol tuşla sürükleme: move, down, move..., up
+    const holdDrag = async (a, b, end = 'touchEnd') => {
+      await touch('touchStart', [a]); await sleep(600);
+      for (let i = 1; i <= 8; i++) { await sleep(16); await touch('touchMove', [{ x: a.x + (b.x - a.x) * i / 8, y: a.y + (b.y - a.y) * i / 8 }]); }
+      await sleep(30);
+      if (end) await touch(end, []);
+    };
+    await holdDrag(P(0.3, 0.3), P(0.6, 0.6));
+    await sleep(50);
+    s = await sent();
+    let seq = s.map((m) => m.t);
+    const lastMv = s.filter((m) => m.t === 'move').at(-1);
+    check('doğrudan: basılı tut + sürükle -> move, down, move..., up', seq[0] === 'move' && Math.abs(s[0].x - 0.3) < 0.01 && seq[1] === 'down' && s[1].b === 'left' && seq.at(-1) === 'up' && seq.filter((t) => t === 'move').length >= 3 && seq.filter((t) => t === 'down').length === 1, seq.join(','));
+    check('doğrudan: sürükleme son konumda bırakılır', lastMv && Math.abs(lastMv.x - 0.6) < 0.01 && Math.abs(lastMv.y - 0.6) < 0.01 && seq.lastIndexOf('move') < seq.indexOf('up'), JSON.stringify(lastMv));
+    // touchcancel (iOS: sistem hareketi, bildirim...) -> up
+    await holdDrag(P(0.3, 0.3), P(0.5, 0.5), 'touchCancel');
+    await sleep(50);
+    s = await sent();
+    seq = s.map((m) => m.t);
+    check('doğrudan: sürüklerken touchcancel -> up', seq.includes('down') && seq.at(-1) === 'up' && seq.filter((t) => t === 'up').length === 1, seq.join(','));
+    // sekme gizlenince (uygulama değiştirme) -> up; sonra gelen touchend ikinci kez up göndermez
+    await holdDrag(P(0.3, 0.3), P(0.5, 0.5), null);
+    await ev("(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' }); document.dispatchEvent(new Event('visibilitychange')); delete document.visibilityState; })()");
+    await sleep(30);
+    await touch('touchEnd', []);
+    await sleep(50);
+    s = await sent();
+    seq = s.map((m) => m.t);
+    check('doğrudan: sürüklerken sekme gizlenince -> up (bir kez)', seq.includes('down') && seq.at(-1) === 'up' && seq.filter((t) => t === 'up').length === 1, seq.join(','));
+    // touchend kaçırılmışsa (yeni dokunuşta ekranda yalnızca yeni parmak var) önceki sürükleme bırakılır
+    // (Sayfada olay gönderilerek: ilk parmağın touchend'i hiç gelmemiş gibi yeni bir parmak yalnız başına değer.)
+    await holdDrag(P(0.3, 0.3), P(0.5, 0.5), null);
+    await ev(`(() => {
+      const el = document.getElementById('screen');
+      const tc = () => new Touch({ identifier: 50, target: el, clientX: ${P(0.7, 0.7).x}, clientY: ${P(0.7, 0.7).y} });
+      el.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true, touches: [tc()], changedTouches: [tc()] }));
+    })()`);
+    await sleep(20);
+    s = await sent();
+    seq = s.map((m) => m.t);
+    check('doğrudan: touchend kaçırılsa da yeni dokunuşta önceki sürükleme bırakılır', seq.includes('down') && seq.at(-1) === 'up', seq.join(','));
+    await ev(`(() => {
+      const el = document.getElementById('screen');
+      const tc = () => new Touch({ identifier: 50, target: el, clientX: ${P(0.7, 0.7).x}, clientY: ${P(0.7, 0.7).y} });
+      el.dispatchEvent(new TouchEvent('touchend', { bubbles: true, cancelable: true, touches: [], changedTouches: [tc()] }));
+    })()`);
+    await touch('touchEnd', []);
+    await sleep(50);
+    s = await sent();
+    seq = s.map((m) => m.t);
+    check('doğrudan: ardından yeni dokunuş normal tık', seq.join(',') === 'move,down,up', seq.join(','));
+    await sleep(500); await sent();
 
     // ---- Touchpad modu ----
     await ev("document.getElementById('touchModeBtn').click()");
@@ -204,7 +286,7 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
     await drag([[c0], [{ x: c0.x + 60, y: c0.y + 40 }]], 8, 20);
     await sleep(50);
     s = await sent();
-    const seq = s.map((m) => m.t);
+    seq = s.map((m) => m.t);
     check('touchpad: çift dokunup sürükleme -> down ... up (tık yok)', seq.filter((t) => t === 'down').length === 1 && seq.at(-1) === 'up' && seq.indexOf('down') < seq.lastIndexOf('move'), seq.join(','));
     // iki parmak kaydırma -> tekerlek
     await drag([[{ x: c0.x - 40, y: c0.y + 60 }, { x: c0.x + 40, y: c0.y + 60 }], [{ x: c0.x - 40, y: c0.y - 60 }, { x: c0.x + 40, y: c0.y - 60 }]]);
@@ -307,6 +389,76 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
     await ev("document.querySelector('.tus-cubugu button[data-vk=\"91\"]').click()");
     s = await sent();
     check('değiştiriciye ikinci dokunuş iptal eder', s.length === 0 && await ev("!document.querySelector('.tus-cubugu button[data-vk=\"91\"]').classList.contains('on')"));
+    // ---- Ekran klavyesi: görüntüleyici görünür alana (visualViewport) yerleşir ----
+    await ev("document.querySelector('.tus-cubugu') && (document.getElementById('tusBtn').click())"); // tuş çubuğunu kapat
+    await ev("document.getElementById('kbInput').blur()");
+    const rectOf = (sel) => ev(`(() => { const r = document.querySelector('${sel}').getBoundingClientRect(); return { top: r.top, bottom: r.bottom, h: r.height }; })()`);
+    // Görüntünün (object-fit: contain) sahnedeki gerçek alanı, dönüşüm dahil.
+    const imgRect = () => ev(`(() => { const c = document.getElementById('screen'), r = c.getBoundingClientRect(); const sc = Math.min(r.width / c.width, r.height / c.height); const h = c.height * sc, w = c.width * sc; return { top: r.top + (r.height - h) / 2, bottom: r.top + (r.height + h) / 2, left: r.left + (r.width - w) / 2, w, h }; })()`);
+    const full = await rectOf('#vViewer');
+    check('klavye kapalıyken görüntüleyici tüm yükseklikte', Math.abs(full.top) < 1 && Math.abs(full.h - 800) < 2, JSON.stringify(full));
+    // Gerçek boyut değişimi (Android'de klavye sayfayı küçültünce olduğu gibi): visualViewport resize
+    await call('Emulation.setDeviceMetricsOverride', { width: 400, height: 480, deviceScaleFactor: 2, mobile: true });
+    await sleep(300);
+    let vr = await rectOf('#vViewer'), sr = await rectOf('#stage');
+    check('görünür alan küçülünce görüntüleyici sığar', Math.abs(vr.h - 480) < 2 && sr.bottom <= 481, JSON.stringify({ vr, sr }));
+    await call('Emulation.setDeviceMetricsOverride', { width: 400, height: 800, deviceScaleFactor: 2, mobile: true });
+    await sleep(300);
+    // iPhone: klavye sayfa boyutunu değiştirmez, yalnızca visualViewport küçülür ve sayfa yukarı itilir (offsetTop).
+    // Sahte visualViewport ile benzetilir; olay gerçek visualViewport nesnesinden gönderilir (app.js ona abone).
+    const fakeVV = (o) => ev(`(() => {
+      window.__realVV = window.__realVV || window.visualViewport;
+      const f = ${o ? JSON.stringify(o) : 'window.__realVV'};
+      Object.defineProperty(window, 'visualViewport', { configurable: true, get: () => f });
+      window.__realVV.dispatchEvent(new Event('resize'));
+      return !!window.visualViewport;
+    })()`);
+    await fakeVV({ height: 430, offsetTop: 70, scale: 1, width: 400 });
+    await sleep(100);
+    vr = await rectOf('#vViewer'); sr = await rectOf('#stage');
+    let ir = await imgRect();
+    check('iPhone klavyesi (sahte visualViewport): görüntüleyici görünür alanda', Math.abs(vr.top - 70) < 1 && Math.abs(vr.h - 430) < 1 && sr.bottom <= 501, JSON.stringify({ vr, sr }));
+    check('görüntü klavyenin üstündeki alana sığdı', ir.top >= 70 - 1 && ir.bottom <= 500 + 1, JSON.stringify(ir));
+    check('klavye açık sınıfı', await ev("document.getElementById('vViewer').classList.contains('kb-open')"));
+    // Sayfa sıkıştırılarak yakınlaştırılmışsa (scale ≠ 1) dokunulmaz
+    await fakeVV({ height: 200, offsetTop: 0, scale: 2, width: 200 });
+    await sleep(100);
+    vr = await rectOf('#vViewer');
+    check('sayfa yakınlaştırılmışken görüntüleyici yerinde kalır', Math.abs(vr.top - 70) < 1 && Math.abs(vr.h - 430) < 1, JSON.stringify(vr));
+    await fakeVV(null);
+    await sleep(100);
+    vr = await rectOf('#vViewer');
+    check('klavye kapanınca eski hale döner', Math.abs(vr.top) < 1 && Math.abs(vr.h - 800) < 2 && !(await ev("document.getElementById('vViewer').classList.contains('kb-open')")), JSON.stringify(vr));
+    // Yakınlaştırılmışken klavye açılınca son dokunulan nokta görünür kalır
+    await tap(P(0.5, 0.9)); await sleep(500);
+    const cz = P(0.5, 0.9);
+    await drag([[{ x: cz.x - 30, y: cz.y - 40 }, { x: cz.x + 30, y: cz.y - 40 }], [{ x: cz.x - 90, y: cz.y - 40 }, { x: cz.x + 90, y: cz.y - 40 }]], 10);
+    await sleep(100);
+    await fakeVV({ height: 330, offsetTop: 0, scale: 1, width: 400 });
+    await sleep(100);
+    ir = await imgRect();
+    const ptY = ir.top + 0.9 * ir.h;
+    const zz = Number(((await ev("document.getElementById('screen').style.transform")).match(/scale\(([\d.]+)\)/) || [])[1]);
+    sr = await rectOf('#stage');
+    check('yakınlaştırılmışken klavye açılınca dokunulan nokta görünür kalır', zz > 1.5 && ptY >= sr.top && ptY <= sr.bottom && sr.bottom <= 331, JSON.stringify({ zz, ptY, sr }));
+    await fakeVV(null);
+    await sleep(100);
+    await ev("document.getElementById('zoomBtn').click()");
+    await sleep(400); await sent();
+
+    // ---- Görüntüleyiciden çıkarken basılı düğme bırakılır ('stop'tan önce) ----
+    await ev('window.__all.splice(0)');
+    await holdDrag(P(0.3, 0.3), P(0.5, 0.5), null);
+    await ev("document.getElementById('backBtn').click()");
+    await sleep(50);
+    const all = await ev('window.__all.splice(0)');
+    await sent();
+    await touch('touchEnd', []);
+    await sleep(50);
+    s = await sent();
+    check('görüntüleyiciden çıkarken basılıysa up, stop\'tan önce', all.indexOf('up:left') > all.indexOf('down:left') && all.indexOf('down:left') >= 0 && all.indexOf('up:left') < all.indexOf('stop'), JSON.stringify(all));
+    check('çıktıktan sonra parmak kalkınca ek girdi yok', s.length === 0 &&await ev("!document.getElementById('vHome').hidden"), JSON.stringify(s));
+
     const reg = await ev("navigator.serviceWorker.ready.then((r) => !!r.active && r.scope)");
     check('service worker kaydedildi ve etkin (localhost)', !!reg, String(reg));
     // Yeniden yükleme: SW denetiminde sayfa yine ağdan gelip çalışmalı
