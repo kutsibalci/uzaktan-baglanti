@@ -76,9 +76,23 @@
       oynatmadan eşlemeyi verir. Test: `test/ozellik-ekran.js`. **(gerçek telefonda ekran değiştirerek denenmedi; negatif konumlu
       monitör ve sanal ekran sürücüsü bu bilgisayarda yok, yalnızca kodla/birim testle)**
 
+- [x] JPEG yolunda akıcılık (HTTP'den bağlanan telefon; ilk iPhone denemesinde "takılıyor" denmişti):
+      2 kare onaysız yolda (ack penceresi), kare zamanlaması yakalamanın başından, ack gelince döngü hemen uyanır
+      (Node zamanlayıcıları Windows'ta ~15.6 ms adımlı), yollar doluyken sıradaki kare önceden yakalanır;
+      ekran yakalama masaüstü çoğaltmayla (DXGI Desktop Duplication, `RemoteHelper.cs` → `DxgiCapture`; GDI 30-80 ms → 1-15 ms,
+      durağan ekranda kopyalama/sıkıştırma atlanır, olmazsa GDI'ye döner, `REMOTE_YAKALAMA=gdi` ile kapatılır);
+      yardımcı programda fare/klavye komutları yakalamayı beklemez (ayrı iş parçacığı);
+      "Otomatik" kalite (varsayılan; JPEG kalitesi/genişliği kare onay süresi − ağ gidiş-dönüşüne göre);
+      tarayıcıda tek kare çözülür, bekleyen eski kare atılır, çizim requestAnimationFrame ile;
+      gecikme sayacında kare aralığı, titreşim, takılma/sn, ack süresi, kalite. Ölçüm: `test/ozellik-akicilik.js` (Wi-Fi taklidi).
+      **(henüz gerçek cihazda test edilmedi: iPhone Safari + gerçek Wi-Fi'da hiç denenmedi (ölçümler taklit ağ ve başsız Edge);
+      iOS'ta createImageBitmap/rAF zamanlaması ve çözme süresi; Otomatik kalitenin gerçek Wi-Fi'da salınıp salınmadığı;
+      çoğaltma: UAC/kilit ekranı geçişi, ekran çözünürlüğü değişimi, HDR ekran, sanal ekran (IddCx) sürücüsü, uyku sonrası;
+      sabit kalite + yavaş hatta 2 kare penceresi gecikmeyi bir kare iletimi kadar artırıyor (taklitte 102 → ~115 ms))**
+
 ## Sıradaki
 1. Yukarıdaki özelliklerin gerçek telefon/tablet/kalemle denenmesi (ikinci ekran dahil)
-2. ddagrab (Desktop Duplication) ile daha hızlı yakalama — DXGI çıkış sırası ↔ \\.\DISPLAYn eşlemesi lazım
+2. H.264 için de masaüstü çoğaltma (ffmpeg ddagrab) — JPEG yolunda yapıldı; çıkış ↔ \\.\DISPLAYn eşlemesi DXGI_OUTPUT_DESC.DeviceName ile (`DxgiCapture.Open`)
 3. Gerekirse herkese açık link (Cloudflare Tunnel) — şimdilik gerek yok, sadece kendi cihazlar
 4. Windows servisi olarak çalışma (UAC ve kilit ekranı)
 5. Yönetim günlüğünde 'dosya' ve 'guc' olaylarının okunur gösterimi (LOG_NAMES), özellik başına "misafire kapalı" seçeneği

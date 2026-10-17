@@ -4,7 +4,7 @@ Windows bilgisayarı telefondan, tabletten ya da başka bir bilgisayardan **tara
 
 ## Özellikler
 - Uzaktan kontrol: fare, klavye (Türkçe karakterler dahil), dokunmatik
-- H.264 görüntü (NVIDIA / AMD / Intel donanım kodlayıcı), desteklenmeyen tarayıcılarda JPEG
+- H.264 görüntü (NVIDIA / AMD / Intel donanım kodlayıcı), desteklenmeyen tarayıcılarda JPEG (hızlı ekran yakalama, ağa göre "Otomatik" kalite)
 - İkinci ekran (Spacedesk tarzı) — sanal monitör sürücüsü ile
 - Yerel hesaplar: Yönetici / Kontrol / Salt izleme
 - Cihaz hatırlama, yeni cihaz için bilgisayarda onay penceresi, tek seferlik misafir kodu
@@ -14,7 +14,7 @@ Windows bilgisayarı telefondan, tabletten ya da başka bir bilgisayardan **tara
 - Bilgisayar sesini uzaktan dinleme (Opus; HTTPS ve güncel tarayıcı gerekir)
 - Gizlilik perdesi: kontrol sırasında bilgisayar ekranı karartılır, uzaktaki görüntü etkilenmez
 - Tablet kalemi: basınç, eğim, silgi
-- Gecikme sayacı: ağ, çözme ve tahmini toplam gecikme; deneme sonuçlarını kopyalanabilir özet olarak verir
+- Gecikme sayacı: ağ, çözme ve tahmini toplam gecikme, kare aralığı / takılma; deneme sonuçlarını kopyalanabilir özet olarak verir
 - Tepsi simgesi, Windows açılınca başlatma, bağlantı bildirimleri; yöneticiye güç menüsü (kilitle/uyku/yeniden başlat/kapat)
 - Dış sunucu, lisans, abonelik yok — internet olmadan da çalışır
 

@@ -116,6 +116,8 @@ wss.on('connection', (ws, req) => {
   ws.isLocal = info.isLocal;
   ws.session = null;
   ws.busy = false;
+  ws.inflight = [];
+  ws.on('pong', () => jpegPong(ws));
   const authTimeout = setTimeout(() => { if (!ws.session) ws.close(4001, 'auth timeout'); }, 5 * 60 * 1000);
 
   sendJson(ws, {
@@ -306,20 +308,24 @@ async function handleSession(ws, m) {
   switch (m.t) {
     case 'start': return startStream(ws, m);
     case 'stop': stopStream(ws); return;
-    case 'ack': ws.inflight = false; return;
+    case 'ack': jpegAck(ws); return;
     case 'keyframe': video.requestKeyframe(ws); return;
     case 'settings':
       s.view.quality = Math.round(clamp(m.quality, 10, 95, s.view.quality));
       s.view.maxWidth = Math.round(clamp(m.maxWidth, 320, 3840, s.view.maxWidth));
       s.view.fps = Math.round(clamp(m.fps, 1, 60, s.view.fps));
       s.view.kbps = Math.round(clamp(m.kbps, 300, 30000, s.view.kbps));
+      // Otomatik kalite (yalnızca JPEG): quality/maxWidth tavan olur, sunucu ağa göre altında bir seviye seçer.
+      setAuto(ws, m.auto === true);
       ws.needsFrame = true;
+      wakeCapture();
       if (ws.streaming && s.view.codec === 'h264') await subscribeVideo(ws);
       return;
     case 'screen':
       if (typeof m.name === 'string' && SCREEN_NAME.test(m.name)) {
         s.view.screen = m.name;
         ws.needsFrame = true;
+        wakeCapture();
         if (ws.streaming && s.view.codec === 'h264') await subscribeVideo(ws);
       }
       return;
@@ -394,9 +400,13 @@ async function startStream(ws, m) {
   // İstemci WebCodecs destekliyorsa (HTTPS/localhost) H.264, yoksa JPEG.
   s.view.codec = Array.isArray(m.codecs) && m.codecs.includes('h264') && video.available ? 'h264' : 'jpeg';
   ws.streaming = true;
-  ws.inflight = false;
+  ws.inflight = [];
+  ws.held = null;
+  ws.still = false;
   ws.needsFrame = true;
   ws.nextDue = 0;
+  setAuto(ws, false);
+  wakeCapture();
   const fresh = await helper.info();
   sendJson(ws, {
     t: 'started', mode: m.mode === 'extend' ? 'extend' : 'control', screen: s.view.screen, screens: describeScreens(fresh.screens),
@@ -415,6 +425,7 @@ async function subscribeVideo(ws) {
 function stopStream(ws) {
   ws.streaming = false;
   ws.lastFrame = null;
+  ws.held = null;
   video.unsubscribe(ws);
   const s = ws.session;
   if (s?.virtualScreen) {
@@ -477,44 +488,179 @@ async function handleAdmin(ws, m) {
   }
 }
 
-// ---------- Görüntü döngüsü ----------
-// Her istemci bir önceki kareyi aldığını bildirmeden (ack) yenisi gönderilmez.
-// Böylece yavaş Wi-Fi'da kareler birikip gecikme büyümez.
+// ---------- Görüntü döngüsü (JPEG) ----------
+// İstemci her kareyi çözünce onay (ack) gönderir. Aynı anda en fazla JPEG_INFLIGHT kare onaysız yolda olabilir:
+// biri yoldayken sıradaki gönderilir (ağ gidiş-dönüşü kare aralığına eklenmez), ama kareler yine birikmez,
+// yavaş Wi-Fi'da gecikme büyümez. Kare zamanlaması yakalamanın başından sayılır (yakalama süresi aralığa eklenmez).
+// Yollar doluyken, onayın geleceği tahmin edilen ana yakalama süresi kadar kala sıradaki kare önceden yakalanır ve
+// onay gelince hemen gönderilir (yakalama süresi de aralığa eklenmez; kare en fazla tahmin hatası kadar bekler).
+// Windows'ta Node zamanlayıcıları ~15.6 ms adımlıdır: ack/ayar gelince döngü zamanlayıcıyı beklemeden uyandırılır.
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const JPEG_HEADER = Buffer.from([1]); // ikili mesajın ilk baytı: 1 = JPEG, 2 = H.264
+const JPEG_INFLIGHT = 2;      // onaysız yolda olabilecek kare sayısı
+const ACK_TIMEOUT_MS = 3000;  // bu sürede onay gelmezse kare kayıp sayılır
+const EARLY_MS = 4;           // zamanlayıcı adımı yüzünden geç kalmamak için bu kadar erken yakalanabilir
+
+let wakeFn = null;
+function wakeCapture() { const w = wakeFn; wakeFn = null; if (w) w(); }
+function nap(ms) {
+  return new Promise((resolve) => {
+    const t = setTimeout(() => { wakeFn = null; resolve(); }, ms);
+    wakeFn = () => { clearTimeout(t); resolve(); };
+  });
+}
+
+// Otomatik kalite: [JPEG kalitesi, en fazla genişlik, göreli kare boyutu], küçükten büyüğe. İstemcinin gönderdiği
+// quality/maxWidth tavandır. Önce kalite düşer, sonra genişlik: küçültme yakalamaya ~20 ms ekliyor (ölçüldü).
+// Ölçüt: kare onay süresi (ortanca) − ağ gidiş-dönüşü (yollar boşken WebSocket ping, ortanca) ≈ iletim + çözme süresi.
+// Bu, kare aralığının (1000/fps) büyük kısmını tutuyorsa bir seviye düşülür; bir üst seviyede bile rahat kalacaksa
+// (birkaç saniye üst üste) bir seviye çıkılır. Gidiş-dönüşün kendisi kaliteyle değişmediği için hesaba katılmaz.
+const AUTO_LEVELS = [[35, 960, 0.25], [45, 1280, 0.42], [55, 1280, 0.5], [40, 1920, 0.84], [50, 1920, 0.92], [60, 1920, 1], [70, 1920, 1.12], [80, 2560, 1.3]];
+const AUTO_START = 5;
+
+function setAuto(ws, on) {
+  const v = ws.session.view;
+  if (!on) { v.auto = false; ws.auto = null; return; }
+  if (v.auto && ws.auto) return; // zaten otomatik: seviye korunur
+  v.auto = true;
+  ws.auto = { level: AUTO_START, good: 0, start: performance.now(), acks: [], rtts: [], lastPing: 0 };
+}
+
+function jpegParams(c) {
+  const v = c.session.view;
+  if (!v.auto || !c.auto) return { quality: v.quality, maxWidth: v.maxWidth };
+  const [q, w] = AUTO_LEVELS[c.auto.level];
+  return { quality: Math.min(q, v.quality), maxWidth: Math.min(w, v.maxWidth) };
+}
+
+function sendJpeg(c, frame, p, t) {
+  c.send(Buffer.concat([JPEG_HEADER, frame]), { binary: true });
+  c.lastFrame = frame;
+  c.needsFrame = false;
+  c.still = false;
+  c.inflight.push({ at: t, size: frame.length });
+  c.jpegQuality = { ...p, auto: !!c.session.view.auto };
+  autoTune(c, t);
+}
+
+function jpegAck(ws) {
+  const now = performance.now();
+  const f = ws.inflight.shift();
+  if (f) {
+    const ms = now - f.at;
+    ws.ackMs = ws.ackMs == null ? ms : ws.ackMs * 0.8 + ms * 0.2; // gecikme sayacı ve önceden yakalama için
+    if (ws.auto) ws.auto.acks.push(ms);
+  }
+  // Önceden yakalanmış kare bekliyorsa hemen gönder (çok bayatladıysa at; döngü tazesini yakalar).
+  const held = ws.held;
+  if (held && ws.inflight.length < JPEG_INFLIGHT) {
+    ws.held = null;
+    if (ws.readyState === 1 && ws.streaming && now - held.at < 2000 / ws.session.view.fps) sendJpeg(ws, held.frame, held.p, now);
+  }
+  wakeCapture();
+}
+
+// Ağ gidiş-dönüşü, yalnızca yolda kare yokken atılan WebSocket ping'iyle ölçülür: kareler doluyken ping onların
+// arkasında beklediği için gidiş-dönüşü olduğundan büyük gösterirdi (dolu hatta kalite hiç düşmezdi).
+function jpegPing(c, now) {
+  const a = c.auto;
+  if (!a || c.inflight.length || c.bufferedAmount > 0) return;
+  if (c.pingAt && now - c.pingAt < 5000) return; // cevap bekleniyor
+  if (now - a.lastPing < 1000) return;
+  a.lastPing = now;
+  c.pingAt = now;
+  try { c.ping(); } catch { c.pingAt = 0; }
+}
+
+function jpegPong(ws) {
+  if (!ws.pingAt) return;
+  const a = ws.auto;
+  const now = performance.now();
+  if (a) {
+    a.rtts.push({ at: now, ms: now - ws.pingAt });
+    while (a.rtts.length > 5 || (a.rtts.length > 1 && now - a.rtts[0].at > 30000)) a.rtts.shift();
+  }
+  ws.pingAt = 0;
+}
+
+function autoTune(c, now) {
+  const a = c.auto;
+  if (!a) return;
+  if (now - a.start < 1000) return;
+  if (a.acks.length < 4) { if (now - a.start > 3000) { a.start = now; a.acks = []; } return; } // ekran durağan
+  const sorted = [...a.acks].sort((x, y) => x - y);
+  const median = sorted[Math.floor(sorted.length / 2)];
+  // Ortanca: ack süresinin ortancası da ağın olağan sapmasını içeriyor; en düşük ping ile kıyaslamak sapmayı "iletim" sanardı.
+  const pings = a.rtts.map((x) => x.ms).sort((x, y) => x - y);
+  const rtt = pings.length ? pings[Math.floor(pings.length / 2)] : 0;
+  const cost = Math.max(0, median - rtt);
+  const period = 1000 / c.session.view.fps;
+  let level = a.level;
+  const up = AUTO_LEVELS[Math.min(level + 1, AUTO_LEVELS.length - 1)][2] / AUTO_LEVELS[level][2];
+  if (cost > 0.9 * period) { level -= cost > 2 * period ? 2 : 1; a.good = 0; }
+  else if (cost * up < 0.6 * period) { if (++a.good >= 3) { level++; a.good = 0; } }
+  else a.good = 0;
+  a.level = Math.max(0, Math.min(AUTO_LEVELS.length - 1, level));
+  a.start = now;
+  a.acks = [];
+}
 
 async function captureLoop() {
   for (;;) {
-    const now = Date.now();
-    for (const c of clients) if (c.inflight && now - c.sentAt > 3000) c.inflight = false;
-    const due = [...clients].filter((c) => c.readyState === 1 && c.streaming && c.session.view.codec === 'jpeg'
-      && !c.inflight && now >= c.nextDue && c.session.view.screen);
-    if (!due.length) { await sleep(clients.size ? 5 : 200); continue; }
+    const now = performance.now();
+    let wait = 200;
+    const due = [];
+    for (const c of clients) {
+      const v = c.session.view;
+      if (c.readyState !== 1 || !c.streaming || v.codec !== 'jpeg' || !v.screen) continue;
+      if (c.inflight.length && now - c.inflight[0].at > ACK_TIMEOUT_MS) { c.inflight = []; c.held = null; } // onay kayboldu
+      jpegPing(c, now);
+      // Otomatik kalitede hiç gidiş-dönüş ölçümü yoksa (akış yeni başladı) bir kez yolların boşalması beklenir: temiz ping.
+      if (c.auto && !c.auto.rtts.length && !c.pingAt && c.inflight.length) { wait = Math.min(wait, ACK_TIMEOUT_MS); continue; }
+      if (c.held) { wait = Math.min(wait, ACK_TIMEOUT_MS); continue; } // önceden yakalanan kare onayı bekliyor
+      const timeLeft = c.nextDue - now;
+      if (c.inflight.length >= JPEG_INFLIGHT) {
+        // Yollar dolu: en eski karenin onayının tahmini gelişine yakalama süresi kadar kala önceden yakala.
+        const freeIn = c.ackMs == null ? Infinity : c.inflight[0].at + c.ackMs - (c.capMs || 0) - now;
+        const left = Math.max(timeLeft, freeIn);
+        if (left <= EARLY_MS) due.push(c);
+        else wait = Math.min(wait, Number.isFinite(left) ? left - EARLY_MS : ACK_TIMEOUT_MS - (now - c.inflight[0].at));
+        continue;
+      }
+      // İkinci kare, ilki sunucunun gönderim tamponundan çıkmadan yollanmaz.
+      if (c.inflight.length && c.bufferedAmount > 0) { wait = Math.min(wait, 16); continue; }
+      if (timeLeft <= EARLY_MS) due.push(c); else wait = Math.min(wait, timeLeft - EARLY_MS);
+    }
+    if (!due.length) { await nap(Math.max(1, wait)); continue; }
 
     const groups = new Map();
     for (const c of due) {
-      const v = c.session.view;
-      const key = `${v.quality} ${v.maxWidth} ${v.screen}`;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(c);
+      const p = jpegParams(c);
+      const key = `${p.quality} ${p.maxWidth} ${c.session.view.screen}`;
+      if (!groups.has(key)) groups.set(key, { p, list: [] });
+      groups.get(key).list.push(c);
     }
 
-    for (const [key, group] of groups) {
+    for (const [key, { p, list }] of groups) {
       let frame;
-      const t0 = Date.now();
+      const t0 = performance.now();
       try { frame = await helper.request(`cap ${key}`); } catch { await sleep(300); continue; }
-      const t = Date.now();
-      for (const c of group) {
-        c.capMs = t - t0; // yakalama + JPEG sıkıştırma süresi (gecikme sayacı için)
-        c.nextDue = t + 1000 / c.session.view.fps;
-        if (!frame.length || c.readyState !== 1) continue;
-        if (!c.needsFrame && c.lastFrame && frame.equals(c.lastFrame)) continue;
-        c.send(Buffer.concat([JPEG_HEADER, frame]), { binary: true });
-        c.lastFrame = frame;
-        c.needsFrame = false;
-        c.inflight = true;
-        c.sentAt = t;
+      const t = performance.now();
+      for (const c of list) {
+        const v = c.session.view;
+        c.capMs = Math.round(t - t0); // yakalama + JPEG sıkıştırma süresi (gecikme sayacı için)
+        // Hedef aralığa göre ilerle; bir aralıktan fazla geride kalındıysa (ack beklendi) yeniden başla, toplu kare atma.
+        const period = 1000 / v.fps;
+        c.nextDue = t0 - c.nextDue < period ? c.nextDue + period : t0 + period;
+        if (!frame.length || c.readyState !== 1 || !c.streaming) continue;
+        if (!c.needsFrame && c.lastFrame && frame.equals(c.lastFrame)) {
+          // Ekran durağan: kare gönderilmez. İstemci bundan sonraki aralığı takılma saymasın diye bir kez bildirilir.
+          if (!c.still) { c.still = true; sendJson(c, { t: 'durgun' }); }
+          continue;
+        }
+        if (c.inflight.length >= JPEG_INFLIGHT) c.held = { frame, p, at: t }; // onay gelince gönderilir (jpegAck)
+        else sendJpeg(c, frame, p, t);
       }
     }
   }

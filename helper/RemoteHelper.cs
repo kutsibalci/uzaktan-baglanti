@@ -5,7 +5,7 @@
 // (SetProcessDPIAware) ölçeklemesi ana ekrandan farklı olan monitörün sınırları sanal (ölçeklenmiş) gelir, oysa ekran
 // yakalama (BitBlt) fiziksel piksel okur: ör. %125 ana ekran + %100 ikinci ekranda ikinci ekran 2400x1350 @2400 görünüyordu,
 // gerçekte 1920x1080 @1920 — yakalanan karenin yalnızca bir kısmı o ekrandı, kalanı siyahtı.
-//   cap <kalite> <maxGenislik> <ekran>  -> tip 1: JPEG
+//   cap <kalite> <maxGenislik> <ekran>  -> tip 1: JPEG (masaüstü çoğaltma ile; olmazsa GDI. REMOTE_YAKALAMA=gdi: hep GDI)
 //   info                                -> tip 2: JSON (ekran listesi, fiziksel piksel; dpi, scale, adapter; üstte "dpiMode")
 //   setmode <ekran> <gen> <yuk>         -> tip 2: JSON {"ok":bool}
 //   move <ekran> <nx> <ny>              -> fareyi ekranda 0..1 normalize konuma taşır
@@ -19,6 +19,7 @@
 //   pentest                             -> tip 2: JSON {"ok":bool,...} kalem cihazı oluşturulabiliyor mu (girdi göndermez)
 // Ayrıca: RemoteHelper.exe ask <base64 başlık> <base64 mesaj>  -> Evet=0, Hayır=1 çıkış kodu
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -27,6 +28,7 @@ using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using System.Windows.Forms;
 
 class RemoteHelper
@@ -99,6 +101,24 @@ class RemoteHelper
     static Stream output;
     static Bitmap frame;
     static ImageCodecInfo jpegCodec;
+    // Yalnızca ölçüm testleri için (test/ozellik-akicilik.js): REMOTE_TEST_DEGISEN=1 iken yakalanan görüntü her karede
+    // biraz aşağı kaydırılır (sarmal). Böylece kullanıcının ekranına hiçbir şey açmadan "sürekli değişen ekran" elde edilir.
+    // Kaydırma kopyalama sırasında yapılır (GDI'de iki şerit, çoğaltmada satır sırası); yakalama maliyeti gerçek yakalamayla aynıdır.
+    // "a/b" biçiminde verilirse a ms kaydırır, b ms durur (durağan ekran: kareler aynı kalır, sunucu göndermez).
+    static readonly string testEnv = Environment.GetEnvironmentVariable("REMOTE_TEST_DEGISEN") ?? "";
+    static readonly bool testScroll = testEnv == "1" || testEnv.Contains("/");
+    static int testOffset;
+    static byte[] testLastJpeg;
+    static string testLastKey;
+
+    static bool TestMoving()
+    {
+        var p = testEnv.Split('/');
+        if (p.Length != 2) return true;
+        int a, b;
+        if (!int.TryParse(p[0], out a) || !int.TryParse(p[1], out b) || a + b <= 0) return true;
+        return (Environment.TickCount & int.MaxValue) % (a + b) < a;
+    }
     static List<Monitor> monitors = new List<Monitor>();
     static DateTime monitorsAt = DateTime.MinValue;
     static string dpiMode = "yok";
@@ -123,13 +143,44 @@ class RemoteHelper
         foreach (var c in ImageCodecInfo.GetImageEncoders())
             if (c.MimeType == "image/jpeg") jpegCodec = c;
 
+        // Cevap üreten komutlar (cap, info, setmode, pentest, pen...) sırayla ayrı bir iş parçacığında çalışır; cevapların
+        // sırası korunur. Cevapsız girdi komutları (fare/klavye/metin) beklemeden burada çalışır: ekran yakalanırken
+        // fare hareketi kuyrukta beklemez. (pen, kalem aygıtını pentest ile paylaştığı için iş parçacığında kalır.)
+        var work = new BlockingCollection<string[]>();
+        var worker = new Thread(() =>
+        {
+            foreach (var a in work.GetConsumingEnumerable())
+            {
+                if (a == null) { DxgiCapture.CloseIdle(null); continue; } // boşta kalan ekran çoğaltmalarını kapat
+                try { Handle(a); }
+                catch (Exception e) { Console.Error.WriteLine("hata: " + e.Message); }
+            }
+        });
+        worker.IsBackground = true;
+        worker.Start();
+        var idle = new System.Threading.Timer((o) => { try { work.Add(null); } catch (InvalidOperationException) { } }, null, 5000, 5000);
+
         string line;
         while ((line = Console.In.ReadLine()) != null)
         {
-            try { Handle(line.Trim().Split(' ')); }
+            var a = line.Trim().Split(' ');
+            if (!Immediate(a[0])) { work.Add(a); continue; }
+            try { Handle(a); }
             catch (Exception e) { Console.Error.WriteLine("hata: " + e.Message); }
         }
+        idle.Dispose();
+        work.CompleteAdding();
+        worker.Join(5000);
         return 0;
+    }
+
+    static bool Immediate(string cmd)
+    {
+        switch (cmd)
+        {
+            case "move": case "down": case "up": case "wheel": case "key": case "text": return true;
+            default: return false;
+        }
     }
 
     static string B64(string s) { return Encoding.UTF8.GetString(Convert.FromBase64String(s)); }
@@ -319,27 +370,62 @@ class RemoteHelper
         Write(2, Encoding.UTF8.GetBytes("{\"ok\":" + (ok ? "true" : "false") + "}"));
     }
 
+    // Ekran değişmediyse (çoğaltma yeni kare vermedi, imleç ve ayarlar aynı) son JPEG yeniden gönderilir: kopyalama ve
+    // sıkıştırma atlanır. Sunucu aynı kareyi zaten istemciye yollamaz; bu yalnızca durağan ekranda işlemciyi boşa harcamamak için.
+    static byte[] lastJpeg;
+    static string lastJpegKey;
+
     static void Capture(int quality, int maxWidth, string screen)
     {
         var m = Find(screen);
         if (m == null) { Write(1, new byte[0]); return; }
         var b = m.Bounds;
-        if (frame == null || frame.Width != b.Width || frame.Height != b.Height)
+
+        // Önce masaüstü çoğaltma (hızlı); kullanılamazsa GDI. Çoğaltmanın boyutu ekranın gerçek piksel boyutudur.
+        bool newImage;
+        int dw, dh;
+        bool dxgi = DxgiCapture.Poll(m.Name, out dw, out dh, out newImage);
+        int fw = dxgi ? dw : b.Width, fh = dxgi ? dh : b.Height;
+        if (frame == null || frame.Width != fw || frame.Height != fh)
         {
             if (frame != null) frame.Dispose();
-            frame = new Bitmap(b.Width, b.Height, PixelFormat.Format32bppRgb);
+            frame = new Bitmap(fw, fh, PixelFormat.Format32bppRgb);
+            lastJpeg = null;
+        }
+        string testKey = quality + " " + maxWidth + " " + m.Name;
+        if (testScroll && fh > 16)
+        {
+            // Test: durma anında gerçek ekran değişse de son kare aynen verilir (durağan ekran kesin olsun).
+            if (!TestMoving() && testLastJpeg != null && testKey == testLastKey) { Write(1, testLastJpeg); return; }
+            testOffset += Math.Max(1, fh / 60);
+        }
+        int k = testScroll ? testOffset % fh : 0;
+
+        string key = quality + " " + maxWidth + " " + m.Name + " " + k + " " + CursorKey();
+        if (dxgi && !newImage && lastJpeg != null && key == lastJpegKey) { Write(1, lastJpeg); return; }
+        if (dxgi && !DxgiCapture.CopyTo(m.Name, frame, k))
+        {
+            dxgi = false;
+            if (frame.Width != b.Width || frame.Height != b.Height) { frame.Dispose(); frame = new Bitmap(b.Width, b.Height, PixelFormat.Format32bppRgb); }
+            fw = b.Width; fh = b.Height; k = testScroll ? testOffset % fh : 0;
         }
         using (var g = Graphics.FromImage(frame))
         {
-            g.CopyFromScreen(b.X, b.Y, 0, 0, b.Size, CopyPixelOperation.SourceCopy);
-            DrawCursor(g, b);
+            if (dxgi) { }
+            else if (k > 0)
+            {
+                g.CopyFromScreen(b.X, b.Y + b.Height - k, 0, 0, new Size(b.Width, k), CopyPixelOperation.SourceCopy);
+                g.CopyFromScreen(b.X, b.Y, 0, k, new Size(b.Width, b.Height - k), CopyPixelOperation.SourceCopy);
+            }
+            else g.CopyFromScreen(b.X, b.Y, 0, 0, b.Size, CopyPixelOperation.SourceCopy);
+            DrawCursor(g, b, fw, fh);
         }
 
         Bitmap toEncode = frame;
         bool scaled = false;
-        if (maxWidth > 0 && b.Width > maxWidth)
+        if (maxWidth > 0 && fw > maxWidth)
         {
-            int h = (int)((long)b.Height * maxWidth / b.Width);
+            int h = (int)((long)fh * maxWidth / fw);
             toEncode = new Bitmap(maxWidth, h, PixelFormat.Format24bppRgb);
             scaled = true;
             using (var g = Graphics.FromImage(toEncode))
@@ -355,12 +441,25 @@ class RemoteHelper
         using (var ms = new MemoryStream())
         {
             toEncode.Save(ms, jpegCodec, ep);
-            Write(1, ms.ToArray());
+            var jpeg = ms.ToArray();
+            lastJpeg = dxgi ? jpeg : null;
+            lastJpegKey = key;
+            if (testScroll) { testLastJpeg = jpeg; testLastKey = testKey; }
+            Write(1, jpeg);
         }
         if (scaled) toEncode.Dispose();
     }
 
-    static void DrawCursor(Graphics g, Rectangle b)
+    static string CursorKey()
+    {
+        var ci = new CURSORINFO();
+        ci.cbSize = Marshal.SizeOf(typeof(CURSORINFO));
+        if (!GetCursorInfo(ref ci)) return "?";
+        return ci.flags + "," + ci.hCursor + "," + ci.pt.x + "," + ci.pt.y;
+    }
+
+    // fw, fh: görüntünün boyutu. Ekranın bu süreçteki (DPI'ya göre sanallaştırılmış olabilen) boyutundan farklıysa konum ölçeklenir.
+    static void DrawCursor(Graphics g, Rectangle b, int fw, int fh)
     {
         var ci = new CURSORINFO();
         ci.cbSize = Marshal.SizeOf(typeof(CURSORINFO));
@@ -371,7 +470,8 @@ class RemoteHelper
         if (ii.hbmMask != IntPtr.Zero) DeleteObject(ii.hbmMask);
         if (ii.hbmColor != IntPtr.Zero) DeleteObject(ii.hbmColor);
         IntPtr hdc = g.GetHdc();
-        DrawIconEx(hdc, ci.pt.x - b.X - ii.xHotspot, ci.pt.y - b.Y - ii.yHotspot, ci.hCursor, 0, 0, 0, IntPtr.Zero, 3);
+        int x = (int)((long)(ci.pt.x - b.X) * fw / Math.Max(1, b.Width)), y = (int)((long)(ci.pt.y - b.Y) * fh / Math.Max(1, b.Height));
+        DrawIconEx(hdc, x - ii.xHotspot, y - ii.yHotspot, ci.hCursor, 0, 0, 0, IntPtr.Zero, 3);
         g.ReleaseHdc(hdc);
     }
 
@@ -592,5 +692,290 @@ class RemoteHelper
             ok ? "true" : "false", Json(penDeviceError ?? ""),
             Marshal.SizeOf(typeof(POINTER_INFO)), Marshal.SizeOf(typeof(POINTER_PEN_INFO)), Marshal.SizeOf(typeof(POINTER_TYPE_INFO)),
             IntPtr.Size == 8 ? "true" : "false")));
+    }
+}
+
+// Masaüstü çoğaltma (DXGI Desktop Duplication) ile hızlı ekran yakalama. GDI (CopyFromScreen) bu bilgisayarda kare başına
+// 30-80 ms sürüyordu ve JPEG kare hızını sınırlıyordu; çoğaltma değişen kareyi GPU'dan birkaç ms'de verir, ekran değişmediyse
+// hiç kopyalamaz. Kullanılamazsa (eski sürücü, güvenli masaüstü/UAC, döndürülmüş ya da HDR ekran, boyut uyuşmazlığı)
+// Grab false döner ve çağıran GDI'ye döner; birkaç saniye sonra yeniden denenir. REMOTE_YAKALAMA=gdi ile tamamen kapatılır.
+// Ek kütüphane yok: COM arayüzleri sanal tablo sırasıyla çağrılır. Yalnızca tek bir iş parçacığından kullanılmalı.
+class DxgiCapture
+{
+    public static readonly bool Disabled = (Environment.GetEnvironmentVariable("REMOTE_YAKALAMA") ?? "").ToLowerInvariant() == "gdi";
+
+    [DllImport("dxgi.dll")] static extern int CreateDXGIFactory1(ref Guid riid, out IntPtr factory);
+    [DllImport("d3d11.dll")] static extern int D3D11CreateDevice(IntPtr adapter, int driverType, IntPtr software, uint flags, IntPtr levels, uint nLevels, uint sdk, out IntPtr device, out int level, out IntPtr context);
+    [DllImport("kernel32.dll", EntryPoint = "RtlMoveMemory")] static extern void MoveMemory(IntPtr dst, IntPtr src, UIntPtr n);
+
+    static Guid IID_IDXGIFactory1 = new Guid("770aae78-f26f-4dba-a829-253c83d1b387");
+    static Guid IID_IDXGIOutput1 = new Guid("00cddea8-939b-4b83-a340-a685226666cc");
+    static Guid IID_ID3D11Texture2D = new Guid("6f15aaf2-d208-4e89-9ab4-489535d34f9c");
+
+    const int DXGI_ERROR_NOT_FOUND = unchecked((int)0x887A0002);
+    const int DXGI_ERROR_WAIT_TIMEOUT = unchecked((int)0x887A0027);
+    const uint DXGI_FORMAT_B8G8R8A8_UNORM = 87;
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    struct OUTPUT_DESC
+    {
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string DeviceName;
+        public int Left, Top, Right, Bottom;
+        public int AttachedToDesktop, Rotation;
+        public IntPtr Monitor;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    struct OUTDUPL_DESC { public uint Width, Height, RefreshNum, RefreshDen, Format, ScanlineOrdering, Scaling, Rotation; public int DesktopImageInSystemMemory; }
+    [StructLayout(LayoutKind.Sequential)]
+    struct FRAME_INFO
+    {
+        public long LastPresentTime, LastMouseUpdateTime;
+        public uint AccumulatedFrames; public int RectsCoalesced, ProtectedContentMaskedOut;
+        public int PointerX, PointerY, PointerVisible;
+        public uint TotalMetadataBufferSize, PointerShapeBufferSize;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    struct TEX2D_DESC { public uint Width, Height, MipLevels, ArraySize, Format, SampleCount, SampleQuality, Usage, BindFlags, CPUAccessFlags, MiscFlags; }
+    [StructLayout(LayoutKind.Sequential)]
+    struct MAPPED { public IntPtr Data; public uint RowPitch, DepthPitch; }
+
+    delegate int EnumFn(IntPtr self, uint i, out IntPtr o);
+    delegate int OutDescFn(IntPtr self, out OUTPUT_DESC d);
+    delegate int DuplicateFn(IntPtr self, IntPtr device, out IntPtr dup);
+    delegate void DuplDescFn(IntPtr self, out OUTDUPL_DESC d);
+    delegate int AcquireFn(IntPtr self, uint ms, out FRAME_INFO fi, out IntPtr resource);
+    delegate int ReleaseFrameFn(IntPtr self);
+    delegate int CreateTexFn(IntPtr self, ref TEX2D_DESC d, IntPtr init, out IntPtr tex);
+    delegate void CopyResFn(IntPtr self, IntPtr dst, IntPtr src);
+    delegate int MapFn(IntPtr self, IntPtr res, uint sub, uint type, uint flags, out MAPPED m);
+    delegate void UnmapFn(IntPtr self, IntPtr res, uint sub);
+
+    static T Fn<T>(IntPtr obj, int index) where T : class
+    {
+        IntPtr vtbl = Marshal.ReadIntPtr(obj);
+        return (T)(object)Marshal.GetDelegateForFunctionPointer(Marshal.ReadIntPtr(vtbl, index * IntPtr.Size), typeof(T));
+    }
+    static void Rel(ref IntPtr p) { if (p != IntPtr.Zero) { Marshal.Release(p); p = IntPtr.Zero; } }
+
+    class Session
+    {
+        public IntPtr Device, Context, Dup, Staging;
+        public int W, H;
+        public bool HasImage, Waited;
+        public AcquireFn Acquire; public ReleaseFrameFn ReleaseFrame;
+        public CopyResFn CopyResource; public MapFn Map; public UnmapFn Unmap;
+        public void Close()
+        {
+            Rel(ref Staging); Rel(ref Dup); Rel(ref Context); Rel(ref Device);
+        }
+    }
+
+    static readonly Dictionary<string, Session> sessions = new Dictionary<string, Session>();
+    static readonly Dictionary<string, DateTime> retryAt = new Dictionary<string, DateTime>();
+    static readonly Dictionary<string, string> lastError = new Dictionary<string, string>();
+    static readonly Dictionary<string, DateTime> lastUse = new Dictionary<string, DateTime>();
+
+    // Ekranın son görüntüsünü GPU'daki ara dokuya alır. newImage: son çağrıdan beri ekran görüntüsü değişti mi
+    // (yalnızca fare hareketi değişiklik sayılmaz; imleci çağıran çizer). false: çoğaltma kullanılamıyor, GDI kullanılmalı.
+    // w, h: çoğaltmanın verdiği gerçek piksel boyutu. Sistem DPI farkındalığında farklı ölçeklemeli ikinci ekranın
+    // GDI'deki (sanallaştırılmış) boyutundan farklı olabilir; görüntü yine ekranın tamamıdır.
+    public static bool Poll(string name, out int w, out int h, out bool newImage)
+    {
+        newImage = true;
+        w = h = 0;
+        if (Disabled) return false;
+        CloseIdle(name);
+        Session s;
+        if (!sessions.TryGetValue(name, out s))
+        {
+            DateTime t;
+            if (retryAt.TryGetValue(name, out t) && DateTime.UtcNow < t) return false;
+            try { s = Open(name); }
+            catch (Exception e) { Fail(name, e.Message); return false; }
+            sessions[name] = s;
+        }
+        try
+        {
+            // Çoğaltma yeni açıldığında ilk kare boş (siyah, LastPresentTime 0) gelir; gerçek görüntü hemen ardından gelir.
+            // Görüntü yokken birkaç kez kısa bekleyerek denenir (yalnızca ilk çağrıda; sonra beklemeden), yine yoksa GDI.
+            int tries = s.HasImage ? 1 : (s.Waited ? 1 : 4);
+            uint timeout = s.HasImage || s.Waited ? 0u : 50u;
+            s.Waited = true;
+            newImage = false;
+            for (int i = 0; i < tries && !newImage; i++)
+            {
+                FRAME_INFO fi;
+                IntPtr res;
+                int hr = s.Acquire(s.Dup, timeout, out fi, out res);
+                if (hr == DXGI_ERROR_WAIT_TIMEOUT) continue;
+                if (hr < 0) throw new Exception("AcquireNextFrame 0x" + hr.ToString("X8"));
+                try
+                {
+                    // Yalnızca fare hareketi olduysa (LastPresentTime 0) görüntü değişmedi; imleci zaten biz çiziyoruz.
+                    if (fi.LastPresentTime != 0)
+                    {
+                        IntPtr tex;
+                        Guid iid = IID_ID3D11Texture2D;
+                        if (Marshal.QueryInterface(res, ref iid, out tex) < 0) throw new Exception("ID3D11Texture2D yok");
+                        s.CopyResource(s.Context, s.Staging, tex);
+                        Marshal.Release(tex);
+                        s.HasImage = true;
+                        newImage = true;
+                    }
+                }
+                finally
+                {
+                    Marshal.Release(res);
+                    s.ReleaseFrame(s.Dup);
+                }
+            }
+            w = s.W;
+            h = s.H;
+            return s.HasImage;
+        }
+        catch (Exception e)
+        {
+            // Erişim kaybı (ekran modu değişti, UAC/kilit ekranı) vb.: oturumu kapat, birkaç saniye sonra yeniden aç.
+            Drop(name, e.Message);
+            return false;
+        }
+    }
+
+    // Ara dokudaki son görüntüyü frame'e (Format32bppRgb, ekran boyutunda) yazar. scroll > 0 ise satırlar o kadar
+    // aşağı kaydırılarak (sarmal) yazılır: yalnızca ölçüm testi için (REMOTE_TEST_DEGISEN).
+    public static bool CopyTo(string name, Bitmap frame, int scroll)
+    {
+        Session s;
+        if (!sessions.TryGetValue(name, out s) || !s.HasImage || frame.Width != s.W || frame.Height != s.H) return false;
+        try
+        {
+            MAPPED m;
+            int hr = s.Map(s.Context, s.Staging, 0, 1 /* D3D11_MAP_READ */, 0, out m);
+            if (hr < 0) throw new Exception("Map 0x" + hr.ToString("X8"));
+            var bd = frame.LockBits(new Rectangle(0, 0, s.W, s.H), ImageLockMode.WriteOnly, PixelFormat.Format32bppRgb);
+            try
+            {
+                var row = new UIntPtr((uint)(s.W * 4));
+                int k = ((scroll % s.H) + s.H) % s.H;
+                for (int y = 0; y < s.H; y++)
+                    MoveMemory(bd.Scan0 + ((y + k) % s.H) * bd.Stride, m.Data + y * (int)m.RowPitch, row);
+            }
+            finally
+            {
+                frame.UnlockBits(bd);
+                s.Unmap(s.Context, s.Staging, 0);
+            }
+            return true;
+        }
+        catch (Exception e)
+        {
+            Drop(name, e.Message);
+            return false;
+        }
+    }
+
+    // Bir süredir yakalanmayan ekranın çoğaltmasını kapat (izleyen ekran değiştirdi ya da izleme bitti).
+    public static void CloseIdle(string current)
+    {
+        var now = DateTime.UtcNow;
+        if (current != null) lastUse[current] = now;
+        List<string> old = null;
+        foreach (var kv in sessions)
+        {
+            DateTime t;
+            if (kv.Key != current && (!lastUse.TryGetValue(kv.Key, out t) || (now - t).TotalSeconds > 10)) (old = old ?? new List<string>()).Add(kv.Key);
+        }
+        if (old != null) foreach (var n in old) { sessions[n].Close(); sessions.Remove(n); }
+    }
+
+    static void Drop(string name, string msg)
+    {
+        Session s;
+        if (sessions.TryGetValue(name, out s)) { s.Close(); sessions.Remove(name); }
+        Fail(name, msg);
+    }
+
+    static void Fail(string name, string msg)
+    {
+        retryAt[name] = DateTime.UtcNow.AddSeconds(3);
+        string old;
+        if (!lastError.TryGetValue(name, out old) || old != msg)
+        {
+            lastError[name] = msg;
+            Console.Error.WriteLine("DXGI yakalama kullanılamıyor (" + name + "): " + msg + " — GDI kullanılıyor");
+        }
+    }
+
+    static Session Open(string name)
+    {
+        IntPtr factory = IntPtr.Zero, adapter = IntPtr.Zero, output = IntPtr.Zero, output1 = IntPtr.Zero;
+        var s = new Session();
+        try
+        {
+            Guid iid = IID_IDXGIFactory1;
+            int hr = CreateDXGIFactory1(ref iid, out factory);
+            if (hr < 0) throw new Exception("CreateDXGIFactory1 0x" + hr.ToString("X8"));
+            var enumAdapters = Fn<EnumFn>(factory, 12); // IDXGIFactory1::EnumAdapters1
+            for (uint a = 0; output == IntPtr.Zero; a++)
+            {
+                if (enumAdapters(factory, a, out adapter) == DXGI_ERROR_NOT_FOUND) break;
+                var enumOutputs = Fn<EnumFn>(adapter, 7); // IDXGIAdapter::EnumOutputs
+                for (uint o = 0; ; o++)
+                {
+                    IntPtr cand;
+                    if (enumOutputs(adapter, o, out cand) == DXGI_ERROR_NOT_FOUND) break;
+                    OUTPUT_DESC d;
+                    Fn<OutDescFn>(cand, 7)(cand, out d); // IDXGIOutput::GetDesc
+                    if (d.DeviceName == name) { output = cand; break; }
+                    Marshal.Release(cand);
+                }
+                if (output == IntPtr.Zero) Rel(ref adapter);
+            }
+            if (output == IntPtr.Zero) throw new Exception("çıkış bulunamadı");
+
+            int level;
+            hr = D3D11CreateDevice(adapter, 0 /* D3D_DRIVER_TYPE_UNKNOWN */, IntPtr.Zero, 0x20 /* BGRA_SUPPORT */, IntPtr.Zero, 0, 7, out s.Device, out level, out s.Context);
+            if (hr < 0) throw new Exception("D3D11CreateDevice 0x" + hr.ToString("X8"));
+            iid = IID_IDXGIOutput1;
+            hr = Marshal.QueryInterface(output, ref iid, out output1);
+            if (hr < 0) throw new Exception("IDXGIOutput1 yok");
+            hr = Fn<DuplicateFn>(output1, 22)(output1, s.Device, out s.Dup); // IDXGIOutput1::DuplicateOutput
+            if (hr < 0) throw new Exception("DuplicateOutput 0x" + hr.ToString("X8"));
+
+            OUTDUPL_DESC dd;
+            Fn<DuplDescFn>(s.Dup, 7)(s.Dup, out dd); // IDXGIOutputDuplication::GetDesc
+            if (dd.Width < 16 || dd.Height < 16 || dd.Width > 16384 || dd.Height > 16384) throw new Exception("boyut geçersiz: " + dd.Width + "x" + dd.Height);
+            s.W = (int)dd.Width;
+            s.H = (int)dd.Height;
+            int w = s.W, h = s.H;
+            if (dd.Rotation > 1) throw new Exception("ekran döndürülmüş");
+            if (dd.DesktopImageInSystemMemory != 0) throw new Exception("masaüstü sistem belleğinde");
+            if (dd.Format != DXGI_FORMAT_B8G8R8A8_UNORM) throw new Exception("biçim " + dd.Format);
+
+            var td = new TEX2D_DESC
+            {
+                Width = (uint)w, Height = (uint)h, MipLevels = 1, ArraySize = 1, Format = DXGI_FORMAT_B8G8R8A8_UNORM,
+                SampleCount = 1, Usage = 3 /* STAGING */, CPUAccessFlags = 0x20000 /* READ */,
+            };
+            hr = Fn<CreateTexFn>(s.Device, 5)(s.Device, ref td, IntPtr.Zero, out s.Staging); // ID3D11Device::CreateTexture2D
+            if (hr < 0) throw new Exception("CreateTexture2D 0x" + hr.ToString("X8"));
+
+            s.Acquire = Fn<AcquireFn>(s.Dup, 8);
+            s.ReleaseFrame = Fn<ReleaseFrameFn>(s.Dup, 14);
+            s.Map = Fn<MapFn>(s.Context, 14);
+            s.Unmap = Fn<UnmapFn>(s.Context, 15);
+            s.CopyResource = Fn<CopyResFn>(s.Context, 47);
+            lastError.Remove(name);
+            return s;
+        }
+        catch
+        {
+            s.Close();
+            throw;
+        }
+        finally
+        {
+            Rel(ref output1); Rel(ref output); Rel(ref adapter); Rel(ref factory);
+        }
     }
 }

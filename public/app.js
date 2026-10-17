@@ -6,7 +6,9 @@
   const kbInput = $('kbInput');
 
   // quality/fps JPEG için, kbps H.264 için.
+  // auto: JPEG'de sunucu kaliteyi ve genişliği ağa göre seçer (quality/maxWidth tavandır); H.264'te "Orta" ile aynıdır.
   const QUALITY = {
+    auto: { quality: 70, maxWidth: 1920, fps: 30, kbps: 4000, auto: true },
     low: { quality: 40, maxWidth: 1280, fps: 20, kbps: 1500 },
     mid: { quality: 60, maxWidth: 1920, fps: 30, kbps: 4000 },
     high: { quality: 80, maxWidth: 2560, fps: 30, kbps: 8000 },
@@ -25,6 +27,8 @@
   // Gecikme sayacı için son bir saniyenin ölçümleri (RC.stats() ile okunur).
   let byteCount = 0, decodeSum = 0, decodeN = 0;
   let lastStats = { fps: 0, kbps: 0, decodeMs: null, codec: '' };
+  let lastDrawAt = 0;
+  const intervals = [];        // son birkaç saniyenin kare aralıkları { t: çizim anı, ms } (titreşim/takılma için)
   let codecLabel = '';
   let httpToken = null;       // özelliklerin HTTP istekleri için (X-Oturum başlığı)
 
@@ -126,6 +130,7 @@
         return;
       case 'adminData': return renderAdmin(m);
       case 'vconfig': return configureDecoder(m);
+      case 'durgun': stillPending = true; return; // ekran durağan: sıradaki karenin aralığı takılma sayılmaz
       case 'codec':
         // Sunucu H.264'ü başlatamadı, JPEG'e döndü.
         closeDecoder();
@@ -237,6 +242,7 @@
     if (stream) emit('viewer:stop');
     stream = null;
     closeDecoder();
+    resetJpeg();
     overlay('');
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     $('helloName').textContent = `Merhaba, ${me.username}`;
@@ -297,6 +303,7 @@
   // ---------- Görüntüleyici ----------
 
   function enterViewer(msg) {
+    resetJpeg();
     canvas.width = 0;
     canvas.height = 0;
     overlay(msg);
@@ -327,26 +334,81 @@
     document.querySelectorAll('#toolbar .ctl').forEach((el) => { el.hidden = viewOnly; });
   }
 
-  function draw(src) {
+  // afterStill: bu kareden önce ekran durağandı (sunucu 'durgun' bildirdi); aradaki süre kare aralığı sayılmaz.
+  function draw(src, afterStill = false) {
     const w = src.displayWidth || src.width, h = src.displayHeight || src.height;
     if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
     ctx.drawImage(src, 0, 0, w, h);
     frameCount++;
+    const t = performance.now();
+    if (lastDrawAt && !afterStill) intervals.push({ t, ms: t - lastDrawAt });
+    lastDrawAt = t;
+  }
+
+  // ---------- JPEG çözme ----------
+  // Aynı anda tek kare çözülür. Çözülürken yenisi gelirse beklemeye alınır; beklemedeki daha eski kare atılır
+  // (yavaş cihazda kuyruk birikip gecikme büyümesin). Her kare (atılan da) sunucuya onaylanır (ack): sunucu en fazla
+  // 2 onaysız kare yollar. Çizim requestAnimationFrame ile ekran yenilemesine denk getirilir; araya yeni kare girerse eskisi çizilmez.
+  let stillPending = false;    // 'durgun' geldi, henüz sonraki kare gelmedi
+  let jpegBusy = false;
+  let jpegWaiting = null;      // { data, recv, afterStill }
+  let toPaint = null;          // { bmp, recv, afterStill }
+  let paintQueued = false;
+
+  function onJpeg(data, recv, afterStill) {
+    if (jpegBusy) {
+      if (jpegWaiting) { send({ t: 'ack' }); afterStill = afterStill || jpegWaiting.afterStill; }
+      jpegWaiting = { data, recv, afterStill };
+      return;
+    }
+    jpegBusy = true;
+    createImageBitmap(new Blob([data], { type: 'image/jpeg' }))
+      .then((bmp) => paint(bmp, recv, afterStill))
+      .catch(() => {})
+      .finally(() => {
+        send({ t: 'ack' });
+        jpegBusy = false;
+        const next = jpegWaiting;
+        jpegWaiting = null;
+        if (next) onJpeg(next.data, next.recv, next.afterStill);
+      });
+  }
+
+  function paint(bmp, recv, afterStill) {
+    if (!stream) { bmp.close(); return; }
+    if (toPaint) { toPaint.bmp.close(); afterStill = afterStill || toPaint.afterStill; }
+    toPaint = { bmp, recv, afterStill };
+    if (paintQueued) return;
+    paintQueued = true;
+    requestAnimationFrame(() => {
+      paintQueued = false;
+      const p = toPaint;
+      toPaint = null;
+      if (!p) return;
+      if (stream) { draw(p.bmp, p.afterStill); addDecode(p.recv); }
+      p.bmp.close();
+    });
+  }
+
+  function resetJpeg() {
+    jpegWaiting = null;
+    if (toPaint) { toPaint.bmp.close(); toPaint = null; }
+    stillPending = false;
+    lastDrawAt = 0;
+    intervals.length = 0;
   }
 
   // İkili mesajın ilk baytı: 1 = JPEG kare, 2 = H.264 kare ([2][anahtar kare mi][veri]).
   function onFrame(ab) {
     const u8 = new Uint8Array(ab);
     if (u8[0] > 2) { emit(`binary:${u8[0]}`, u8); return; } // özellik verisi görüntüden bağımsız
-    if (!stream) return;
+    if (!stream) { if (u8[0] === 1) send({ t: 'ack' }); return; }
     byteCount += u8.length;
     const recv = performance.now();
     if (u8[0] === 1) {
-      // JPEG: çizilince sunucuya bildir; sunucu ancak o zaman yeni kare yollar.
-      createImageBitmap(new Blob([u8.subarray(1)], { type: 'image/jpeg' }))
-        .then((bmp) => { draw(bmp); bmp.close(); addDecode(recv); })
-        .catch(() => {})
-        .finally(() => send({ t: 'ack' }));
+      const afterStill = stillPending;
+      stillPending = false;
+      onJpeg(u8.subarray(1), recv, afterStill);
     } else if (u8[0] === 2) {
       decodeH264(u8[1] === 1, u8.subarray(2), recv);
     }
@@ -415,6 +477,19 @@
     recvTimes.clear();
   }
 
+  // Son saniyenin kare aralıkları: ortalama, titreşim (standart sapma), en uzun ve takılma sayısı.
+  // Takılma: son 3 saniyenin ortalama aralığının 2 katından uzun süren aralık. Durağan ekrandan sonraki aralık sayılmaz.
+  function intervalStats() {
+    const now = performance.now();
+    while (intervals.length && now - intervals[0].t > 3000) intervals.shift();
+    const last = intervals.filter((x) => now - x.t <= 1000).map((x) => x.ms);
+    if (!stream || !last.length) return { intervalMs: null, jitterMs: null, maxIntervalMs: null, stutters: 0 };
+    const avg3 = intervals.reduce((a, x) => a + x.ms, 0) / intervals.length;
+    const avg = last.reduce((a, b) => a + b, 0) / last.length;
+    const jitter = Math.sqrt(last.reduce((a, b) => a + (b - avg) ** 2, 0) / last.length);
+    return { intervalMs: avg, jitterMs: jitter, maxIntervalMs: Math.max(...last), stutters: last.filter((x) => x > 2 * avg3).length };
+  }
+
   function setStatus(on) {
     $('status').classList.toggle('on', on);
     $('status').title = on ? 'Bağlı' : 'Bağlantı yok';
@@ -427,13 +502,25 @@
       kbps: Math.round((byteCount * 8) / 1000),
       decodeMs: decodeN ? decodeSum / decodeN : null,
       codec: stream ? codecLabel : '',
+      ...intervalStats(),
     };
     frameCount = 0;
     byteCount = 0; decodeSum = 0; decodeN = 0;
   }, 1000);
 
   $('backBtn').addEventListener('click', () => { send({ t: 'stop' }); goHome(); });
-  $('quality').addEventListener('change', (e) => send({ t: 'settings', ...QUALITY[e.target.value] }));
+  // Kalite seçimi: "Otomatik" seçeneği burada eklenir; seçim bu cihazda hatırlanır (varsayılan Otomatik).
+  (() => {
+    const sel = $('quality');
+    if (![...sel.options].some((o) => o.value === 'auto')) sel.insertBefore(new Option('Otomatik', 'auto'), sel.firstChild);
+    const saved = storage.get('quality');
+    sel.value = QUALITY[saved] ? saved : 'auto';
+  })();
+  $('quality').addEventListener('change', (e) => {
+    if (!QUALITY[e.target.value]) return;
+    storage.set('quality', e.target.value);
+    send({ t: 'settings', ...QUALITY[e.target.value] });
+  });
   $('screenSel').addEventListener('change', (e) => {
     stream.screen = e.target.value;
     send({ t: 'screen', name: e.target.value });
@@ -997,7 +1084,9 @@
     on,
     state: () => ({ me: me && { ...me }, stream: stream && { ...stream }, screens: [...screens], connected: ws?.readyState === 1 }),
     canInput,
-    // Son bir saniyenin görüntü ölçümleri: { fps, kbps, decodeMs (geliş→çizim, ort.), codec }
+    // Son bir saniyenin görüntü ölçümleri: { fps, kbps, decodeMs (geliş→çizim, ort.), codec,
+    //   intervalMs (kare aralığı ort.), jitterMs (aralığın standart sapması), maxIntervalMs, stutters (takılma sayısı) }
+    // Kare yokken aralık alanları null. Durağan ekrandan (sunucu kare göndermedi) sonraki aralık sayılmaz.
     stats: () => ({ ...lastStats }),
     // Kalem özelliği, kalem olaylarını kendisi işlediği sürece true dönen bir fonksiyon kaydeder.
     setPenActive(fn) { penActive = typeof fn === 'function' ? fn : () => false; },
