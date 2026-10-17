@@ -68,6 +68,13 @@
       **(henüz gerçek cihazda test edilmedi: tarayıcıda çalma hiç denenmedi (çözme, tampon, çıtırtı, düğme durumu, mobil);
       yalnızca sessizlikle denendi, gerçek sesin yakalama → ffmpeg yolu geçmedi; SILENT/DISCONTINUITY bayrakları; varsayılan aygıt
       değişimi/kulaklık takıp çıkarma; 16/24/32 bit tamsayı karışım biçimleri; uçtan uca gecikme; iOS Safari AudioDecoder desteği)**
+- [x] Farklı ölçekli monitörler: `RemoteHelper` artık Per-Monitor v2 DPI farkında (önceden sistem DPI'ı). Bu bilgisayarda
+      DISPLAY1 %125, DISPLAY2 %100: eskiden DISPLAY2 2400x1350 @2400 (sanal, ölçeklenmiş) görünüyordu, yakalama ise fiziksel
+      okuduğundan karenin yalnızca 1440 pikseli o ekrandı, gerisi siyahtı; H.264 bölgesi de sanal masaüstünün dışına taşıyordu.
+      Şimdi tüm koordinatlar fiziksel (JPEG, gdigrab, fare, kalem aynı sistem). `info` ekranlara `dpi`/`scale`/`adapter`,
+      sunucu `title` ("Ekran 2 (1920×1080)", sanal ekran için "Sanal ekran (…)") ve `virtual` ekler. `map` komutu: fareyi
+      oynatmadan eşlemeyi verir. Test: `test/ozellik-ekran.js`. **(gerçek telefonda ekran değiştirerek denenmedi; negatif konumlu
+      monitör ve sanal ekran sürücüsü bu bilgisayarda yok, yalnızca kodla/birim testle)**
 
 ## Sıradaki
 1. Yukarıdaki özelliklerin gerçek telefon/tablet/kalemle denenmesi (ikinci ekran dahil)

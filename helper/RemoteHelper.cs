@@ -1,10 +1,15 @@
 // Ekran yakalama + fare/klavye simülasyonu yapan yardımcı süreç.
 // stdin'den satır satır komut okur, cevapları stdout'a [tip:1][uzunluk:4 LE][veri] olarak yazar.
 // Ekranlar cihaz adıyla seçilir (ör. \\.\DISPLAY1).
+// Süreç monitör başına DPI farkındadır (Per-Monitor v2): tüm koordinatlar FİZİKSEL pikseldir. Sistem DPI farkındalığında
+// (SetProcessDPIAware) ölçeklemesi ana ekrandan farklı olan monitörün sınırları sanal (ölçeklenmiş) gelir, oysa ekran
+// yakalama (BitBlt) fiziksel piksel okur: ör. %125 ana ekran + %100 ikinci ekranda ikinci ekran 2400x1350 @2400 görünüyordu,
+// gerçekte 1920x1080 @1920 — yakalanan karenin yalnızca bir kısmı o ekrandı, kalanı siyahtı.
 //   cap <kalite> <maxGenislik> <ekran>  -> tip 1: JPEG
-//   info                                -> tip 2: JSON (ekran listesi)
+//   info                                -> tip 2: JSON (ekran listesi, fiziksel piksel; dpi, scale, adapter; üstte "dpiMode")
 //   setmode <ekran> <gen> <yuk>         -> tip 2: JSON {"ok":bool}
 //   move <ekran> <nx> <ny>              -> fareyi ekranda 0..1 normalize konuma taşır
+//   map <ekran> <nx> <ny>               -> tip 2: JSON {"name","x","y"} move/pen'in gideceği fiziksel piksel (girdi göndermez)
 //   down|up <left|right|middle>
 //   wheel <dy> <dx>
 //   key <vk> <1|0>
@@ -27,6 +32,9 @@ using System.Windows.Forms;
 class RemoteHelper
 {
     [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
+    [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+    [DllImport("shcore.dll")] static extern int SetProcessDpiAwareness(int value);
+    [DllImport("shcore.dll")] static extern int GetDpiForMonitor(IntPtr hMonitor, int type, out uint dpiX, out uint dpiY);
     [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll", SetLastError = true)] static extern uint SendInput(uint n, INPUT[] inputs, int size);
     [DllImport("user32.dll")] static extern uint MapVirtualKey(uint code, uint mapType);
@@ -83,7 +91,7 @@ class RemoteHelper
         public int dmICMMethod, dmICMIntent, dmMediaType, dmDitherType, dmReserved1, dmReserved2, dmPanningWidth, dmPanningHeight;
     }
 
-    class Monitor { public string Name; public string Label; public Rectangle Bounds; public bool Primary; }
+    class Monitor { public string Name; public string Label; public string Adapter; public Rectangle Bounds; public bool Primary; public int Dpi; }
 
     const uint INPUT_MOUSE = 0, INPUT_KEYBOARD = 1;
     const uint KEYEVENTF_EXTENDEDKEY = 1, KEYEVENTF_KEYUP = 2, KEYEVENTF_UNICODE = 4;
@@ -93,10 +101,22 @@ class RemoteHelper
     static ImageCodecInfo jpegCodec;
     static List<Monitor> monitors = new List<Monitor>();
     static DateTime monitorsAt = DateTime.MinValue;
+    static string dpiMode = "yok";
+
+    // En iyi DPI farkındalığını seç: Per-Monitor v2 (Windows 10 1703+) -> Per-Monitor (8.1+) -> sistem (eski yedek).
+    static void DpiAware()
+    {
+        try { if (SetProcessDpiAwarenessContext(new IntPtr(-4))) { dpiMode = "pmv2"; return; } } // PER_MONITOR_AWARE_V2
+        catch (EntryPointNotFoundException) { }
+        try { if (SetProcessDpiAwareness(2) == 0) { dpiMode = "pm"; return; } } // PROCESS_PER_MONITOR_DPI_AWARE
+        catch (DllNotFoundException) { }
+        catch (EntryPointNotFoundException) { }
+        if (SetProcessDPIAware()) dpiMode = "sistem";
+    }
 
     static int Main(string[] args)
     {
-        SetProcessDPIAware();
+        DpiAware();
         if (args.Length == 3 && args[0] == "ask") return Ask(B64(args[1]), B64(args[2]));
 
         output = Console.OpenStandardOutput();
@@ -138,21 +158,40 @@ class RemoteHelper
             mi.cbSize = Marshal.SizeOf(typeof(MONITORINFOEX));
             if (GetMonitorInfo(h, ref mi))
             {
-                var b = mi.rcMonitor;
+                var b = mi.rcMonitor; // Per-Monitor farkındalıkta fiziksel piksel (negatif konum olabilir: solda/üstte)
                 list.Add(new Monitor
                 {
                     Name = mi.szDevice,
                     Label = MonitorLabel(mi.szDevice),
+                    Adapter = AdapterLabel(mi.szDevice),
                     Bounds = new Rectangle(b.left, b.top, b.right - b.left, b.bottom - b.top),
-                    Primary = (mi.dwFlags & 1) != 0
+                    Primary = (mi.dwFlags & 1) != 0,
+                    Dpi = MonitorDpi(h)
                 });
             }
             return true;
         }, IntPtr.Zero);
-        list.Sort((a, b) => string.CompareOrdinal(a.Name, b.Name));
+        // DISPLAY2 DISPLAY10'dan önce gelsin (sayısal sıra).
+        list.Sort((a, b) => { int c = DisplayNo(a.Name).CompareTo(DisplayNo(b.Name)); return c != 0 ? c : string.CompareOrdinal(a.Name, b.Name); });
         monitors = list;
         monitorsAt = DateTime.UtcNow;
         return list;
+    }
+
+    static int DisplayNo(string name)
+    {
+        int i = name.Length;
+        while (i > 0 && char.IsDigit(name[i - 1])) i--;
+        int n;
+        return int.TryParse(name.Substring(i), NumberStyles.None, CultureInfo.InvariantCulture, out n) ? n : int.MaxValue;
+    }
+
+    static int MonitorDpi(IntPtr h)
+    {
+        try { uint x, y; if (GetDpiForMonitor(h, 0, out x, out y) == 0) return (int)x; } // MDT_EFFECTIVE_DPI
+        catch (DllNotFoundException) { }
+        catch (EntryPointNotFoundException) { }
+        return 0;
     }
 
     static string MonitorLabel(string adapter)
@@ -160,6 +199,27 @@ class RemoteHelper
         var dd = new DISPLAY_DEVICE();
         dd.cb = Marshal.SizeOf(typeof(DISPLAY_DEVICE));
         return EnumDisplayDevices(adapter, 0, ref dd, 0) ? dd.DeviceString : "";
+    }
+
+    // Ekran kartı / sürücü adı (sanal ekran sürücüsünü tanımak için, ör. "Virtual Display Driver").
+    static string AdapterLabel(string name)
+    {
+        var dd = new DISPLAY_DEVICE();
+        dd.cb = Marshal.SizeOf(typeof(DISPLAY_DEVICE));
+        for (uint i = 0; EnumDisplayDevices(null, i, ref dd, 0); i++)
+        {
+            if (dd.DeviceName == name) return dd.DeviceString;
+            dd.cb = Marshal.SizeOf(typeof(DISPLAY_DEVICE));
+        }
+        return "";
+    }
+
+    // Normalize (0..1) konumu ekranın fiziksel pikseline çevirir; move, pen ve map aynı hesabı kullanır.
+    static Point MapPoint(Rectangle b, double nx, double ny)
+    {
+        nx = Math.Max(0, Math.Min(1, nx));
+        ny = Math.Max(0, Math.Min(1, ny));
+        return new Point(b.X + (int)Math.Round(nx * (b.Width - 1)), b.Y + (int)Math.Round(ny * (b.Height - 1)));
     }
 
     static Monitor Find(string name)
@@ -181,8 +241,18 @@ class RemoteHelper
                 {
                     var m = Find(a[1]);
                     if (m == null) break;
-                    var b = m.Bounds;
-                    SetCursorPos(b.X + (int)Math.Round(D(a[2]) * (b.Width - 1)), b.Y + (int)Math.Round(D(a[3]) * (b.Height - 1)));
+                    var p = MapPoint(m.Bounds, D(a[2]), D(a[3]));
+                    SetCursorPos(p.X, p.Y);
+                    break;
+                }
+            case "map":
+                {
+                    // Yalnızca hesaplar, fareyi hareket ettirmez (testler için).
+                    var m = Find(a.Length > 1 ? a[1] : "");
+                    double nx, ny;
+                    if (m == null || a.Length < 4 || !ParseUnit(a[2], out nx) || !ParseUnit(a[3], out ny)) { Write(2, Encoding.UTF8.GetBytes("{\"ok\":false}")); break; }
+                    var p = MapPoint(m.Bounds, nx, ny);
+                    Write(2, Encoding.UTF8.GetBytes(string.Format(CultureInfo.InvariantCulture, "{{\"ok\":true,\"name\":{0},\"x\":{1},\"y\":{2}}}", Json(m.Name), p.X, p.Y)));
                     break;
                 }
             case "down":
@@ -218,14 +288,16 @@ class RemoteHelper
 
     static void Info()
     {
-        var sb = new StringBuilder("{\"screens\":[");
+        var sb = new StringBuilder("{\"dpiMode\":" + Json(dpiMode) + ",\"screens\":[");
         var list = Monitors(true);
         for (int i = 0; i < list.Count; i++)
         {
             var m = list[i];
             if (i > 0) sb.Append(',');
-            sb.AppendFormat("{{\"name\":{0},\"label\":{1},\"x\":{2},\"y\":{3},\"w\":{4},\"h\":{5},\"primary\":{6}}}",
-                Json(m.Name), Json(m.Label), m.Bounds.X, m.Bounds.Y, m.Bounds.Width, m.Bounds.Height, m.Primary ? "true" : "false");
+            // x, y, w, h: fiziksel piksel. scale: Windows ölçeklemesi (1.25 = %125), dpi 0 ise bilinmiyor.
+            sb.AppendFormat(CultureInfo.InvariantCulture, "{{\"name\":{0},\"label\":{1},\"adapter\":{2},\"x\":{3},\"y\":{4},\"w\":{5},\"h\":{6},\"primary\":{7},\"dpi\":{8},\"scale\":{9}}}",
+                Json(m.Name), Json(m.Label), Json(m.Adapter), m.Bounds.X, m.Bounds.Y, m.Bounds.Width, m.Bounds.Height, m.Primary ? "true" : "false",
+                m.Dpi, m.Dpi > 0 ? Math.Round(m.Dpi / 96.0, 2) : 1);
         }
         sb.Append("]}");
         Write(2, Encoding.UTF8.GetBytes(sb.ToString()));
@@ -458,8 +530,8 @@ class RemoteHelper
         var m = Find(a[1]);
         if (m == null) return;
         if (!PenDevice()) { PenError(penDeviceError); return; }
-        var b = m.Bounds;
-        int x = b.X + (int)Math.Round(nx * (b.Width - 1)), y = b.Y + (int)Math.Round(ny * (b.Height - 1));
+        var pt = MapPoint(m.Bounds, nx, ny);
+        int x = pt.X, y = pt.Y;
 
         // Geçerli olay sırası korunur: menzil (hover) -> temas (down/move) -> kalkış (up) -> menzil dışı (out).
         if (state == "down" && penContact) state = "move";

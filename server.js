@@ -151,6 +151,19 @@ wss.on('connection', (ws, req) => {
   });
 });
 
+// İstemciye giden ekran listesi: RemoteHelper'ın alanları (x, y, w, h fiziksel piksel; scale = Windows ölçeklemesi) aynen
+// kalır, ekran seçici için okunur "title" ve "virtual" eklenir: "Ekran 1 (1920×1080)", "Sanal ekran (1920×1080)".
+const VIRTUAL_ADAPTER = /virtual display/i; // VirtualDrivers/Virtual-Display-Driver (lib/vdd.js)
+function describeScreens(screens) {
+  const ours = new Set([...clients].map((c) => c.session?.virtualScreen).filter(Boolean));
+  let n = 0;
+  return screens.map((s) => {
+    const virtual = ours.has(s.name) || VIRTUAL_ADAPTER.test(s.adapter || '');
+    const size = `${s.w}×${s.h}`;
+    return { ...s, virtual, title: virtual ? `Sanal ekran (${size})` : `Ekran ${++n} (${size})` };
+  });
+}
+
 function sendJson(ws, obj) {
   if (ws.readyState === 1) ws.send(JSON.stringify(obj));
 }
@@ -270,7 +283,7 @@ async function finishAuth(ws, s, resumed = false) {
   if (resumed) {
     console.log(`Yeniden bağlandı: ${s.username} (${ws.ip})`);
     const info = await helper.info();
-    sendJson(ws, { t: 'auth', ok: true, resumed: true, username: s.username, role: s.role, guest: !!s.guest, resume: ws.resumeToken, http: ws.httpToken, screens: info.screens, vdd: await vdd.available() });
+    sendJson(ws, { t: 'auth', ok: true, resumed: true, username: s.username, role: s.role, guest: !!s.guest, resume: ws.resumeToken, http: ws.httpToken, screens: describeScreens(info.screens), vdd: await vdd.available() });
     ext.emit('auth', ws);
     return;
   }
@@ -279,7 +292,7 @@ async function finishAuth(ws, s, resumed = false) {
   const info = await helper.info();
   sendJson(ws, {
     t: 'auth', ok: true, username: s.username, role: s.role, guest: !!s.guest, token: s.token, resume: ws.resumeToken,
-    http: ws.httpToken, screens: info.screens, vdd: await vdd.available(),
+    http: ws.httpToken, screens: describeScreens(info.screens), vdd: await vdd.available(),
   });
   ext.emit('auth', ws);
 }
@@ -386,7 +399,7 @@ async function startStream(ws, m) {
   ws.nextDue = 0;
   const fresh = await helper.info();
   sendJson(ws, {
-    t: 'started', mode: m.mode === 'extend' ? 'extend' : 'control', screen: s.view.screen, screens: fresh.screens,
+    t: 'started', mode: m.mode === 'extend' ? 'extend' : 'control', screen: s.view.screen, screens: describeScreens(fresh.screens),
     codec: s.view.codec, encoder: s.view.codec === 'h264' ? video.encoderLabel : null,
   });
   // H.264 akışı istemci ayarlarını gönderince (settings) başlar.
