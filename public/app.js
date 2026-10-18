@@ -1576,7 +1576,8 @@
   window.RC = {
     send,
     on,
-    state: () => ({ me: me && { ...me }, stream: stream && { ...stream }, screens: [...screens], connected: ws?.readyState === 1 }),
+    // vdd: sanal ekran sürücüsü kurulu mu (ikinci ekran kullanılabilir mi)
+    state: () => ({ me: me && { ...me }, stream: stream && { ...stream }, screens: [...screens], connected: ws?.readyState === 1, vdd: !!vddAvailable }),
     canInput,
     // Son bir saniyenin görüntü ölçümleri: { fps, kbps, decodeMs (geliş→çizim, ort.), codec,
     //   intervalMs (kare aralığı ort.), jitterMs (aralığın standart sapması), maxIntervalMs, stutters (takılma sayısı) }

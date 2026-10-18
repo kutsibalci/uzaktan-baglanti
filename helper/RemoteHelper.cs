@@ -145,9 +145,10 @@ class RemoteHelper
         foreach (var c in ImageCodecInfo.GetImageEncoders())
             if (c.MimeType == "image/jpeg") jpegCodec = c;
 
-        // Cevap üreten komutlar (cap, info, setmode, pentest, pen...) sırayla ayrı bir iş parçacığında çalışır; cevapların
+        // Cevap üreten komutlar (cap, info, setmode, pentest...) sırayla ayrı bir iş parçacığında çalışır; cevapların
         // sırası korunur. Cevapsız girdi komutları (fare/klavye/metin) beklemeden burada çalışır: ekran yakalanırken
-        // fare hareketi kuyrukta beklemez. (pen, kalem aygıtını pentest ile paylaştığı için iş parçacığında kalır.)
+        // fare hareketi kuyrukta beklemez. pen de burada çalışır: JPEG yakalama (cap) sürerken kalem noktaları beklemesin;
+        // pentest ile paylaşılan kalem aygıtının oluşturulması kilitlidir (PenDevice).
         var work = new BlockingCollection<string[]>();
         var worker = new Thread(() =>
         {
@@ -180,7 +181,7 @@ class RemoteHelper
     {
         switch (cmd)
         {
-            case "move": case "down": case "up": case "wheel": case "key": case "text": return true;
+            case "move": case "down": case "up": case "wheel": case "key": case "text": case "pen": return true;
             default: return false;
         }
     }
@@ -586,9 +587,15 @@ class RemoteHelper
     static DateTime penDeviceTriedAt = DateTime.MinValue;
     static DateTime penErrorAt = DateTime.MinValue;
     static bool penInRange, penContact;
+    static readonly object penLock = new object(); // pen (ana iş parçacığı) ve pentest (iş parçacığı) aygıtı paylaşır
 
     // Cihaz bir kez oluşturulur ve yeniden kullanılır; başarısızsa en fazla 5 sn'de bir yeniden denenir.
     static bool PenDevice()
+    {
+        lock (penLock) return PenDeviceLocked();
+    }
+
+    static bool PenDeviceLocked()
     {
         if (penDevice != IntPtr.Zero) return true;
         if (penDeviceError != null && (DateTime.UtcNow - penDeviceTriedAt).TotalSeconds < 5) return false;

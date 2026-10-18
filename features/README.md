@@ -25,7 +25,7 @@ Her özellik iki parçadan oluşur ve çekirdek dosyalara (server.js, public/app
 - `RC.setPenActive(fn)` — kalem özelliği, kalem olaylarını kendisi işlediği sürece `fn()` true döner; o zaman çekirdek kalemin ürettiği fare/dokunma olaylarını yok sayar (aksi halde kalem fare gibi çalışır)
 - `RC.setAuthHook(fn)` — sunucu `hello` gönderince `fn(hello)` girişi üstlenip (mesajı kendisi gönderip) true dönebilir; `auth` cevabını çekirdek işler (QR eşleştirme). `RC.deviceName()` — "iPhone · Safari" gibi cihaz adı.
 - `RC.stats()` — son bir saniyenin görüntü ölçümleri `{ fps, kbps, decodeMs, codec, intervalMs, jitterMs, maxIntervalMs, stutters }` (gecikme sayacı kullanır; durağan ekrandan sonraki aralık sayılmaz — sunucu JPEG'de aynı kareyi göndermeyince bir kez `{ t: 'durgun' }` yollar)
-- `RC.state()`, `RC.canInput()`, `RC.toNorm(x, y)`, `RC.moveNow`, `RC.queueMove`, `RC.click(b)`, `RC.overlay(msg)`
+- `RC.state()` (`{ me, stream, screens, connected, vdd }`; vdd: sanal ekran sürücüsü kurulu mu), `RC.canInput()`, `RC.toNorm(x, y)`, `RC.moveNow`, `RC.queueMove`, `RC.click(b)`, `RC.overlay(msg)`
 - `RC.fetch(url, opts)`, `RC.authUrl(url)`
 - `RC.ui.home(el)`, `RC.ui.adminSection(başlık, el)`, `RC.ui.stage()`, `RC.ui.canvas()`, `RC.ui.menuItem`, `RC.ui.panel`, `RC.ui.closable`, `RC.ui.toolbar` (aşağıda)
 
