@@ -122,17 +122,19 @@ function opusDurationMs(pkt) {
 }
 
 (async () => {
-  // 1. Ses.exe doğrudan: 2 sn'de ~48000*2*2*2 bayt
+  // 1. Ses.exe doğrudan: 2 sn'de ~48000*2*2*2 bayt. İlk 500 ms sayılmaz: yakalama başlarken Windows'un
+  // biriktirdiği ~1 sn'lik ses tek seferde gelir (ölçüldü: ilk okumada ~180 KB), hız ondan sonra tam 48 kHz.
   check('Ses.exe derlendi (sunucu açılışında)', fs.existsSync(SES_EXE));
   {
     const p = spawn(SES_EXE, [], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
     let bytes = 0, first = 0, stderr = '';
     p.stdout.on('data', (d) => {
       if (!first) first = Date.now();
-      if (Date.now() - first <= 2000) bytes += d.length;
+      const t = Date.now() - first;
+      if (t > 500 && t <= 2500) bytes += d.length;
     });
     p.stderr.on('data', (d) => { stderr += d; });
-    await sleep(3000);
+    await sleep(4000);
     const exited = new Promise((r) => p.on('exit', r));
     p.stdout.destroy(); // stdout kapanınca kendisi çıkmalı
     const code = await Promise.race([exited, sleep(3000).then(() => 'zaman aşımı')]);
