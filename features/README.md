@@ -13,6 +13,7 @@ Her özellik iki parçadan oluşur ve çekirdek dosyalara (server.js, public/app
 - `api.on(tür, async (ws, m) => {}, { role })` — WebSocket mesajı. `role`: `'view' | 'control' | 'admin'` (en az).
 - `api.route(method, önek, async (req, res, ws, url) => {}, { role })` — HTTP adresi; istemci `RC.fetch()` / `RC.authUrl()` ile oturumla çağırır.
   `{ isPublic: true }` ile oturum kontrolü atlanır (ws = null) — kimlik doğrulamayı özellik kendisi yapar (ör. `api.clientInfo(req).isLocal` + gizli belirteç).
+- `api.onPreAuth(tür, async (ws, m) => {})` — giriş yapmamış bağlantının mesajı (ör. QR eşleştirme); kaba kuvvet kilidi çekirdekte denetlenir. Giriş: `api.auth.finish(ws, { username, role, deviceId, token, deviceName })`, `api.auth.fail(ws, hata, kayıt?)`, `api.auth.forgive(ip)`.
 - `api.onAuth(ws => {})`, `api.onClose(ws => {})`, `api.adminData(async () => ({ <ad>: {...} }))`
 - Çekirdek: `api.helper`, `api.video`, `api.store`, `api.clients`, `api.sendJson(ws, obj)`, `api.broadcast(obj, filtre)`, `api.buildExe(ad, {target})`, `api.dataDir`, `api.PORT`, `api.log(...)`, `api.guestCode()`, `api.kick(ws => bool, neden)`, `api.clientInfo(req)`
 - Özellikler arası olaylar: `require('../lib/olaylar')` (ortak EventEmitter; özellikler birbirini doğrudan require etmez). Şimdilik: `dosya-geldi` (dosya.js yayar → tepsi.js tepsi bildirimine çevirir).
@@ -21,6 +22,7 @@ Her özellik iki parçadan oluşur ve çekirdek dosyalara (server.js, public/app
 ## Tarayıcı API (özet)
 - `RC.send(obj)`, `RC.on(tür, fn)` — sunucu mesajları ve yerel olaylar: `auth`, `viewer:start`, `viewer:stop`, `admin`, `disconnect`, `binary:<n>` (ikili mesaj, ilk bayt n ≥ 3)
 - `RC.setPenActive(fn)` — kalem özelliği, kalem olaylarını kendisi işlediği sürece `fn()` true döner; o zaman çekirdek kalemin ürettiği fare/dokunma olaylarını yok sayar (aksi halde kalem fare gibi çalışır)
+- `RC.setAuthHook(fn)` — sunucu `hello` gönderince `fn(hello)` girişi üstlenip (mesajı kendisi gönderip) true dönebilir; `auth` cevabını çekirdek işler (QR eşleştirme). `RC.deviceName()` — "iPhone · Safari" gibi cihaz adı.
 - `RC.stats()` — son bir saniyenin görüntü ölçümleri `{ fps, kbps, decodeMs, codec, intervalMs, jitterMs, maxIntervalMs, stutters }` (gecikme sayacı kullanır; durağan ekrandan sonraki aralık sayılmaz — sunucu JPEG'de aynı kareyi göndermeyince bir kez `{ t: 'durgun' }` yollar)
 - `RC.state()`, `RC.canInput()`, `RC.toNorm(x, y)`, `RC.moveNow`, `RC.queueMove`, `RC.click(b)`, `RC.overlay(msg)`
 - `RC.fetch(url, opts)`, `RC.authUrl(url)`

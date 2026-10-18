@@ -653,6 +653,8 @@ class TepsiUygulamasi : ApplicationContext
         ToolStripMenuItem ac = new ToolStripMenuItem("Arayüzü aç", null, (s, e) => ArayuzuAc());
         ac.Font = new Font(ac.Font, FontStyle.Bold);
         menu.Items.Add(ac);
+        // Arayüzü "#qr" ile açar: yönetici girişi olunca QR ekranı kendiliğinden açılır (public/features/eslestir.js).
+        menu.Items.Add(new ToolStripMenuItem("Telefonu bağla (QR)", null, (s, e) => ArayuzuAc("#qr")));
         menu.Items.Add(new ToolStripSeparator());
 
         if (durum == null)
@@ -758,9 +760,11 @@ class TepsiUygulamasi : ApplicationContext
         }
     }
 
-    void ArayuzuAc()
+    void ArayuzuAc() { ArayuzuAc(""); }
+
+    void ArayuzuAc(string parca)
     {
-        try { Process.Start("http://localhost:" + port + "/"); }
+        try { Process.Start("http://localhost:" + port + "/" + parca); }
         catch (Exception ex) { Balon("Tarayıcı açılamadı: " + ex.Message, ToolTipIcon.Error); }
     }
 
