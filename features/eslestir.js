@@ -6,14 +6,20 @@
 // Belirteç URL'nin parça (#) kısmındadır: sunucu günlüklerine, tailscale serve'e ve Referer'a düşmez.
 //
 // Mesajlar (yönetici, bu bilgisayar):
-//   { t: 'eslestir-olustur' }            -> { t: 'eslestir-qr', url, adres, adresTuru, svg, sureMs, kullanici, rol } | { t: 'eslestir-hata', hata }
+//   { t: 'eslestir-olustur', http? }     -> { t: 'eslestir-qr', url, adres, adresTuru: tailscale|ev-https|ev, httpsVar, svg, sureMs, kullanici, rol } | { t: 'eslestir-hata', hata }
+//                                        Tailscale yoksa ev ağı HTTPS'i (açıksa ve sertifikası ev IP'sini kapsıyorsa) seçilir; http: true -> şifresiz adres
+//                                        (telefona sertifika yüklenmemişse).
 //   { t: 'eslestir-kapat' }              QR ekranı kapandı: belirteç geçersiz, bekleyen istek reddedilir
 //   { t: 'eslestir-cevap', onay: bool }  bekleyen isteğe cevap
-//   sunucudan: { t: 'eslestir-istek', cihaz, ip, via, sureMs }, { t: 'eslestir-sonuc', ok, cihaz, neden? }, { t: 'eslestir-izin' } (girişte)
-// Girişten önce (telefon): { t: 'eslestir', belirtec, deviceName } -> { t: 'pending', eslestir: true } ... { t: 'auth', ... }
-// Ortam değişkenleri (yalnızca testler için): REMOTE_ESLESTIR_SURE_MS (belirteç ömrü), REMOTE_ESLESTIR_ONAY_MS (onay süresi).
+//   sunucudan: { t: 'eslestir-istek', cihaz, ip, via, sureMs, kod }, { t: 'eslestir-sonuc', ok, cihaz, neden? }, { t: 'eslestir-izin' } (girişte)
+// Girişten önce (telefon): { t: 'eslestir', belirtec, deviceName } -> { t: 'pending', eslestir: true }, { t: 'eslestir-kod', kod } ... { t: 'auth', ... }
+// kod: 2 haneli doğrulama kodu, telefonda ve bilgisayardaki onay isteğinde aynı görünür. QR ekran görüntüsünde de göründüğü için
+// (izleyen biri QR'ı okuyup gerçek telefondan önce davranabilir) onaylamadan önce iki kod karşılaştırılır.
+// Ortam değişkenleri (yalnızca testler için): REMOTE_ESLESTIR_SURE_MS (belirteç ömrü), REMOTE_ESLESTIR_ONAY_MS (onay süresi),
+// REMOTE_ESLESTIR_TAILSCALE=0 (Tailscale yok sayılır: ev ağı adresi).
 const crypto = require('crypto');
 const os = require('os');
+const tls = require('tls');
 const qr = require('../lib/qr');
 const { tailscaleInfo } = require('../lib/network');
 
@@ -48,12 +54,25 @@ function evAdresi() {
   return adaylar[0]?.ip || null;
 }
 
+// Ev ağı HTTPS dinleyicimizin sertifikası bu IP'yi kapsıyor mu (kendi portumuza yerelden bağlanıp sertifikayı okur).
+function httpsKapsar(port, ip) {
+  return new Promise((resolve) => {
+    const bitir = (v) => { clearTimeout(zaman); s.destroy(); resolve(v); };
+    const s = tls.connect({ host: '127.0.0.1', port, rejectUnauthorized: false }, () => {
+      try { bitir(!!s.getPeerX509Certificate()?.checkIP(ip)); } catch { bitir(false); }
+    });
+    s.on('error', () => bitir(false));
+    const zaman = setTimeout(() => bitir(false), 2000);
+  });
+}
+
 module.exports.init = (api) => {
   const kodlar = new Map(); // özet(belirteç) -> { olusturan: ws, bitis, kullanici }
 
   // Tailscale bilgisi önbellekli (her çağrı bir süreç başlatır).
   let tsOnbellek = { at: 0, deger: null };
   async function tailscaleHttps() {
+    if (process.env.REMOTE_ESLESTIR_TAILSCALE === '0') return null; // testte ev ağı adresi denensin
     if (Date.now() - tsOnbellek.at > 30000) {
       const t = await tailscaleInfo().catch(() => null);
       tsOnbellek = { at: Date.now(), deger: t && t.running ? t.httpsUrl : null };
@@ -77,7 +96,7 @@ module.exports.init = (api) => {
     ws.eslestirIstek?.bitti(false);
   });
 
-  api.on('eslestir-olustur', async (ws) => {
+  api.on('eslestir-olustur', async (ws, m) => {
     if (!ws.isLocal || ws.session.guest) {
       return api.sendJson(ws, { t: 'eslestir-hata', hata: 'QR kod yalnızca bu bilgisayarın kendisinden (localhost) oluşturulabilir.' });
     }
@@ -85,14 +104,17 @@ module.exports.init = (api) => {
     kodlariSil(ws); // her QR ekranında tek geçerli kod
     const https = await tailscaleHttps();
     const ev = https ? null : evAdresi();
-    const adres = https || (ev && `http://${ev}:${api.PORT}`);
+    const hp = ev && api.https.port();
+    const evHttps = !!hp && await httpsKapsar(hp, ev);
+    const sifreli = evHttps && m.http !== true;
+    const adres = https || (ev && (sifreli ? `https://${ev}:${hp}` : `http://${ev}:${api.PORT}`));
     if (!adres) return api.sendJson(ws, { t: 'eslestir-hata', hata: 'Bilgisayarın ağ adresi bulunamadı (Wi-Fi / Ethernet bağlı mı?).' });
     if (ws.readyState !== 1) return;
     const belirtec = crypto.randomBytes(32).toString('base64url');
     kodlar.set(ozet(belirtec), { olusturan: ws, bitis: Date.now() + SURE_MS, kullanici: ws.session.username });
     const url = `${adres}/#e=${belirtec}`;
     api.sendJson(ws, {
-      t: 'eslestir-qr', url, adres, adresTuru: https ? 'tailscale' : 'ev', svg: qr.svg(url), sureMs: SURE_MS,
+      t: 'eslestir-qr', url, adres, adresTuru: https ? 'tailscale' : sifreli ? 'ev-https' : 'ev', httpsVar: evHttps, svg: qr.svg(url), sureMs: SURE_MS,
       kullanici: ws.session.username, rol: ROL_ADLARI[ws.session.role] || ws.session.role,
     });
   }, { role: 'admin' });
@@ -119,8 +141,10 @@ module.exports.init = (api) => {
     if (olusturan.eslestirIstek) return api.auth.fail(ws, 'Bilgisayarda başka bir bağlantı isteği bekliyor, biraz sonra tekrar deneyin.', false);
     const cihaz = String(m.deviceName || 'Bilinmeyen cihaz').slice(0, 60);
 
+    const kod = String(crypto.randomInt(10, 100));
     api.sendJson(ws, { t: 'pending', eslestir: true });
-    api.sendJson(olusturan, { t: 'eslestir-istek', cihaz, ip: ws.ip, via: VIA_NAMES[ws.via] || ws.via, sureMs: ONAY_MS });
+    api.sendJson(ws, { t: 'eslestir-kod', kod });
+    api.sendJson(olusturan, { t: 'eslestir-istek', cihaz, ip: ws.ip, via: VIA_NAMES[ws.via] || ws.via, sureMs: ONAY_MS, kod });
     api.log(`Onay bekleniyor: ${cihaz} (${ws.ip}) -> ${k.kullanici}`);
     const onay = await new Promise((resolve) => {
       const bitti = (v) => {

@@ -1,5 +1,6 @@
 // @ortam REMOTE_ESLESTIR_SURE_MS=3000
 // @ortam REMOTE_ESLESTIR_ONAY_MS=2500
+// @ortam REMOTE_ESLESTIR_TAILSCALE=0
 // QR kodla telefon eşleştirme: QR kodlayıcı (lib/qr.js) birim testleri + belirteç akışı (features/eslestir.js).
 // Kodlayıcı, ISO 18004'teki bilinen değerlerle (biçim/sürüm bilgisi, Reed-Solomon örneği) ve bağımsız bir referans
 // uygulamanın (qrcode-generator 1.4.4, MIT) ürettiği matrislerin özetleriyle karşılaştırılır.
@@ -117,8 +118,8 @@ async function giris(c, username, password) {
   return c.next(t('auth'));
 }
 
-async function qrAl(pc) {
-  pc.send({ t: 'eslestir-olustur' });
+async function qrAl(pc, http) {
+  pc.send({ t: 'eslestir-olustur', http });
   const m = await pc.next((x) => x.t === 'eslestir-qr' || x.t === 'eslestir-hata');
   return { m, belirtec: m.url ? m.url.split('#e=')[1] : null };
 }
@@ -141,9 +142,14 @@ async function akisTestleri() {
 
   // QR oluşturma
   let { m, belirtec } = await qrAl(pc);
-  check('QR oluşturuldu: adres + #e=<43 karakter>', m.t === 'eslestir-qr' && /^(https:\/\/[a-z0-9.-]+|http:\/\/\d+\.\d+\.\d+\.\d+:\d+)\/#e=[A-Za-z0-9_-]{43}$/.test(m.url), m.url && m.url.replace(/#e=.*/, '#e=…'));
+  check('QR oluşturuldu: adres + #e=<43 karakter>', m.t === 'eslestir-qr' && /^(https:\/\/[a-z0-9.-]+(:\d+)?|http:\/\/\d+\.\d+\.\d+\.\d+:\d+)\/#e=[A-Za-z0-9_-]{43}$/.test(m.url), m.url && m.url.replace(/#e=.*/, '#e=…'));
   check('QR: belirteç yalnızca parça (#) kısmında, adres alanında yok', m.adres && !m.adres.includes(belirtec) && m.url.startsWith(`${m.adres}/#e=`));
   check('QR: SVG, kullanıcı ve süre', /^<svg /.test(m.svg) && m.kullanici === 'yonetici' && m.rol === 'Yönetici' && m.sureMs === SURE_MS, `(${m.adresTuru})`);
+  // Tailscale yok sayıldı (testte): ev ağı HTTPS'i açık (PORT_HTTPS=0) ve sertifika ev IP'sini kapsıyor -> şifreli adres
+  check('QR: ev ağı HTTPS açıkken şifreli adres (https://<ev-ip>:<https-port>)', m.adresTuru === 'ev-https' && m.httpsVar === true && /^https:\/\/\d+\.\d+\.\d+\.\d+:\d+$/.test(m.adres), `${m.adresTuru} ${m.adres}`);
+  const mh = (await qrAl(pc, true)).m;
+  check('QR: "şifresiz adres" istenince http://<ev-ip>:<port>', mh.adresTuru === 'ev' && mh.httpsVar === true && /^http:\/\/\d+\.\d+\.\d+\.\d+:\d+$/.test(mh.adres) && mh.adres.split('//')[1].split(':')[0] === m.adres.split('//')[1].split(':')[0], `${mh.adresTuru} ${mh.adres}`);
+  ({ m, belirtec } = await qrAl(pc));
   const { belirtec: b2 } = await qrAl(pc);
   check('her QR yeni, yüksek entropili belirteç', b2 !== belirtec && Buffer.from(b2, 'base64url').length === 32);
 
@@ -177,8 +183,10 @@ async function akisTestleri() {
   tel = await telefon('100.100.2.1', belirtec);
   const p = await tel.next((x) => x.t === 'pending' || x.t === 'auth');
   check('telefon: onay bekleniyor', p.t === 'pending' && p.eslestir === true);
+  const telKod = await tel.next(t('eslestir-kod'));
   const istek = await pc.next(t('eslestir-istek'));
   check('bilgisayara istek geldi (cihaz adı, IP, yol)', istek.cihaz === 'iPhone · Safari' && istek.ip === '100.100.2.1' && istek.via === 'Tailscale', JSON.stringify(istek));
+  check('doğrulama kodu: telefonda ve bilgisayarda aynı 2 haneli kod', /^\d{2}$/.test(telKod.kod) && istek.kod === telKod.kod, `${telKod.kod} / ${istek.kod}`);
   // Onaysız giriş yok: bekleme sırasında görüntü/giriş mesajları işlenmez
   tel.send({ t: 'start', mode: 'control' });
   tel.send({ t: 'token', token: 'x'.repeat(43) });

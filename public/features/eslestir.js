@@ -24,6 +24,10 @@
     if (bekleP) bekleP.innerHTML = qr ? 'Bilgisayardaki QR ekranında <b>Onayla</b>\'ya basın (60 sn).' : bekleAsil;
   };
   document.addEventListener('submit', () => bekleMetni(false), true);
+  // Doğrulama kodu: bilgisayardaki onay isteğinde de aynısı görünür (QR'ı ekranda gören başka biri araya girmesin).
+  RC.on('eslestir-kod', (m) => {
+    if (bekleP) bekleP.innerHTML = `Bilgisayardaki QR ekranında bu kod görünüyorsa <b>Onayla</b>'ya basın (60 sn):<b class="es-tel-kod">${RC.esc(m.kod)}</b>`;
+  });
 
   RC.setAuthHook(() => {
     if (!belirtec) return false;
@@ -47,6 +51,9 @@
     .eslestir-panel .es-adres { font-family: ui-monospace, Consolas, monospace; font-size: 13px; word-break: break-all; color: var(--text); margin: 0; }
     .eslestir-panel .es-istek { width: 100%; background: var(--panel); border: 1px solid var(--warn); border-radius: 12px; padding: 12px; display: grid; gap: 10px; }
     .eslestir-panel .es-istek p { margin: 0; }
+    .es-tel-kod { display: block; margin-top: 10px; font-size: 40px; letter-spacing: 4px; color: var(--text); }
+    .eslestir-panel .es-kod { font-size: 40px; font-weight: 700; letter-spacing: 4px; }
+    .eslestir-panel .es-http { font-size: 13px; padding: 4px 10px; }
     .eslestir-panel .es-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .eslestir-panel .es-btns .red { background: #7f1d1d; }
     .eslestir-panel .msg { margin: 0; }
@@ -74,8 +81,11 @@
     <p class="es-adres"></p>
     <p class="muted small es-kim"></p>
     <p class="muted small es-sure"></p>
+    <button type="button" class="ghost es-http" data-act="http" hidden></button>
     <div class="es-istek" hidden>
       <p class="es-istek-metin"></p>
+      <p class="muted small">Telefonda görünen kod bununla aynı mı? Değilse ya da telefonda “kullanılmış” hatası çıktıysa bu senin telefonun değil: <b>Reddet</b>.</p>
+      <p class="es-kod"></p>
       <div class="es-btns"><button type="button" data-act="onayla">Onayla</button><button type="button" class="red" data-act="reddet">Reddet</button></div>
     </div>
     <p class="msg"></p>`;
@@ -89,6 +99,7 @@
   let istekCihaz = '';
   let tik = null;
   let izinli = false;
+  let httpIste = false;  // telefona sertifika yüklenmemiş: ev ağı HTTPS'i olsa da şifresiz adres
 
   const sn = (ms) => {
     const s = Math.max(0, Math.ceil(ms / 1000));
@@ -99,7 +110,7 @@
     if (panel.hidden) return;
     const now = Date.now();
     if (!istekKutu.hidden) {
-      $('.es-istek-metin').innerHTML = `<b>${RC.esc(istekCihaz)}</b> bağlanmak istiyor — ${sn(istekBitis - now)}`;
+      $('.es-istek-metin').innerHTML = `QR okundu: <b>${RC.esc(istekCihaz)}</b> bağlanmak istiyor — ${sn(istekBitis - now)}`;
       return;
     }
     if (bitis) {
@@ -114,7 +125,8 @@
     $('.es-adres').hidden = false;
     qrKutu.classList.add('soluk');
     $('.es-sure').textContent = 'QR kod hazırlanıyor…';
-    RC.send({ t: 'eslestir-olustur' });
+    $('.es-http').hidden = true;
+    RC.send({ t: 'eslestir-olustur', http: httpIste });
   }
 
   function ac() {
@@ -125,6 +137,7 @@
     qrKutu.innerHTML = '';
     $('.es-adres').textContent = '';
     $('.es-kim').textContent = '';
+    httpIste = false;
     yeniKod();
     clearInterval(tik);
     tik = setInterval(guncelle, 500);
@@ -146,6 +159,7 @@
     const b = e.target.closest('button[data-act]');
     if (!b) return;
     if (b.dataset.act === 'kapat') return kapat();
+    if (b.dataset.act === 'http') { httpIste = !httpIste; return yeniKod(); }
     if (b.dataset.act === 'onayla' || b.dataset.act === 'reddet') {
       RC.send({ t: 'eslestir-cevap', onay: b.dataset.act === 'onayla' });
       istekKutu.hidden = true;
@@ -191,7 +205,11 @@
     qrKutu.title = m.url;
     $('.es-adres').textContent = m.adres;
     $('.es-kim').innerHTML = `Telefon <b>${RC.esc(m.kullanici)}</b> (${RC.esc(m.rol)}) hesabıyla girecek ve hatırlanacak. Girişi bu ekranda onaylaman gerekir.`
-      + (m.adresTuru === 'tailscale' ? '<br>Telefonda Tailscale açık olmalı.' : '<br>Telefon bu bilgisayarla aynı Wi-Fi ağında olmalı.');
+      + (m.adresTuru === 'tailscale' ? '<br>Telefonda Tailscale açık olmalı.' : '<br>Telefon bu bilgisayarla aynı Wi-Fi ağında olmalı.')
+      + (m.adresTuru === 'ev-https' ? ' Şifreli adres: telefonda bu bilgisayarın sertifikası yüklü olmalı.' : '');
+    const h = $('.es-http');
+    h.hidden = !m.httpsVar;
+    h.textContent = m.adresTuru === 'ev-https' ? 'Telefona sertifika yüklemedin mi? Şifresiz (HTTP) adresle QR' : '🔒 Şifreli (HTTPS) adresle QR';
     bitis = Date.now() + m.sureMs;
     guncelle();
   });
@@ -204,12 +222,14 @@
   RC.on('eslestir-istek', (m) => {
     if (panel.hidden) return;
     istekCihaz = `${m.cihaz} (${m.ip}, ${m.via})`;
+    $('.es-kod').textContent = m.kod || '';
     istekBitis = Date.now() + m.sureMs;
     bitis = 0;
     // QR kullanıldı: yerine istek gösterilir (Onayla / Reddet ekranın dışında kalmasın).
     qrKutu.hidden = true;
     $('.es-adres').hidden = true;
     $('.es-sure').textContent = '';
+    $('.es-http').hidden = true;
     msg.textContent = '';
     istekKutu.hidden = false;
     guncelle();

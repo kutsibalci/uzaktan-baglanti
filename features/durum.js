@@ -28,6 +28,7 @@ const ISTEK_SURESI = 5000;
 const NAZIK_BEKLEME = 5000;     // nazik kapatmadan sonra "hâlâ açık mı" denetimi
 const CPU_SURE = 10;            // CPU bu kadar ölçüm (sn) art arda eşiğin altında kalınca tetiklenir
 const YOKLAMA = 2000;           // süreç / indirme izleyicileri yoklama aralığı
+const CT_ARALIK = 10000;        // izlenen süreç hâlâ aynı süreç mi (PID yeniden kullanılmış olabilir): oluşturulma zamanı denetimi
 const MAX_IZLEYICI = 20;
 const GECICI = /\.(crdownload|part|partial|download|tmp|opdownload)$/i;
 
@@ -69,7 +70,7 @@ module.exports.init = (api) => {
   let son = null;         // son ölçüm
   const gecmis = [];      // son 60 sn: { cpu, ram, gpu, in, out }
 
-  const yardimciGerekli = () => aboneler.size > 0 || kayit.izleyiciler.some((i) => i.tur === 'cpu' || i.tur === 'pil');
+  const yardimciGerekli = () => aboneler.size > 0 || kayit.izleyiciler.some((i) => i.tur === 'cpu' || i.tur === 'pil' || (i.tur === 'surec' && i.ct));
 
   function baslat() {
     if (proc || !exe) return;
@@ -275,8 +276,13 @@ module.exports.init = (api) => {
       const pid = Number(m.pid);
       if (!Number.isInteger(pid) || pid <= 4) return cevap(false, 'Geçersiz süreç.');
       if (!canli(pid)) return cevap(false, 'Program zaten kapanmış.');
+      // ct (oluşturulma zamanı) saklanır: PID başka sürece verilirse (ör. yeniden başlatma sonrası) izleyici yanlış programa bağlanmasın.
+      const ct = /^\d{1,20}$/.test(String(m.ct || '')) ? String(m.ct) : null;
+      const b = await istek('bilgi', pid);
+      if (b && (!b.var || (ct && ct !== b.ct))) return cevap(false, 'Program zaten kapanmış.');
       if (kayit.izleyiciler.some((x) => x.tur === 'surec' && x.pid === pid)) return cevap(false, 'Bu program zaten izleniyor.');
-      Object.assign(i, { pid, ad: temizAd(m.ad) || `PID ${pid}` });
+      if (kayit.izleyiciler.length >= MAX_IZLEYICI) return cevap(false, `En fazla ${MAX_IZLEYICI} izleyici kurulabilir.`);
+      Object.assign(i, { pid, ct: b?.ct || ct, ad: temizAd(m.ad) || `PID ${pid}` });
     } else if (i.tur === 'cpu' || i.tur === 'pil') {
       const esik = Math.round(Number(m.esik ?? (i.tur === 'cpu' ? 10 : 20)));
       if (!(esik >= 1 && esik <= (i.tur === 'cpu' ? 95 : 99))) return cevap(false, 'Geçersiz eşik.');
@@ -349,8 +355,18 @@ module.exports.init = (api) => {
   function yokla() {
     for (const i of [...kayit.izleyiciler]) {
       if (i.tur === 'surec' && !canli(i.pid)) tetikle(i, 'Program kapandı', `${i.ad} kapandı.`);
+      else if (i.tur === 'surec' && i.ct && !(i._ic?.ctZaman > Date.now() - CT_ARALIK)) ctDenetle(i);
       else if (i.tur === 'indirme') indirmeYokla(i);
     }
+  }
+
+  // PID canlı ama oluşturulma zamanı farklı: izlenen program kapanmış, PID başka sürece verilmiş.
+  // (_ic kaydedilmez: sunucu açılışında ilk yoklamada hemen denetlenir.)
+  async function ctDenetle(i) {
+    i._ic = { ctZaman: Date.now() };
+    const b = await istek('bilgi', i.pid);
+    if (!b || !kayit.izleyiciler.includes(i)) return;
+    if (!b.var || b.ct !== i.ct) tetikle(i, 'Program kapandı', `${i.ad} kapandı.`);
   }
 
   // Yeni dosya: geçici uzantılı değil (.crdownload/.part...), yanında aynı adlı geçici dosya yok (Firefox önce boş dosya açar)

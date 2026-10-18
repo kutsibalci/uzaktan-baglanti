@@ -3,7 +3,7 @@
 //   CPU: GetSystemTimes · RAM: GlobalMemoryStatusEx · pil: GetSystemPowerStatus · süreçler: NtQuerySystemInformation
 //   GPU: NVIDIA sürücüsünün nvml.dll'i (yoksa gizlenir) · ağ: NetworkInterface · disk: DriveInfo
 //   CPU sıcaklığı: WMI MSAcpi_ThermalZoneTemperature — genelde yönetici ister; izin yoksa "ölçülemiyor" (izin İSTENMEZ).
-// Kullanım: Durum.exe <sunucu pid>   (sunucunun kendi süreç ağacı "biz" diye işaretlenir, kapatılamaz)
+// Kullanım: Durum.exe <sunucu pid>   (sunucunun kendi süreç ağacı ve konsol penceresini taşıyan süreç "biz" diye işaretlenir, kapatılamaz)
 // stdout: her saniye bir satır JSON (yalnızca ASCII): {"t":"olcum", cpu, ramKul, ramTop, uptime, ag, pil, gpu, diskler, cpuSic, cpuSicNeden, surecler, oz}
 // stdin komutları (her biri tek satır cevap):
 //   ayrinti 0|1          süreç listesi + GPU ölçülsün mü (yalnızca panel açıkken 1; izleyiciler için 0 yeter)
@@ -32,6 +32,9 @@ static class Durum
     [DllImport("kernel32.dll", SetLastError = true)] static extern bool TerminateProcess(IntPtr h, uint code);
     [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
     [DllImport("kernel32.dll")] static extern IntPtr LoadLibrary(string path);
+    [DllImport("kernel32.dll")] static extern bool AttachConsole(int pid);
+    [DllImport("kernel32.dll")] static extern bool FreeConsole();
+    [DllImport("kernel32.dll")] static extern IntPtr GetConsoleWindow();
 
     [StructLayout(LayoutKind.Sequential)]
     class MEMORYSTATUSEX
@@ -73,6 +76,7 @@ static class Durum
     static readonly object kilit = new object();
     static Stream cikis;
     static int sunucuPid;
+    static List<long[]> konsol = new List<long[]>(); // sunucunun konsolunu taşıyan süreçler: { pid, ct }
     static volatile bool ayrinti = false;
     static readonly int cekirdek = Environment.ProcessorCount;
 
@@ -85,12 +89,13 @@ static class Durum
     static int Main(string[] args)
     {
         cikis = Console.OpenStandardOutput();
+        var giris = new StreamReader(Console.OpenStandardInput(), Encoding.UTF8);
         if (args.Length > 0) int.TryParse(args[0], out sunucuPid);
         if (IntPtr.Size != 8) { Yaz("{\"t\":\"error\",\"msg\":\"64 bit gerekli\"}"); return 1; }
+        try { KonsolBul(); } catch { /* konsolsuz (ör. tepsiden başlatıldı) */ }
         var olcer = new Thread(OlcumDongusu) { IsBackground = true };
         olcer.Start();
         new Thread(SicaklikDongusu) { IsBackground = true }.Start();
-        var giris = new StreamReader(Console.OpenStandardInput(), Encoding.UTF8);
         string satir;
         while ((satir = giris.ReadLine()) != null)
         {
@@ -365,7 +370,34 @@ static class Durum
         return d;
     }
 
-    // Sunucunun kendisi, ataları (onu başlatan konsol/tepsi) ve tüm alt süreçleri (RemoteHelper, Pano, Ses, ffmpeg, bu program...).
+    // Sunucunun konsol penceresi (baslat.bat) başka bir süreçte durur: klasik conhost.exe (cmd'nin çocuğu, sunucunun kardeşi) ya da
+    // Windows Terminal'de OpenConsole.exe + WindowsTerminal.exe (sunucunun ne atası ne çocuğu). Kapatılırsa sunucu da kapanır.
+    // Bu program konsolsuz başlar (windowsHide): sunucunun konsoluna kısa süre bağlanıp pencereyi, ondan sahibini bulur.
+    // Std akışları önceden açıldığı için bağlanmak onları etkilemez.
+    static void KonsolBul()
+    {
+        if (sunucuPid <= 0 || GetConsoleWindow() != IntPtr.Zero || !AttachConsole(sunucuPid)) return;
+        IntPtr h = GetConsoleWindow();
+        int sahip = 0;
+        if (h != IntPtr.Zero) GetWindowThreadProcessId(h, out sahip);
+        FreeConsole();
+        var s = Anlik();
+        Surec x;
+        if (sahip <= 4 || sahip == sunucuPid || !s.TryGetValue(sahip, out x)) return;
+        konsol.Add(new long[] { x.pid, x.ct });
+        // OpenConsole.exe'yi başlatan Windows Terminal da (ata zincirinde konsol barındıran adlar).
+        for (int i = 0; i < 4; i++)
+        {
+            Surec ata;
+            if (x.ppid <= 4 || !s.TryGetValue(x.ppid, out ata) || ata.ct > x.ct) break;
+            string ad = (ata.ad ?? "").ToLowerInvariant();
+            if (ad != "windowsterminal.exe" && ad != "openconsole.exe" && ad != "conhost.exe") break;
+            konsol.Add(new long[] { ata.pid, ata.ct });
+            x = ata;
+        }
+    }
+
+    // Sunucunun kendisi, ataları (onu başlatan konsol/tepsi), konsol penceresinin sahibi ve tüm alt süreçleri (RemoteHelper, Pano, Ses, ffmpeg, bu program...).
     // Ebeveyn PID'i yeniden kullanılmış olabilir: ebeveyn, çocuktan önce başlamış olmalı.
     static HashSet<int> Biz(Dictionary<int, Surec> s)
     {
@@ -373,6 +405,7 @@ static class Durum
         Surec x;
         if (sunucuPid <= 0 || !s.TryGetValue(sunucuPid, out x)) return biz;
         biz.Add(sunucuPid);
+        foreach (var k in konsol) { Surec ks; if (s.TryGetValue((int)k[0], out ks) && ks.ct == k[1]) biz.Add(ks.pid); }
         for (int i = 0; i < 32; i++)
         {
             Surec ata;

@@ -1119,6 +1119,8 @@
       const prev = gesture && f.some((t) => t.identifier === gesture.id) ? gesture : null;
       endSingle();
       flushTap();
+      // Dokunuştan hemen sonra (bekleyen sol tık ilk parmak inince iptal edilmişti) gelen iki parmak: önce o sol tık gider.
+      if (prev?.pad && prev.second && !prev.moved && canInput()) clickAtCursor('left');
       const now = Date.now();
       const two = f.slice(0, 2);
       gesture = {
@@ -1266,8 +1268,8 @@
     if (g.two) {
       trackMove(g, e.changedTouches);
       if (!T.isTwoFingerTap({ downGap: g.downGap, upGap: g.up1 ? now - g.up1 : 0, duration: now - g.t0, move: g.move, acted: g.acted })) return;
-      // İki parmak dokunuş: çift ise 1x'e dön, tek ise (touchpad) sağ tık.
-      if (g.t0 - lastTwoTap < DOUBLE_TAP_MS) {
+      // İki parmak dokunuş: yakınlaştırılmışken çift ise 1x'e dön, tek ise (touchpad) sağ tık. 1x'te her dokunuş sağ tık.
+      if (view.z > 1 && g.t0 - lastTwoTap < DOUBLE_TAP_MS) {
         lastTwoTap = 0;
         clearTimeout(rightTimer); rightTimer = null;
         setView({ z: 1, tx: 0, ty: 0 });
@@ -1278,8 +1280,9 @@
       // İlk parmak ikinci gelmeden biraz kaydıysa imleç dokunuşun başladığı yere döner (sağ tık amaçlanan yere).
       if (g.cur0) { cursor = g.cur0; drawCursor(); }
       // Yakınlaştırılmışken ikinci dokunuşu bekle (1x'e dönüş olabilir).
-      if (view.z > 1) rightTimer = setTimeout(() => { rightTimer = null; clickAtCursor('right'); }, DOUBLE_TAP_MS);
-      else clickAtCursor('right');
+      // "Sağ tık" düğmesi açıksa tek seferlik hak bu sağ tıkla biter (yoksa sonraki dokunuş da sağ tık olurdu).
+      if (view.z > 1) rightTimer = setTimeout(() => { rightTimer = null; takeRight(); clickAtCursor('right'); }, DOUBLE_TAP_MS);
+      else { takeRight(); clickAtCursor('right'); }
       return;
     }
     if (g.pad) {

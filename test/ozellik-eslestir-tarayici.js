@@ -141,6 +141,9 @@ function cdpBaglan(wsUrl) {
     check('bilgisayar: istek gelince QR gizlendi (kullanıldı)', !(await pc.shown('#eslestirPanel .es-qr')));
     const onayBtn = await pc.rect('#eslestirPanel [data-act="onayla"]');
     check('bilgisayar: Onayla düğmesi ekranda görünüyor', onayBtn && onayBtn.top >= 0 && onayBtn.bottom <= 860, onayBtn && `${Math.round(onayBtn.top)}–${Math.round(onayBtn.bottom)}`);
+    const pcKod = await pc.ev("document.querySelector('#eslestirPanel .es-kod').textContent");
+    const telKod = await tel.ev("document.querySelector('#vPending .es-tel-kod')?.textContent || ''");
+    check('doğrulama kodu telefonda ve bilgisayarda aynı', /^\d{2}$/.test(pcKod) && pcKod === telKod, pcKod + ' / ' + telKod);
     await pc.shot('3-bilgisayar-istek');
     await pc.mouseClick('#eslestirPanel [data-act="onayla"]');
     check('telefon: onaylanınca ana menü', await tel.bekle("!document.getElementById('vHome').hidden"));

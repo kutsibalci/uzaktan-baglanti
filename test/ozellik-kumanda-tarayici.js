@@ -160,6 +160,40 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
     await tap(sag); await sleep(50);
     s = await km();
     check('Sağ tık düğmesi -> down/up right', s.map((m) => `${m.op}:${m.b}`).join(',') === 'down:right,up:right', JSON.stringify(s));
+    // Sol tık düğmesi basılı + öbür parmakla pad'de sürükleme: göreli hareket (iki parmak sayılmaz), sonra pad hareket yutmaz
+    {
+      const bt = { ...sol, id: 5 };
+      await touch('touchStart', [bt]); await sleep(40);
+      await touch('touchStart', [bt, { ...c, id: 6 }]);
+      for (let i = 1; i <= 8; i++) { await sleep(20); await touch('touchMove', [bt, { x: c.x + i * 10, y: c.y + i * 10, id: 6 }]); }
+      await sleep(30); await touch('touchEnd', [bt]); await sleep(30); // önce pad parmağı kalkar
+      await touch('touchEnd', []); await sleep(50);
+      s = await km();
+      const r = s.filter((m) => m.op === 'rel');
+      check('Sol tık basılı + pad sürükleme -> down, göreli hareket, up (tekerlek yok)', s[0]?.op === 'down' && s.at(-1)?.op === 'up' && r.length >= 2 && r.reduce((x, m) => x + m.dx, 0) > 40 && !s.some((m) => m.op === 'wheel'), JSON.stringify(s));
+      await touch('touchStart', [c]);
+      for (let i = 1; i <= 6; i++) { await sleep(25); await touch('touchMove', [{ x: c.x + i * 10, y: c.y }]); }
+      await touch('touchEnd', []); await sleep(50);
+      s = await km();
+      check('ardından tek parmak kaydırma yutulmaz', s.some((m) => m.op === 'rel'), JSON.stringify(s));
+    }
+    // dokunuştan hemen sonra iki parmak dokunuş: bekleyen sol tık kaybolmaz, sonra sağ tık
+    await tap(c); await sleep(120);
+    await touch('touchStart', [two[0]]); await touch('touchStart', two); await sleep(60); await touch('touchEnd', []); await sleep(400);
+    s = await km();
+    check('dokun + hemen iki parmak -> sol tık, sonra sağ tık', s.map((m) => `${m.op}:${m.b}`).join(',') === 'down:left,up:left,down:right,up:right', JSON.stringify(s));
+    // pad'de parmak dururken kaydırma şeridi çalışır
+    {
+      const pp = { ...c, id: 7 };
+      await touch('touchStart', [pp]); await sleep(30);
+      const p0 = { x: sr.x, y: sr.y - 60, id: 8 };
+      await touch('touchStart', [pp, p0]);
+      for (let i = 1; i <= 6; i++) { await sleep(16); await touch('touchMove', [pp, { ...p0, y: p0.y + i * 20 }]); }
+      await touch('touchEnd', [pp]); await sleep(30);
+      s = await km();
+      check("pad'de parmak dururken kaydırma şeridi -> tekerlek", s.some((m) => m.op === 'wheel' && m.dy > 0), JSON.stringify(s));
+      await touch('touchEnd', []); await sleep(450); await km();
+    }
 
     // ---- Medya ----
     await ev("document.querySelector('#kumanda [data-sekme=\"medya\"]').click()");

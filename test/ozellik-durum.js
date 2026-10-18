@@ -189,6 +189,11 @@ function bekleyen(ms) {
   check('aynı süreç iki kez izlenmez', !(await c.next(t('durum-izle-sonuc'))).ok);
   c.send({ t: 'durum-izle', tur: 'surec', pid: 999999999 });
   check('olmayan süreç izlenmez', !(await c.next(t('durum-izle-sonuc'))).ok);
+  const yeniKisa = bekleyen(6000);
+  await sleep(300);
+  c.send({ t: 'durum-izle', tur: 'surec', pid: yeniKisa.pid, ct: '123', ad: 'baska.exe' });
+  check('oluşturulma zamanı (ct) tutmayan süreç izlenmez (PID başka sürece verilmiş)', !(await c.next(t('durum-izle-sonuc'))).ok);
+  yeniKisa.kill();
   const bild = await v.next(t('durum-bildirim'), 9000);
   check('süreç kapanınca bildirim geldi (salt izlemeye de)', bild.tur === 'surec' && /deneme\.exe/.test(bild.metin) && !bild.gecikmeli, `${bild.baslik}: ${bild.metin}`);
   check('  yöneticiye de geldi', (await a.next(t('durum-bildirim'))).id === bild.id);

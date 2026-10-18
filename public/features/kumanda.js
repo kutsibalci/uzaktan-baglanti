@@ -212,15 +212,19 @@
   }
   function flushTap() { if (!tapTimer) return; clearTimeout(tapTimer); tapTimer = null; click('left'); }
   const midY = (f) => (f[0].clientY + f[1].clientY) / 2;
+  // Yalnızca bu alanda başlayan parmaklar (e.touches Sol/Sağ tık düğmesini ya da şeridi tutan parmağı da içerir).
+  const icinde = (el, list) => [...list].filter((t) => el.contains(t.target));
 
   pad.addEventListener('touchstart', (e) => {
     e.preventDefault();
-    const f = [...e.touches];
+    const f = icinde(pad, e.touches);
     if (f.length >= 2) {
       if (g?.two) return;
       const prev = g && f.some((t) => t.identifier === g.id) ? g : null;
       if (g) { clearTimeout(g.timer); pad.classList.remove('tutuldu'); if (g.dragging) up('left'); }
       flushTap();
+      // Dokunuştan hemen sonra gelen iki parmak: ilk parmak inince iptal edilen bekleyen sol tık önce gider.
+      if (prev?.second && !prev.moved) click('left');
       const now = Date.now();
       const two = f.slice(0, 2);
       g = {
@@ -246,7 +250,7 @@
   pad.addEventListener('touchmove', (e) => {
     e.preventDefault();
     if (!g) return;
-    const f = [...e.touches];
+    const f = icinde(pad, e.touches);
     if (g.two) {
       trackMove(g, f);
       if (f.length < 2) return;
@@ -277,7 +281,7 @@
   function padEnd(e) {
     e.preventDefault();
     if (!g) return;
-    const left = e.touches.length, now = Date.now();
+    const left = icinde(pad, e.touches).length, now = Date.now();
     if (g.two && left > 0) { trackMove(g, e.changedTouches); g.up1 = g.up1 || now; return; }
     if (!g.two && left > 0 && ![...e.changedTouches].some((t) => t.identifier === g.id)) return;
     const h = g;
@@ -303,17 +307,24 @@
 
   // Kaydırma şeridi: parmağı yukarı it = aşağı kaydır (touchpad'deki iki parmak gibi).
   const serit = $k('#kmSerit');
-  let sy = null, sacc = 0;
-  serit.addEventListener('touchstart', (e) => { e.preventDefault(); sy = e.touches[0].clientY; sacc = 0; serit.classList.add('on'); }, { passive: false });
+  let sy = null, sid = null, sacc = 0;
+  serit.addEventListener('touchstart', (e) => { e.preventDefault(); sy = e.changedTouches[0].clientY; sid = e.changedTouches[0].identifier; sacc = 0; serit.classList.add('on'); }, { passive: false });
   serit.addEventListener('touchmove', (e) => {
     e.preventDefault();
     if (sy == null) return;
-    const y = e.touches[0].clientY;
+    const t = [...e.touches].find((x) => x.identifier === sid);
+    if (!t) return;
+    const y = t.clientY;
     const w = T.wheelNotches(sacc + y - sy);
     sacc = w.rest; sy = y;
     if (w.n) send({ op: 'wheel', dy: w.n * 120, dx: 0 });
   }, { passive: false });
-  const seritBitti = (e) => { e.preventDefault(); if (!e.touches.length) { sy = null; serit.classList.remove('on'); } };
+  const seritBitti = (e) => {
+    e.preventDefault();
+    const kalan = icinde(serit, e.touches);
+    if (!kalan.length) { sy = null; sid = null; serit.classList.remove('on'); }
+    else if (!kalan.some((t) => t.identifier === sid)) { sid = kalan[0].identifier; sy = kalan[0].clientY; }
+  };
   serit.addEventListener('touchend', seritBitti, { passive: false });
   serit.addEventListener('touchcancel', seritBitti, { passive: false });
 

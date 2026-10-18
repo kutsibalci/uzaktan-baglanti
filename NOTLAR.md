@@ -190,6 +190,17 @@
       CA'yı kabulü (reddederse `caUret()`'teki 2.5.29.30 uzantısı kaldırılmalı); iOS'ta IP adresli SAN ile HTTPS + wss, H.264 ve ses;
       iOS Chrome'da profil; Android .cer ve Chrome; canlı DHCP değişimi; Windows Güvenlik Duvarı'nın 3443 için izin sorması)**
 - [x] Ses testi: Ses.exe başlarken Windows'un biriktirdiği ~1 sn'lik ses tek seferde geliyor (ölçüldü), test ilk 500 ms'yi saymıyor.
+- [x] İnceleme düzeltmeleri: Kumanda'da Sol/Sağ tık düğmesini tutup pad'de sürükleme (yalnızca pad'de başlayan parmaklar sayılır;
+      eskiden iki parmak/tekerlek sanılıyordu ve sonraki hareket yutuluyordu), pad'de parmak dururken kaydırma şeridi; touchpad'de
+      (çekirdek + Kumanda) dokunuştan hemen sonraki iki parmak dokunuşu bekleyen sol tıkı kaybetmiyor; "Sağ tık" düğmesi açıkken iki parmak
+      sağ tık hakkı harcıyor; 1x'te art arda iki parmak sağ tıkları yutulmuyor (çift dokunuş yalnızca yakınlaştırılmışken 1x). QR eşleştirme:
+      telefonda ve bilgisayardaki onay isteğinde aynı 2 haneli doğrulama kodu ("QR okundu: …"; ekranı izleyen biri QR'ı okuyup araya
+      giremesin), Tailscale yoksa ve ev ağı HTTPS'i açıksa QR şifreli `https://<ev-ip>:3443` adresini verir ("sertifika yüklemedin mi?"
+      düğmesiyle HTTP). Durum paneli: sunucunun konsol penceresini taşıyan süreç (conhost / OpenConsole + Windows Terminal) 🔒 sayılır;
+      "program kapanınca" izleyicisi başlama zamanını (ct) saklar, PID başka sürece geçerse (ör. yeniden başlatma) kapandı sayar.
+      **(henüz gerçek cihazda test edilmedi: iPhone'da Sol tık tut + sürükle, şerit ve iki parmak düzeltmeleri; doğrulama kodunun iPhone'da
+      görünümü; iPhone'un QR'daki https://<ev-ip>:3443 adresini sertifikayla açması; baslat.bat'ın Windows Terminal'de açıldığı durumda
+      konsol korumasının gerçek sunucuda görünmesi — klasik conhost'ta ve bu oturumun Windows Terminal'inde ölçüldü)**
 
 ## Sıradaki
 1. Yukarıdaki özelliklerin gerçek telefon/tablet/kalemle denenmesi (ikinci ekran dahil)
@@ -201,4 +212,4 @@
 7. Çekirdeğe izleme başlat/durdur kancası (`api.onStreamStop`): perde şimdilik izlemeyi bırakan/yetkisi düşen bağlantıyı saniyede bir yoklayarak kaldırıyor
 8. Tepsi menüsünde "kes" ile "kes ve cihazı unut" ayrımı: şimdilik tepsiden kesilen hatırlanan cihazın kaydı her zaman siliniyor (yeniden girişte şifre sorulur)
 9. Android Chrome'da kalemin ürettiği dokunma olaylarının ayıklanması (pointerdown 'pen' sonrası gelen dokunuş kimlikleri) gerçek S-Pen ile doğrulanmalı; salt izleme rolünde hatırlanan touchpad modunun yok sayılması için tarayıcı testi yok
-10. Çalışan sunucu yeniden başlatılmalı (tepsiden "Yeniden başlat"): eski RemoteHelper.exe hâlâ kullanımda (kumanda `cursor` ve kalem `pen` değişiklikleri de ancak yeniden derlenince gelir; ilk açılışta data/sertifika üretilir ve 3443 dinlenir); ikinci ekranın kırpılmaması (PerMonitorV2 DPI), DXGI yakalama ve iş parçacıklı girdi ancak açılışta exe yeniden derlenince devreye girer. Ardından iPhone'da ikinci ekran ve akıcılık yeniden denenmeli. Yatay iPhone + klavye + Tuşlar panelinde (tus-sikisik: araç çubuğu gizlenir) gerçek cihazda denenmeli.
+10. Çalışan sunucu yeniden başlatılmalı (tepsiden "Yeniden başlat"): eski RemoteHelper.exe hâlâ kullanımda (kumanda `cursor` ve kalem `pen` değişiklikleri de ancak yeniden derlenince gelir; ilk açılışta data/sertifika üretilir ve 3443 dinlenir); Durum.exe (konsol penceresi koruması) de yeniden derlenir; ikinci ekranın kırpılmaması (PerMonitorV2 DPI), DXGI yakalama ve iş parçacıklı girdi ancak açılışta exe yeniden derlenince devreye girer. Ardından iPhone'da ikinci ekran ve akıcılık yeniden denenmeli. Yatay iPhone + klavye + Tuşlar panelinde (tus-sikisik: araç çubuğu gizlenir) gerçek cihazda denenmeli.

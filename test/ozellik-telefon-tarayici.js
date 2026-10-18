@@ -404,6 +404,28 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
     await tap(rb); await sleep(50);
     check('kilitliyken düğmeye dokununca kapanır', await ev("!document.getElementById('rightBtn').classList.contains('on') && !/🔒/.test(document.getElementById('rightBtn').textContent)"));
     await sleep(400); await sent();
+    // Sağ tık düğmesi açıkken iki parmak dokunuş: sağ tık, tek seferlik hak biter (sonraki dokunuş sol tık)
+    const ikiP = [{ x: c0.x - 40, y: c0.y, id: 0 }, { x: c0.x + 40, y: c0.y, id: 1 }];
+    await tap(rb); await sleep(50);
+    await touch('touchStart', ikiP); await sleep(40); await touch('touchEnd', []); await sleep(50);
+    s = await sent();
+    check('Sağ tık açıkken iki parmak dokunuş -> sağ tık, düğme söner', rightSeq(s) === 'down:right,up:right' && await ev("!document.getElementById('rightBtn').classList.contains('on')"), JSON.stringify(s));
+    await sleep(400); await sent();
+    await tap(c0); await sleep(400);
+    s = await sent();
+    check('ardından tek dokunuş sol tık', rightSeq(s) === 'down:left,up:left', JSON.stringify(s));
+    // Dokunuştan 150 ms sonra iki parmak dokunuş: bekleyen sol tık kaybolmaz
+    await tap(c0); await sleep(150);
+    await touch('touchStart', [ikiP[0]]); await sleep(20); await touch('touchStart', ikiP); await sleep(40); await touch('touchEnd', []); await sleep(50);
+    s = await sent();
+    check('dokun + hemen iki parmak -> sol tık, sonra sağ tık', rightSeq(s) === 'down:left,up:left,down:right,up:right', JSON.stringify(s));
+    await sleep(400); await sent();
+    // 1x'te art arda iki parmak dokunuşları: ikisi de sağ tık (çift dokunuş yalnızca yakınlaştırılmışken 1x'e döner)
+    await touch('touchStart', ikiP); await sleep(70); await touch('touchEnd', []); await sleep(200);
+    await touch('touchStart', ikiP); await sleep(70); await touch('touchEnd', []); await sleep(50);
+    s = await sent();
+    check('1x: art arda iki parmak dokunuşları -> iki sağ tık', rightSeq(s) === 'down:right,up:right,down:right,up:right', JSON.stringify(s));
+    await sleep(400); await sent();
     // dokun + dokunup sürükle -> sol tuşla sürükleme
     await tap(c0); await sleep(80);
     await drag([[c0], [{ x: c0.x + 60, y: c0.y + 40 }]], 8, 20);
