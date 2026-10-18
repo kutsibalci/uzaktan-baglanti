@@ -3,8 +3,10 @@ node_modules/
 
 # Kullanıcı hesapları, cihaz anahtarları, günlük — ASLA repoya girmemeli
 data/
+# Ev ağı HTTPS anahtarları data/sertifika/ altındadır; yanlışlıkla başka yere kopyalanırsa da girmesin
+*-anahtar.pem
 
-# Derlenen yerel programlar: RemoteHelper, Pano, Perde, Ses, Tepsi (sunucu / tepsi-baslat.bat açılışta derler)
+# Derlenen yerel programlar: RemoteHelper, Pano, Perde, Ses, Durum, Tepsi (sunucu / tepsi-baslat.bat açılışta derler)
 helper/*.exe
 
 # Taşınabilir paket çıktısı (tools\paketle.ps1)

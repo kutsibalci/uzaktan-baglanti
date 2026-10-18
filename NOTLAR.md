@@ -139,6 +139,57 @@
       Dosyalar'da zip'i açma ve Türkçe adlar, uzunluksuz zip akışında ilerleme, ana ekrana eklenmiş PWA'da indirme davranışı,
       Tailscale HTTPS üzerinden büyük indirme ve Range ile sürdürme); WebSocket kopunca oturum anahtarı geçersizleşir — kesilen indirme
       sonradan sürdürülemez; macOS Arşiv İzlencesi ile açma; okuma yarıda hata verirse zip bilerek bozuk kalır)**
+- [x] Touchpad modunda sağ tık: iki parmak dokunuşu toleranslı (toplam ≤ 500 ms, parmaklar arası ≤ 150 ms, kayma ≤ 20 px; karar
+      `public/dokunmatik.js` → `isTwoFingerTap`, saf ve testli), hareketsiz 500 ms basılı tut → halka, bırakınca sağ tık; çubukta
+      **Sağ tık** düğmesi (dokun = sıradaki dokunuş sağ tık, uzun bas = kilitli 🔒); her modun ilk kullanımında küçük ipucu kartı.
+      **(henüz gerçek cihazda test edilmedi: gerçek parmakla eşikler (500/150/20) iPhone/iPad'de; Sağ tık düğmesine uzun basınca iOS
+      büyüteç/bağlam menüsü çıkıp çıkmadığı)**
+- [x] Kumanda modu (ana menü kartı, salt izlemede kapalı): görüntü akışı yok ('start' gönderilmez). Touchpad (göreli imleç: RemoteHelper
+      `cursor` = GetCursorPos, salt okur), basılı tutulabilir Sol/Sağ tık, kaydırma şeridi; Medya (oynat/durdur, önceki/sonraki, ses);
+      Sunum (PgUp/PgDn, F5, B, Esc); Klavye. Mesaj `{ t:'kumanda', op }` (`features/kumanda.js`); bağlantı kopunca basılılar bırakılır.
+      **(henüz gerçek cihazda test edilmedi: iPhone/iPad'de dokunma ve iOS ekran klavyesi (beforeinput/⌫/↵); göreli hareketin hissi ve
+      ivme (KAT=2), çoklu monitör geçişi; medya tuşlarının Spotify/YouTube'a, sunum tuşlarının PowerPoint/PDF'e gerçekten gitmesi;
+      mobil veride gecikme; kilit ekranında/UAC'de cursor sorgusu)**
+- [x] Çizim tableti (ana menü kartı "🎨 Çizim tableti"): sanal ekran sürücüsü varsa ikinci ekran, yoksa seçili ekran; kenar kısayol
+      paneli (Geri al/Yinele, basılı Ctrl/Shift/Alt/Boşluk, fırça/silgi, fırça boyutu, yakınlaştırma, renk; profiller Photoshop, Krita,
+      Clip Studio Paint, Paint.NET, Paint), `{ t:'cizim-tus' }` mesajı (sunucu basılı tuşları bağlantı kopunca bırakır). Avuç içi reddi
+      (kalemden sonraki 1 sn parmak yok sayılır, yarıçap > 25 px her zaman) + "✋ Parmak" ayarı. Kalem: getCoalescedEvents ara noktaları,
+      sınır 480/sn, Apple Pencil hover, RemoteHelper'da `pen` ana iş parçacığında. H.264'te 60 fps.
+      **(henüz gerçek cihazda test edilmedi: iPad + Apple Pencil hiç denenmedi (basınç/eğim, hover, avuç içi reddi ve 25 px eşiği,
+      Safari'de getCoalescedEvents ve requestFullscreen); gerçek çizim programlarında kısayollar; Türkçe Q'da [ ] fırça boyutu (ğ/ü
+      üretebilir); Krita/CSP/Paint.NET'te Ctrl+Num± yakınlaştırma; Android S-Pen; iki parmakla Ctrl tut + Geri al; pen ana iş
+      parçacığının gecikme kazancı ve 60 fps ölçülmedi)**
+- [x] QR ile telefon eşleştirme: bilgisayarda (yalnızca localhost yönetici) ana menü "📱 Telefonu bağla (QR)" ya da tepsi menüsü →
+      QR (Tailscale HTTPS adresi varsa o, yoksa ev ağı adresi + `#e=<belirteç>`; 2 dk, tek kullanımlık, SHA-256 özetiyle saklanır).
+      Telefon onay bekler, bilgisayarda Onayla / Reddet (60 sn); onaylanınca cihaz hatırlanır. Çekirdeğe `api.onPreAuth` +
+      `api.auth`, tarayıcıda `RC.setAuthHook`. QR kodlayıcı `lib/qr.js` paketsiz (referans uygulamayla bit bit, jsQR ile çözülerek doğrulandı).
+      **(henüz gerçek cihazda test edilmedi: iPhone kamerasıyla okutma (iOS Safari/Chrome), iPad, #e= parçasının silinmesi ve kamera
+      uygulamasından açılan sayfada cihaz anahtarının saklanması, Tailscale HTTPS üzerinden uçtan uca; tepsi menüsü öğesi elle tıklanmadı)**
+- [x] Bilgisayar durumu paneli (⋯ menü + ana menü "📊"): CPU, CPU sıcaklığı (yönetici olmadan bu PC'de ölçülemiyor, nedeni yazılır), RAM,
+      NVIDIA GPU (nvml.dll), ağ, pil, açık kalma süresi, diskler, 60 sn SVG grafik; en çok CPU/RAM kullanan 15 program; yönetici "Kapat"
+      (WM_CLOSE) → 5 sn sonra "Zorla kapat" (ikinci onay; PID + başlama zamanı denetlenir; kritik süreçler, explorer ve sunucu ağacı 🔒).
+      Ölçüm kalıcı `helper/Durum.exe` (Windows API; kendi CPU'su ~%0,1), yalnızca panel açıkken ya da CPU/pil izleyicisi varken çalışır.
+      Bildirimler: program kapanınca, CPU eşiğin altına inince, pil azalınca, İndirilenler'e dosya gelince; bağlı değilken olanlar sonraki
+      girişte gösterilir. Web Push bilerek yok (Apple/Google sunucusu gerekir → "veri dışarı çıkmaz" ilkesine aykırı).
+      **(henüz gerçek cihazda test edilmedi: iPhone/iPad'de panel ve kaydırma, iOS'ta bip (WebAudio) — iOS titreşimi desteklemez,
+      iOS seçicide disabled pil seçeneği; pil izleyicisinin gerçekten tetiklenmesi; pencereli gerçek programın nazik kapatılması ve
+      "kaydetmek ister misiniz"; yönetici olarak çalışan programı kapatma; gerçek tarayıcı indirmesi (.crdownload/.part) ve taşınmış
+      İndirilenler; Optimus'ta NVML'nin pile etkisi; sunucu yeniden başlayınca PID yeniden kullanılmışsa "program kapanınca")**
+- [x] Pano: resim iki yönde. Bilgisayar → telefon: Pano.exe "PNG" akışı / CF_DIB okur, istemciye yalnızca boyut bildirilir, PNG
+      `GET /api/pano/resim`; "Telefona kopyala" (ClipboardItem + Promise, iOS deseni) ve "Kaydet / Paylaş" (HTTP'de "Kaydet (indir)").
+      Telefon → bilgisayar: "Telefondan resim gönder" (clipboard.read, yoksa "Resim seç…"; HEIC/WebP tuvalle PNG'ye), `POST /api/pano/resim`
+      (≤ 20 MB). Geri yankı piksel SHA-1 özetiyle önlenir; salt izleme erişemez.
+      **(henüz gerçek cihazda test edilmedi: iOS'ta "Telefona kopyala", Paylaş → Fotoğraflar'a kaydet, clipboard.read izin balonu, fotoğraf
+      seçicisi ve HEIC çevirisi; iPad; HTTP'de iPhone'da indirme; gerçek Win+Shift+S; Paint/Word'de yapıştırma elle denenmedi)**
+- [x] Ev ağında HTTPS (Tailscale olmadan): kendi yerel kök CA'mız (ECDSA P-256, Name Constraints ile yalnızca yerel ad/özel IP),
+      sunucu sertifikası tüm özel IPv4'ler + ad + `ad.local` + localhost; 3443'te (PORT_HTTPS) aynı işleyici ve WebSocket. ⋯ menü
+      "🔒 Ev ağında HTTPS" rehberi (iPhone/iPad .mobileconfig, Android .cer), HTTP sayfasında öneri şeridi ve güven yoklaması
+      (`/api/sertifika/yokla`), yönetimde aç/kapat/yeniden üret/sil; IP değişince ya da bitişe 30 gün kala yeniden imza. Paket yok
+      (`lib/sertifika.js` kendi DER yazıcısı). Anahtarlar `data/sertifika/` (yalnızca bu kullanıcıya açık ACL).
+      **(henüz gerçek cihazda test edilmedi: iPhone/iPad'de .mobileconfig kurulumu ve Sertifika Güven Ayarları; iOS'un Name Constraints'li
+      CA'yı kabulü (reddederse `caUret()`'teki 2.5.29.30 uzantısı kaldırılmalı); iOS'ta IP adresli SAN ile HTTPS + wss, H.264 ve ses;
+      iOS Chrome'da profil; Android .cer ve Chrome; canlı DHCP değişimi; Windows Güvenlik Duvarı'nın 3443 için izin sorması)**
+- [x] Ses testi: Ses.exe başlarken Windows'un biriktirdiği ~1 sn'lik ses tek seferde geliyor (ölçüldü), test ilk 500 ms'yi saymıyor.
 
 ## Sıradaki
 1. Yukarıdaki özelliklerin gerçek telefon/tablet/kalemle denenmesi (ikinci ekran dahil)
@@ -150,4 +201,4 @@
 7. Çekirdeğe izleme başlat/durdur kancası (`api.onStreamStop`): perde şimdilik izlemeyi bırakan/yetkisi düşen bağlantıyı saniyede bir yoklayarak kaldırıyor
 8. Tepsi menüsünde "kes" ile "kes ve cihazı unut" ayrımı: şimdilik tepsiden kesilen hatırlanan cihazın kaydı her zaman siliniyor (yeniden girişte şifre sorulur)
 9. Android Chrome'da kalemin ürettiği dokunma olaylarının ayıklanması (pointerdown 'pen' sonrası gelen dokunuş kimlikleri) gerçek S-Pen ile doğrulanmalı; salt izleme rolünde hatırlanan touchpad modunun yok sayılması için tarayıcı testi yok
-10. Çalışan sunucu yeniden başlatılmalı (tepsiden "Yeniden başlat"): eski RemoteHelper.exe hâlâ kullanımda; ikinci ekranın kırpılmaması (PerMonitorV2 DPI), DXGI yakalama ve iş parçacıklı girdi ancak açılışta exe yeniden derlenince devreye girer. Ardından iPhone'da ikinci ekran ve akıcılık yeniden denenmeli. Yatay iPhone + klavye + Tuşlar panelinde (tus-sikisik: araç çubuğu gizlenir) gerçek cihazda denenmeli.
+10. Çalışan sunucu yeniden başlatılmalı (tepsiden "Yeniden başlat"): eski RemoteHelper.exe hâlâ kullanımda (kumanda `cursor` ve kalem `pen` değişiklikleri de ancak yeniden derlenince gelir; ilk açılışta data/sertifika üretilir ve 3443 dinlenir); ikinci ekranın kırpılmaması (PerMonitorV2 DPI), DXGI yakalama ve iş parçacıklı girdi ancak açılışta exe yeniden derlenince devreye girer. Ardından iPhone'da ikinci ekran ve akıcılık yeniden denenmeli. Yatay iPhone + klavye + Tuşlar panelinde (tus-sikisik: araç çubuğu gizlenir) gerçek cihazda denenmeli.

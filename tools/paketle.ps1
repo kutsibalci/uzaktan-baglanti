@@ -90,6 +90,7 @@ $programs = @{
   'Pano'         = @{ target = 'exe';    refs = $formsRefs }
   'Perde'        = @{ target = 'winexe'; refs = $formsRefs }
   'Ses'          = @{ target = 'exe';    refs = @() }
+  'Durum'        = @{ target = 'exe';    refs = @('System.Management.dll') }
   'Tepsi'        = @{ target = 'winexe'; refs = $formsRefs + 'System.Web.Extensions.dll' }
 }
 foreach ($cs in Get-ChildItem "$stage\helper\*.cs") {

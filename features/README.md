@@ -44,5 +44,13 @@ Telefonda çubukta yalnızca geri, ⌨, Tuşlar, dokunmatik modu, küçük gecik
 - Salt izleme rolünde `<body>`'de `rc-salt`, ikinci ekranda `rc-genislet` sınıfı vardır (`.ctl` / `.no-extend` öğeler CSS ile gizlenir).
 - Özel tuşlar (kısayollar, yapışkan Ctrl/Alt/Shift/Win, oklar, F1–F12) `public/features/telefon.js`'teki "Tuşlar" panelindedir.
 
+## Özellik mesajları (JSON, özet; ayrıntı her dosyanın başında)
+- `kumanda.js` — `{ t:'kumanda', op: rel|down|up|wheel|key|text|end }` (control; görüntü akışı olmadan girdi). RemoteHelper'da salt okuyan `cursor` komutu (GetCursorPos). Testte `REMOTE_KUMANDA_KURU=1`: girdi gönderilmez.
+- `cizim.js` — `{ t:'cizim-tus', vk, down }` (control; basılı tuşlar bağlantı kopunca / izleme bitince bırakılır, en fazla 8).
+- `eslestir.js` — QR eşleştirme: `onPreAuth('eslestir')` + yönetici ekranında `eslestir-*` mesajları. Testte `REMOTE_ESLESTIR_SURE_MS`, `REMOTE_ESLESTIR_ONAY_MS`.
+- `durum.js` — `durum-abone`, `durum`, `durum-ilk`, `durum-kapat` (admin) / `durum-kapat-sonuc`, `durum-izle` / `durum-izle-sil` / `durum-izleyiciler`, `durum-bildirim`. `REMOTE_DURUM_KURU=1`: program kapatılmaz; `REMOTE_INDIRME_DIR`: izlenen İndirilenler.
+- `pano.js` — `pano` mesajında `resim: { id, w, h, bytes }` ya da `{ tooBig, w, h }`; resim `GET/POST /api/pano/resim` (control, en fazla 20 MB).
+- `sertifika.js` — `GET /api/sertifika/*` (oturumsuz ama yalnızca özel ağdan; `/yokla` güven denetimi), yönetimde aç/kapat/yeniden üret/sil. `PORT_HTTPS` (varsayılan 3443; testte `0` = rastgele).
+
 ## İkili mesaj türleri (ilk bayt)
 1 = JPEG kare, 2 = H.264 kare (çekirdek). 3 = ses (Opus). Yeni tür eklerken buraya yazın.

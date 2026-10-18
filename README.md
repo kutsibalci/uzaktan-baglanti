@@ -12,7 +12,16 @@ Windows bilgisayarı telefondan, tabletten ya da başka bir bilgisayardan **tara
 - Telefon: doğrudan dokunma (dokun = tık, hızlı sürükle = kaydırma, basılı tut + sürükle = sürükleme, basılı tut + bırak = sağ tık) ya da touchpad modu, sıkıştırarak yakınlaştırma,
   ekran klavyesi açılınca görüntü klavyenin üstüne sığar, sade araç çubuğu + ⋯ menü (paneller ✕ / Esc / dışarı dokununca kapanır),
   "Tuşlar" paneli (kısayollar: Kopyala, Alt+Tab, Win+D, Ctrl+Shift+Esc…; yapışkan Ctrl/Alt/Shift/Win, oklar, F1–F12), ana ekrana eklenebilir (PWA), USB ile bağlantı (`usb-baglan.bat`)
-- Pano eşitleme (metin) ve dosya aktarımı (yükleme / klasör gezinme / indirme); gönderirken kaydedilecek klasör görünür ve seçilebilir
+- Touchpad modunda sağ tık: iki parmakla dokun, basılı tut-bırak ya da çubuktaki **Sağ tık** düğmesi (tek seferlik / uzun basınca kilitli)
+- **Kumanda modu** (ana menü): görüntü akışı olmadan telefon = touchpad + medya tuşları + sunum kumandası (← → F5 B Esc) + klavye
+- **Çizim tableti** (ana menü, iPad için): kenar kısayol paneli (Photoshop / Krita / Clip Studio Paint / Paint.NET / Paint profilleri;
+  basılı tutulan Ctrl/Shift/Alt/Boşluk), avuç içi reddi ve "Parmak" ayarı, kalemin ara noktaları ve Apple Pencil hover
+- **QR ile telefon eşleştirme:** bilgisayarda ana menü / tepsi → "Telefonu bağla (QR)"; telefon kamerayla okutur, bilgisayarda Onayla
+  (kod 2 dk geçerli, tek kullanımlık; cihaz hatırlanır)
+- **Bilgisayar durumu** paneli: CPU, sıcaklık, RAM, NVIDIA GPU, ağ, pil, diskler (60 sn grafik), en çok kaynak kullanan programlar ve
+  yöneticiye "Kapat / Zorla kapat" (sistem süreçleri korunur); bildirimler: program kapanınca, CPU düşünce, pil azalınca, indirme bitince
+- **Ev ağında HTTPS** (Tailscale olmadan; kendi yerel sertifikası, aşağıya bakın)
+- Pano eşitleme (metin ve resim, iki yönde) ve dosya aktarımı (yükleme / klasör gezinme / indirme); gönderirken kaydedilecek klasör görünür ve seçilebilir
   (varsayılan İndirilenler › Uzaktan Bağlantı), "Bilgisayarda göster", son gönderilenler listesi, tepside "Dosya geldi" bildirimi
 - Bilgisayar sesini uzaktan dinleme (Opus; HTTPS ve güncel tarayıcı gerekir)
 - Gizlilik perdesi: kontrol sırasında bilgisayar ekranı karartılır, uzaktaki görüntü etkilenmez
@@ -73,7 +82,8 @@ Yönetici hesabıyla ana menüde **⏻ Güç** düğmesi bilgisayarı kilitler, 
 | `lib/` | Hesap deposu, ağ/Tailscale, H.264 video (+ `sps.js`: tarayıcıda kare bekletmeyi kapatan SPS düzeltmesi), sanal ekran, yardımcı süreç, özellikler arası olaylar (`olaylar.js`) |
 | `helper/RemoteHelper.cs` | Ekran yakalama + fare/klavye (Windows'un kendi C# derleyicisiyle derlenir) |
 | `helper/Tepsi.cs` | Görev çubuğu simgesi; sunucuyu gizli başlatır (`tepsi-baslat.bat`) |
-| `helper/Pano.cs`, `Perde.cs`, `Ses.cs` | Pano izleme, gizlilik perdesi, ses yakalama (sunucu açılışta derler) |
+| `helper/Pano.cs`, `Perde.cs`, `Ses.cs`, `Durum.cs` | Pano izleme (metin + resim), gizlilik perdesi, ses yakalama, bilgisayar durumu ölçümü (sunucu açılışta derler) |
+| `lib/sertifika.js`, `lib/qr.js` | Ev ağı HTTPS için yerel CA + sertifika (paketsiz X.509), QR kodlayıcı (paketsiz, SVG) |
 | `features/` | Özellik modülleri (sunucu tarafı); bkz. [features/README.md](features/README.md) |
 | `public/` | Tarayıcı arayüzü (`public/features/` özelliklerin tarayıcı tarafı) |
 | `data/` | Hesaplar ve hatırlanan cihazlar (repoya girmez) |

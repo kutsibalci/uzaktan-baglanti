@@ -16,7 +16,9 @@ Kullanıcı gündelik Türkçe yazar; cevaplar Türkçe. Kişisel kullanım + CV
 - Çekirdeğe (server.js, public/app.js, index.html, style.css) dokunmak yerine özellik modülü tercih et — bkz. `features/README.md`.
 
 ## Testler
-- `node test/calistir.js [paket önekleri]` — her paket için boş veri klasörlü ayrı sunucu açar. Port: `TEST_PORT` (paralel çalıştırmada her işe ayrı port; 3080, 3000 ve 3999'u kullanma).
+- `node test/calistir.js [paket önekleri]` — her paket için boş veri klasörlü ayrı sunucu açar. Port: `TEST_PORT` (paralel çalıştırmada her işe ayrı port; 3080, 3443 (kullanıcının ev ağı HTTPS'i), 3000, 3306 (MySQL) ve 3999'u kullanma). calistir.js test sunucularına `PORT_HTTPS=0` (rastgele), `REMOTE_DURUM_KURU=1` ve geçici `REMOTE_INDIRME_DIR` verir.
+- Bir helper .cs değiştiyse kullanıcının sunucusu `helper/*.exe`'yi kilitliyor olabilir: testleri ana klasörün (data/.git/.claude hariç) %TEMP% altındaki kopyasında çalıştır, sunucuyu durdurma.
+- Pano testi gerçek sistem panosunu, ses testi gerçek ses çıkışını kullanır: başka işlerle paralel çalışınca düşebilir, tek başına yeniden çalıştır.
 - Tarayıcı testleri başsız Edge + CDP ile (`test/ozellik-telefon-tarayici.js`, `test/ozellik-olcum.js` örnek); girdi mesajları sayfada yakalanır, sunucuya gitmez. iOS Safari emüle edilemez — raporla.
 - Bitirmeden önce tüm paketler geçmeli.
 
