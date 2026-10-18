@@ -129,7 +129,6 @@
     #cizimPanel.sol .cz-kol { border-left: 0; border-radius: 0 10px 10px 0; }
     #cizimPanel.sag .cz-kol { border-right: 0; border-radius: 10px 0 0 10px; }
     #cizimPanel:not(.gizli) .cz-kol { margin: 0 -1px; }
-    #modeCizim { grid-column: 1 / -1; }
   `;
   document.head.appendChild(style);
 

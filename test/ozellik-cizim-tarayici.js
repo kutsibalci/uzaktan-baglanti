@@ -104,7 +104,7 @@ const YAKALAYICI = `
     // ---- Ana menü kartı ----
     check('ana menüde "Çizim tableti" kartı', await shown('#modeCizim'));
     const kart = await rect('#modeCizim'), kk = await rect('#modeControl'), ke = await rect('#modeExtend');
-    check('kart tam genişlikte, iki kartın altında', kart.top >= kk.bottom && Math.abs(kart.left - kk.left) < 1 && Math.abs(kart.right - ke.right) < 1, JSON.stringify({ kart, kk, ke }));
+    check('kart iki çekirdek kartın altında (kumandayla 2×2 ızgara)', kart.top >= kk.bottom && kart.top >= ke.bottom, JSON.stringify({ kart, kk, ke }));
     await shot('1-ipad-ana-menu');
     // Sürücü kuruluysa ikinci ekranı başlatır (istek yakalanır: sanal ekran OLUŞTURULMAZ).
     await ev("(() => { const o = RC.state; RC.state = () => ({ ...o(), vdd: true }); window.__vddGeri = () => { RC.state = o; }; })()");
