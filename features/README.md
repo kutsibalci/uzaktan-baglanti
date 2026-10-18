@@ -16,6 +16,7 @@ Her özellik iki parçadan oluşur ve çekirdek dosyalara (server.js, public/app
 - `api.onAuth(ws => {})`, `api.onClose(ws => {})`, `api.adminData(async () => ({ <ad>: {...} }))`
 - Çekirdek: `api.helper`, `api.video`, `api.store`, `api.clients`, `api.sendJson(ws, obj)`, `api.broadcast(obj, filtre)`, `api.buildExe(ad, {target})`, `api.dataDir`, `api.PORT`, `api.log(...)`, `api.guestCode()`, `api.kick(ws => bool, neden)`, `api.clientInfo(req)`
 - Özellikler arası olaylar: `require('../lib/olaylar')` (ortak EventEmitter; özellikler birbirini doğrudan require etmez). Şimdilik: `dosya-geldi` (dosya.js yayar → tepsi.js tepsi bildirimine çevirir).
+- Ortak yardımcılar: `lib/zip.js` (akışla zip yazıcı: deflate/store, data descriptor, ZIP64, UTF-8 adlar; dosya.js zip indirmede kullanır).
 - `ws.session` → `{ username, role, guest, view: { screen, ... } }`, `ws.streaming`, `ws.isLocal`, `ws.via`
 
 ## Tarayıcı API (özet)

@@ -123,6 +123,22 @@
       yol); tepsi "Dosya geldi" balonu gözle görülmedi; OneDrive'a taşınmış Türkçe adlı klasör; seçilen klasörde yükleme sırasında
       çökme olursa yarım dosya açılışta silinmez; sunucu yeniden başlayınca "Son gönderilenler"deki göster düğmesi göreli yola düşer)**
       Not: ilk denemede gönderilen fotoğraf `%USERPROFILE%\Downloads\Uzaktan Bağlantı\IMG_0676.jpeg`'de.
+- [x] Bilgisayardan telefona indirme: her dosya türü (attachment + octet-stream + nosniff; Türkçe ad filename* + ASCII yedek;
+      0 bayt, uzantısız, uzun ad; tek aralıklı Range/206, If-Range, 416), klasör satırında "Zip olarak indir", seçme kutuları +
+      "Seçilenleri indir" (tek dosya doğrudan, çoklu → zip). Zip `lib/zip.js`: harici paket yok, akışla (belleğe almaz), deflate /
+      sıkıştırılmış uzantılarda store, data descriptor ile akışta CRC, ZIP64 (> 4 GB girdi/konum, > 65535 girdi), UTF-8 ad bayrağı,
+      klasör ve boş klasör girdileri. Çoklu seçim önce `POST /api/dosya/secim` (yollar gövdede; tahmini boyut gösterilir, kimlik
+      15 dk ve yalnızca aynı oturum), indirme `GET /api/dosya/zip?secim=` ile kullanıcının dokunduğu gerçek `<a download>`
+      bağlantısından (iOS'ta blob/iframe/yeni sekme yok). Güvenlik gezinmeyle aynı; junction/symlink izlenmez, açılamayan dosyalar
+      atlanıp zip sonunda `_atlananlar.txt`; sınır 200000 öğe / 64 GB; istemci iptal edince dosya tanıtıcısı kapanır.
+      Testler: `ozellik-zip.js` (kendi okuyucu + Expand-Archive + tar.exe, 4,5 GB seyrek dosya, 70000 girdi), `ozellik-zip64.js`
+      (`REMOTE_ZIP64_ESIK=1000` ile ZIP64 küçük dosyalarla zorlanır), `ozellik-dosya.js` (başsız Edge, iPhone boyutu, gerçek indirme).
+      Gönderirken "Kaydedilecek yer → Değiştir → Masaüstü" zaten çalışıyordu (bu bilgisayarda kayıt defterindeki Masaüstü profil
+      içinde, kısayol olarak çıkıyor); değişiklik gerekmedi.
+      **(henüz gerçek cihazda test edilmedi: iPhone Safari / iOS Chrome'da indirme hiç denenmedi (indirme onayı, İndirilenler'e kayıt,
+      Dosyalar'da zip'i açma ve Türkçe adlar, uzunluksuz zip akışında ilerleme, ana ekrana eklenmiş PWA'da indirme davranışı,
+      Tailscale HTTPS üzerinden büyük indirme ve Range ile sürdürme); WebSocket kopunca oturum anahtarı geçersizleşir — kesilen indirme
+      sonradan sürdürülemez; macOS Arşiv İzlencesi ile açma; okuma yarıda hata verirse zip bilerek bozuk kalır)**
 
 ## Sıradaki
 1. Yukarıdaki özelliklerin gerçek telefon/tablet/kalemle denenmesi (ikinci ekran dahil)

@@ -8,7 +8,9 @@
 //   POST /api/dosya/goster?id=<yükleme kimliği>[&yol=<köke göreli dosya>]   dosyayı bilgisayarda Dosya Gezgini'nde seçili açar
 //        REMOTE_DOSYA_KURU=1 ise Gezgin AÇILMAZ, yalnızca çalıştırılacak komut bildirilir (testler bunu kullanır).
 //   GET  /api/dosya/liste?yol=<göreli yol>  -> { yol, yer, tam, girdiler: [{ ad, tur: 'klasor'|'dosya', boyut, degisme }], kesildi }
-//   GET  /api/dosya/indir?yol=<göreli yol>  -> dosya (akışla)
+//   GET  /api/dosya/indir?yol=<göreli yol>  -> dosya (akışla; attachment, Range/206 desteği)
+//   POST /api/dosya/secim  { yollar }  -> { id, ad, dosya, klasor, boyut }   zip için seçim + tahmini boyut
+//   GET  /api/dosya/zip?secim=<id> | ?yol=<göreli yol>[&yol=...]  -> zip (akışla üretilir, lib/zip.js)
 //        kök: REMOTE_BROWSE_ROOT ya da kullanıcı profil klasörü; kökün dışına hiçbir şekilde çıkılamaz.
 // Yükleme bitince lib/olaylar üzerinden 'dosya-geldi' yayılır (tepsi simgesi balon gösterir).
 const fs = require('fs');
@@ -17,10 +19,11 @@ const os = require('os');
 const path = require('path');
 const { execFile } = require('child_process');
 const { pipeline } = require('stream/promises');
-const { Transform } = require('stream');
+const { Transform, Readable } = require('stream');
 const { promisify } = require('util');
 const crypto = require('crypto');
 const olaylar = require('../lib/olaylar');
+const zip = require('../lib/zip');
 
 // fs.realpath.native: Windows'ta GetFinalPathNameByHandle — junction/symlink ve 8.3 kısa adları tam yola çevirir.
 const gercekYol = promisify(fs.realpath.native);
@@ -208,11 +211,151 @@ async function yerBilgisi(tam) {
   return { yer: parcalar.join(' › '), yerParcalar: parcalar, yol: altinda(tam, kok) ? path.relative(kok, tam).split(path.sep).join('/') : null };
 }
 
-// RFC 5987/6266: ASCII yedek ad + filename*=UTF-8''...
+// RFC 5987/6266: ASCII yedek ad + filename*=UTF-8''... (yedekte Türkçe harfler en yakın ASCII harfe çevrilir)
 function contentDisposition(ad) {
-  const ascii = ad.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+  const ascii = ad.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ı/g, 'i')
+    .replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
   const utf8 = encodeURIComponent(ad).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
   return `attachment; filename="${ascii}"; filename*=UTF-8''${utf8}`;
+}
+
+// Tek aralıklı Range başlığı (RFC 9110): { bas, son } | null (yok/geçersiz/çoklu → tüm dosya) | 'karsilanamaz' (416).
+function aralikCoz(baslik, boyut) {
+  const m = /^bytes=(\d*)-(\d*)$/.exec(String(baslik || '').trim());
+  if (!m || (m[1] === '' && m[2] === '')) return null;
+  let bas;
+  let son = boyut - 1;
+  if (m[1] === '') {                                // son n bayt
+    const n = Number(m[2]);
+    if (n === 0) return 'karsilanamaz';
+    bas = Math.max(0, boyut - n);
+  } else {
+    bas = Number(m[1]);
+    if (m[2] !== '') {
+      if (Number(m[2]) < bas) return null;
+      son = Math.min(Number(m[2]), boyut - 1);
+    }
+  }
+  if (bas >= boyut) return 'karsilanamaz';
+  return { bas, son };
+}
+
+// ---------- Zip ----------
+const MAX_ZIP_GIRDI = Number(process.env.REMOTE_ZIP_MAX_GIRDI) || 200000; // dosya + klasör
+const MAX_ZIP_BOYUT = 64 * 1024 ** 3;                                     // sıkıştırmadan önce toplam
+const ZIP64_ESIK = Number(process.env.REMOTE_ZIP64_ESIK) || 0xFFFFFFFF;   // testler küçültüp ZIP64 kayıtlarını zorlar
+const MAX_SECIM = 10000;             // tek istekte seçilebilecek öğe
+const SECIM_SURESI = 15 * 60 * 1000; // hazırlanan seçimin geçerlilik süresi
+const ATLANAN_ADI = '_atlananlar.txt';
+
+// Seçilen yolları (köke göreli) zip girdilerine çevirir; dosyalar yalnızca zip yazıcı istediğinde açılır.
+// Güvenlik gezinmeyle aynı: her seçim yolCoz'dan geçer; alt klasörlerde junction/symlink İZLENMEZ (kök dışına
+// çıkabilir), gerçek yolu beklenenden farklı çıkan klasör (bağlama noktası vb.) de atlanır. Erişilemeyenler ve
+// sınırı aşan kısım `atlananlar`a yazılır. sayac: { dosya, klasor, boyut, sinir }
+async function* zipGirdileri(cozulenler, kok, atlananlar, sayac) {
+  const sinirde = (ek) => {
+    if (sayac.sinir) return true;
+    if (sayac.dosya + sayac.klasor + 1 > MAX_ZIP_GIRDI || sayac.boyut + ek > MAX_ZIP_BOYUT) {
+      sayac.sinir = true;
+      atlananlar.push({ ad: '…', neden: `sınır aşıldı (en fazla ${MAX_ZIP_GIRDI} öğe / ${MAX_ZIP_BOYUT / 1024 ** 3} GB); kalanlar eklenmedi` });
+      return true;
+    }
+    return false;
+  };
+  function dosyaGirdisi(tam, ad, st) {
+    if (sinirde(st.size)) return null;
+    sayac.dosya++;
+    sayac.boyut += st.size;
+    return {
+      ad, mtime: st.mtime, boyut: st.size, sikistir: zip.sikistirilsinMi(ad),
+      ac: async () => {
+        let fh;
+        try { fh = await fsp.open(tam, 'r'); } catch (e) {
+          sayac.dosya--;
+          sayac.boyut -= st.size;
+          throw Object.assign(e, { neden: e.code === 'EBUSY' ? 'kullanımda (başka bir program kilitlemiş)' : 'açılamadı (erişim yok ya da kullanımda)' });
+        }
+        const boyut = (await fh.stat()).size;
+        // En fazla açılıştaki boyut kadar okunur (okurken büyüyen dosya ZIP64 kararını bozmasın).
+        if (!boyut) { await fh.close(); return { akis: Readable.from([]), boyut: 0 }; }
+        return { akis: fh.createReadStream({ start: 0, end: boyut - 1, highWaterMark: 256 * 1024 }), boyut };
+      },
+    };
+  }
+  async function* klasorGez(tam, ad, mtime) {
+    if (sinirde(0)) return;
+    sayac.klasor++;
+    yield { ad: `${ad}/`, klasor: true, mtime };
+    let dirents;
+    try { dirents = await fsp.readdir(tam, { withFileTypes: true }); } catch {
+      atlananlar.push({ ad: `${ad}/`, neden: 'klasör açılamadı' });
+      return;
+    }
+    dirents.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    for (const d of dirents) {
+      if (sayac.sinir) return;
+      const altTam = path.join(tam, d.name);
+      const altAd = `${ad}/${d.name}`;
+      if (d.name.endsWith(GECICI_UZ)) continue;
+      if (d.isSymbolicLink()) { atlananlar.push({ ad: altAd, neden: 'kısayol/junction (izlenmedi)' }); continue; }
+      let st;
+      try { st = await fsp.stat(altTam); } catch { atlananlar.push({ ad: altAd, neden: 'okunamadı' }); continue; }
+      if (d.isDirectory() && st.isDirectory()) {
+        let g;
+        try { g = await gercekYol(altTam); } catch { atlananlar.push({ ad: altAd, neden: 'klasör açılamadı' }); continue; }
+        if (g.toLowerCase() !== altTam.toLowerCase() || !altinda(g, kok)) { atlananlar.push({ ad: altAd, neden: 'bağlantı (izlenmedi)' }); continue; }
+        yield* klasorGez(altTam, altAd, st.mtime);
+      } else if (d.isFile() && st.isFile()) {
+        const g = dosyaGirdisi(altTam, altAd, st);
+        if (g) yield g;
+      }
+    }
+  }
+  const kullanilan = new Set([ATLANAN_ADI.toLowerCase()]);
+  for (const r of cozulenler) {
+    if (sayac.sinir) break;
+    // Üst düzey ad: seçilen öğenin adı; aynı ad iki kez seçilirse "ad (1)".
+    let ad = r.gercek === kok ? path.basename(kok) || 'kok' : path.basename(r.gercek);
+    const uz = r.st.isDirectory() ? '' : path.extname(ad);
+    const govde = ad.slice(0, ad.length - uz.length);
+    for (let i = 1; kullanilan.has(ad.toLowerCase()); i++) ad = `${govde} (${i})${uz}`;
+    kullanilan.add(ad.toLowerCase());
+    if (r.st.isDirectory()) yield* klasorGez(r.gercek, ad, r.st.mtime);
+    else if (r.st.isFile()) { const g = dosyaGirdisi(r.gercek, ad, r.st); if (g) yield g; }
+  }
+}
+
+const atlananMetni = (liste) => `﻿Bu öğeler zip'e eklenmedi:\r\n\r\n${liste.map((a) => `${a.ad} — ${a.neden}`).join('\r\n')}\r\n`;
+
+// Zip dosyasının adı: tek öğede onun adı, çoklu seçimde ortak üst klasörün adı.
+function zipAdi(cozulenler, kok) {
+  const ad = (p) => (p === kok ? path.basename(kok) || 'Dosyalar' : path.basename(p));
+  if (cozulenler.length === 1) {
+    const r = cozulenler[0];
+    return `${r.st.isDirectory() ? ad(r.gercek) : path.basename(r.gercek, path.extname(r.gercek))}.zip`;
+  }
+  const ustler = new Set(cozulenler.map((r) => path.dirname(r.gercek).toLowerCase()));
+  const ust = ustler.size === 1 ? ad(path.dirname(cozulenler[0].gercek)) : 'Dosyalar';
+  return `${ust} (${cozulenler.length} öğe).zip`;
+}
+
+// Yolları doğrular (her biri yolCoz) ve tekrarları atar. Geçersiz yol varsa { kod, msg } fırlatır.
+async function secimCoz(yollar) {
+  if (!Array.isArray(yollar) || !yollar.length) throw hata(400, 'Hiçbir şey seçilmedi.');
+  if (yollar.length > MAX_SECIM) throw hata(413, `En fazla ${MAX_SECIM} öğe seçilebilir.`);
+  const gorulen = new Set();
+  const sonuc = [];
+  for (const y of yollar) {
+    if (typeof y !== 'string') throw hata(400, 'Geçersiz yol.');
+    const r = await yolCoz(y);
+    if (gorulen.has(r.gercek.toLowerCase())) continue;
+    gorulen.add(r.gercek.toLowerCase());
+    let st;
+    try { st = await fsp.stat(r.gercek); } catch { throw hata(404, 'Bulunamadı ya da erişilemiyor.'); }
+    if (!st.isDirectory() && !st.isFile()) throw hata(400, 'Bu öğe indirilemez.');
+    sonuc.push({ ...r, st });
+  }
+  return sonuc;
 }
 
 // explorer.exe komut satırı: /select,"<tam yol>". Yol doğrulanmış, mutlak, yerel bir dosya yolu olmalı; tırnak ve
@@ -426,6 +569,9 @@ module.exports.init = (api) => {
   }, { role: 'control' });
 
   // ---------- İndirme ----------
+  // Her dosya türü indirilir: Content-Disposition: attachment + application/octet-stream + nosniff → tarayıcı (iOS
+  // Safari dahil) dosyayı sayfada açmaz, indirme yöneticisine verir. Tek aralıklı Range (206) desteklenir: iOS büyük
+  // indirmede ya da kesilen indirmeyi sürdürürken aralık isteyebilir. If-Range uyuşmazsa tüm dosya gönderilir.
 
   api.route('GET', '/api/dosya/indir', async (req, res, ws, url) => {
     let r;
@@ -439,20 +585,122 @@ module.exports.init = (api) => {
     const st = await fh.stat();
     if (!st.isFile()) { await fh.close(); return json(res, 400, { ok: false, msg: 'Bu bir dosya değil.' }); }
     const ad = path.basename(r.gercek);
-    res.writeHead(200, {
+    const etag = `"${st.size.toString(16)}-${Math.floor(st.mtimeMs).toString(16)}"`;
+    const degisme = st.mtime.toUTCString();
+    let aralik = req.headers.range ? aralikCoz(req.headers.range, st.size) : null;
+    const ifRange = req.headers['if-range'];
+    if (aralik && ifRange && ifRange !== etag && ifRange !== degisme) aralik = null;
+    const ortak = {
       'Content-Type': 'application/octet-stream',
-      'Content-Length': st.size,
       'Content-Disposition': contentDisposition(ad),
       'X-Content-Type-Options': 'nosniff',
       'Cache-Control': 'no-store',
+      'Accept-Ranges': 'bytes',
+      ETag: etag,
+      'Last-Modified': degisme,
+    };
+    if (aralik === 'karsilanamaz') {
+      await fh.close();
+      return res.writeHead(416, { ...ortak, 'Content-Range': `bytes */${st.size}`, 'Content-Length': 0 }).end();
+    }
+    const bas = aralik ? aralik.bas : 0;
+    const son = aralik ? aralik.son : st.size - 1;
+    res.writeHead(aralik ? 206 : 200, {
+      ...ortak,
+      'Content-Length': son - bas + 1,
+      ...(aralik ? { 'Content-Range': `bytes ${bas}-${son}/${st.size}` } : {}),
     });
-    api.store.log('dosya', { user: ws.session.username, ip: ws.ip, islem: 'indir', ad: r.goreli, boyut: st.size });
+    // Sürdürülen indirmenin her parçası ayrı kayıt olmasın: yalnızca baştan başlayan istek günlüğe yazılır.
+    if (bas === 0) api.store.log('dosya', { user: ws.session.username, ip: ws.ip, islem: 'indir', ad: r.goreli, boyut: st.size });
+    if (st.size === 0) { await fh.close(); return res.end(); }
     try {
-      await pipeline(fh.createReadStream(), res);
+      await pipeline(fh.createReadStream({ start: bas, end: son }), res);
     } catch (e) {
       api.log(`İndirme yarıda kaldı: ${r.goreli} (${e.message})`);
     }
   }, { role: 'control' });
+
+  // ---------- Zip olarak indirme ----------
+  //   POST /api/dosya/secim   gövde: { yollar: [köke göreli yol, ...] }  (JSON, en fazla 1 MB)
+  //        -> { id, ad, dosya, klasor, boyut, atlanan }   seçim sayılır (dosyalar açılmaz), tahmini boyut döner;
+  //        id 15 dakika geçerli ve yalnızca aynı oturumdan kullanılabilir. Sınır aşılırsa 413.
+  //   GET  /api/dosya/zip?secim=<id>   ya da   ?yol=<köke göreli>[&yol=...]   -> zip (akışla, Content-Length yok)
+  // Çok yol GET adresine sığmayabilir; bu yüzden çoklu seçim önce POST ile bırakılır, indirme bağlantısı kısa kalır
+  // (iOS'ta indirmeyi kullanıcının doğrudan dokunduğu gerçek bir <a download> başlatır).
+  const secimler = new Map(); // id -> { ws, yollar, zaman }
+  const secimTemizle = () => {
+    const simdi = Date.now();
+    for (const [id, s] of secimler) if (simdi - s.zaman > SECIM_SURESI) secimler.delete(id);
+    while (secimler.size > 200) secimler.delete(secimler.keys().next().value);
+  };
+
+  api.route('POST', '/api/dosya/secim', async (req, res, ws) => {
+    const SINIR = 1024 * 1024;
+    if (Number(req.headers['content-length']) > SINIR) return reddet(req, res, 413, { ok: false, msg: 'Seçim çok büyük.' });
+    const parcalar = [];
+    let n = 0;
+    try {
+      for await (const p of req) {
+        n += p.length;
+        if (n > SINIR) { req.destroy(); return; }
+        parcalar.push(p);
+      }
+    } catch { return; }
+    let yollar;
+    try { yollar = JSON.parse(Buffer.concat(parcalar).toString('utf8')).yollar; } catch { return json(res, 400, { ok: false, msg: 'Geçersiz istek.' }); }
+    let cozulenler;
+    try { cozulenler = await secimCoz(yollar); } catch (e) { return json(res, e.kod || 400, { ok: false, msg: e.message }); }
+    const kok = await kokGercek();
+    const atlananlar = [];
+    const sayac = { dosya: 0, klasor: 0, boyut: 0, sinir: false };
+    for await (const _g of zipGirdileri(cozulenler, kok, atlananlar, sayac)) { /* yalnızca say */ }
+    const ozet = { ad: zipAdi(cozulenler, kok), dosya: sayac.dosya, klasor: sayac.klasor, boyut: sayac.boyut, atlanan: atlananlar.length };
+    if (sayac.sinir) return json(res, 413, { ok: false, ...ozet, msg: `Çok büyük: en fazla ${MAX_ZIP_GIRDI} öğe ve ${MAX_ZIP_BOYUT / 1024 ** 3} GB zip'lenebilir.` });
+    secimTemizle();
+    const id = crypto.randomBytes(16).toString('hex');
+    secimler.set(id, { ws, yollar: cozulenler.map((r) => r.goreli), zaman: Date.now() });
+    json(res, 200, { ok: true, id, ...ozet });
+  }, { role: 'control' });
+
+  api.route('GET', '/api/dosya/zip', async (req, res, ws, url) => {
+    let yollar;
+    if (url.searchParams.has('secim')) {
+      secimTemizle();
+      const s = secimler.get(String(url.searchParams.get('secim')));
+      if (!s || s.ws !== ws) return json(res, 404, { ok: false, msg: 'Seçim bulunamadı ya da süresi doldu; yeniden seçin.' });
+      yollar = s.yollar;
+    } else yollar = url.searchParams.getAll('yol');
+    let cozulenler;
+    try { cozulenler = await secimCoz(yollar); } catch (e) { return json(res, e.kod || 400, { ok: false, msg: e.message }); }
+    const kok = await kokGercek();
+    const ad = zipAdi(cozulenler, kok);
+    const atlananlar = [];
+    const sayac = { dosya: 0, klasor: 0, boyut: 0, sinir: false };
+    async function* girdiler() {
+      yield* zipGirdileri(cozulenler, kok, atlananlar, sayac);
+      // Açılamayan dosyalar (zip yazıcı açarken atlar) ve izlenmeyen bağlantılar zip'in sonunda listelenir.
+      if (atlananlar.length) yield { ad: ATLANAN_ADI, mtime: new Date(), sikistir: true, veri: Buffer.from(atlananMetni(atlananlar), 'utf8') };
+    }
+    res.writeHead(200, {
+      'Content-Type': 'application/zip',
+      'Content-Disposition': contentDisposition(ad),
+      'X-Content-Type-Options': 'nosniff',
+      'Cache-Control': 'no-store',
+    });
+    let tamam = false;
+    try {
+      // İstemci indirmeyi iptal ederse res kapanır → pipeline üreteci kapatır → açık dosya akışı yok edilir.
+      await pipeline(Readable.from(zip.zipAkisi(girdiler(), { esik: ZIP64_ESIK, atlananlar })), res);
+      tamam = true;
+    } catch (e) {
+      api.log(`Zip yarıda kaldı: ${ad} (${e.message})`);
+      res.destroy();
+    }
+    api.store.log('dosya', {
+      user: ws.session.username, ip: ws.ip, islem: 'zip', ad, yollar: yollar.slice(0, 20),
+      dosya: sayac.dosya, klasor: sayac.klasor, boyut: sayac.boyut, atlanan: atlananlar.length, tamam,
+    });
+  }, { role: 'control' });
 };
 
-module.exports._test = { adTemizle, contentDisposition, gosterArgumani, yerParcalari, kabukKlasorleri, KISAYOLLAR };
+module.exports._test = { adTemizle, contentDisposition, gosterArgumani, yerParcalari, kabukKlasorleri, KISAYOLLAR, aralikCoz };

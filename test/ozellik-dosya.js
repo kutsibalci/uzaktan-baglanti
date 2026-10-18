@@ -2,7 +2,9 @@
 // Dosya aktarımı testi: yükleme (akış, ad temizleme, çakışma, yarıda kesme, sınır), gezinme, indirme,
 // yol geçişi saldırıları, yetkiler ve günlük. Kaydedilecek yer: ?klasor= ile yükleme ve kök dışı denemeler,
 // yeni klasör ucu, "bilgisayarda göster" (kuru mod: REMOTE_DOSYA_KURU=1, Gezgin AÇILMAZ), tepsi olay akışında
-// 'dosya-geldi' (TRAY_TOKEN tepsi uçlarını açar) ve başsız Edge'de panelin hedef satırı + seçimin hatırlanması.
+// 'dosya-geldi' (TRAY_TOKEN tepsi uçlarını açar) ve başsız Edge'de panelin hedef satırı + seçimin hatırlanması,
+// "Bilgisayardaki dosyalar"da seçme kutuları, "Zip olarak indir", "Seçilenleri indir" (zip ve indirme Edge'in indirme
+// klasörü TEST_TMP altına yönlendirilerek gerçekten indirilir; ekran görüntüleri %TEMP%\rc-dosya). Zip ayrıntıları: ozellik-zip.js.
 // ORTAM: Sunucuyu test/calistir.js başlatır ve her pakete geçici bir klasör verir (TEST_TMP). Sunucu ile bu test
 // aynı ortam değişkenlerini alır: REMOTE_UPLOAD_DIR = TEST_TMP\yuklenen, REMOTE_BROWSE_ROOT = TEST_TMP\kok.
 // Böylece gerçek İndirilenler ya da profil klasörüne hiç dokunulmaz. Elle çalıştırırken de bu üç değişkeni
@@ -12,6 +14,7 @@ const fs = require('fs');
 const http = require('http');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
+const os = require('os');
 const ROOT = path.join(__dirname, '..');
 const WebSocket = require(path.join(ROOT, 'node_modules', 'ws'));
 const PORT = process.env.TEST_PORT || 3999;
@@ -295,6 +298,10 @@ async function tarayiciKismi() {
     const dugmeMetinle = (kap, yazi) => `[...${P(kap)}.querySelectorAll('button')].find((b) => b.textContent.includes(${JSON.stringify(yazi)}))`;
 
     await call('Page.enable'); await call('Runtime.enable'); await call('DOM.enable');
+    // İndirmeler kullanıcının İndirilenler klasörüne değil, testin geçici klasörüne.
+    const indirmeler = path.join(TMP, 'tarayici-indirilen');
+    fs.mkdirSync(indirmeler, { recursive: true });
+    await call('Page.setDownloadBehavior', { behavior: 'allow', downloadPath: indirmeler });
     // Telefon boyutlu görüntü alanı (iPhone 13/14 genişliği) ve dokunma.
     await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 3, mobile: true });
     await call('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
@@ -380,12 +387,73 @@ async function tarayiciKismi() {
     await tikla(P('degistir'));
     await tikla(P('varsayilan'));
     check('tarayıcı: "Varsayılana dön"', (await metin('hedefAd')) === vYer && await ev("localStorage.getItem('rc-dosya-hedef') === null"));
+    // ---------- Bilgisayardaki dosyalar: seçme kutuları, zip, seçilenleri indir ----------
+    const SHOTS = path.join(os.tmpdir(), 'rc-dosya');
+    fs.mkdirSync(SHOTS, { recursive: true });
+    const goruntu = async (ad) => {
+      const g = await call('Page.captureScreenshot', { format: 'png' });
+      const p = path.join(SHOTS, `${ad}.png`);
+      fs.writeFileSync(p, Buffer.from(g.result.data, 'base64'));
+      console.log(`BİLGİ ekran görüntüsü: ${p}`);
+    };
+    const indirilen = async (ad, ms = 10000) => {
+      const p = path.join(indirmeler, ad);
+      for (let i = 0; i < ms / 100; i++) { if (fs.existsSync(p) && !fs.readdirSync(indirmeler).some((x) => x.endsWith('.crdownload'))) return fs.readFileSync(p); await sleep(100); }
+      return null;
+    };
+    await tikla("document.querySelector('#dosyaPanel [data-sekme=gez]')");
+    check('tarayıcı: dosya listesi', await bekle(`${P('liste')}.querySelectorAll('.gsatir').length >= 5`), await metin('gezDurum'));
+    const satirlar = await ev(`[...${P('liste')}.querySelectorAll('.gsatir')].map((s) => ({ ad: s.dataset.ad, tur: s.dataset.tur, kutu: !!s.querySelector('input[type=checkbox]'), zip: s.querySelector('.zip')?.textContent || '', zipGorunur: !!s.querySelector('.zip')?.getClientRects().length }))`);
+    check('tarayıcı: her satırda seçme kutusu', satirlar.every((x) => x.kutu), JSON.stringify(satirlar));
+    check('tarayıcı: klasör satırlarında görünür "Zip olarak indir", dosyalarda yok', satirlar.filter((x) => x.tur === 'klasor').every((x) => x.zip.includes('Zip olarak indir') && x.zipGorunur) && satirlar.filter((x) => x.tur === 'dosya').every((x) => !x.zip),
+      satirlar.map((x) => `${x.ad}:${x.zip}`).join(', '));
+    check('tarayıcı: dosya listesinde yatay taşma yok', await ev("(() => { const p = document.getElementById('dosyaPanel'); return p.scrollWidth <= p.clientWidth; })()"));
+    check('tarayıcı: seçim yokken seçim çubuğu gizli', await ev(`${P('secimCubugu')}.hidden`));
+    await goruntu('1-liste');
+    const kutu = (ad) => `[...${P('liste')}.querySelectorAll('.gsatir')].find((s) => s.dataset.ad === ${JSON.stringify(ad)}).querySelector('input')`;
+    await tikla(kutu('a.txt'));
+    check('tarayıcı: tek dosya seçilince "Seçileni indir"', await bekle(`!${P('secimCubugu')}.hidden && ${P('secilenleriIndir')}.textContent === 'Seçileni indir'`), await metin('secimCubugu'));
+    await tikla(P('secilenleriIndir'));
+    const aIcerik = await indirilen('a.txt');
+    check('tarayıcı: tek seçili dosya doğrudan indi', aIcerik && aIcerik.toString() === 'a', String(aIcerik));
+    await tikla(kutu('b.txt'));
+    await tikla(kutu('alt'));
+    check('tarayıcı: çoklu seçim çubuğu', await bekle(`${P('secimSayi')}.textContent === '3 seçili (1 klasör)' && ${P('secilenleriIndir')}.textContent === 'Seçilenleri zip olarak indir'`), await metin('secimCubugu'));
+    await tikla(P('secilenleriIndir'));
+    check('tarayıcı: zip çubuğunda tahmini boyut ve İndir bağlantısı', await bekle(`${P('zipBar')}.querySelector('a[download]') && ${P('zipBar')}.textContent.includes('dosya') && ${P('zipBar')}.textContent.includes('sıkıştırmadan önce')`),
+      (await metin('zipBar')).replace(/\s+/g, ' '));
+    const zipAdi = await ev(`${P('zipBar')}.querySelector('a[download]').getAttribute('download')`);
+    check('tarayıcı: zip adı', zipAdi === `${path.basename(KOK)} (3 öğe).zip`, zipAdi);
+    await goruntu('2-coklu-secim-zip');
+    const once = await ev('location.href');
+    await tikla(`${P('zipBar')}.querySelector('a[download]')`);
+    const zipIcerik = await indirilen(zipAdi);
+    check('tarayıcı: "İndir" zip\'i indirdi (PK imzası)', zipIcerik && zipIcerik.subarray(0, 2).toString() === 'PK', zipIcerik ? `${zipIcerik.length} bayt` : 'yok');
+    check('tarayıcı: indirme sayfadan ayrılmadı', (await ev('location.href')) === once && await ev("!document.getElementById('dosyaPanel').hidden") && await ev(`!${P('zipBar')}.querySelector('[data-k3="not"]').hidden`));
+    await tikla(`[...${P('liste')}.querySelectorAll('.gsatir')].find((s) => s.dataset.ad === 'alt').querySelector('.zip')`);
+    check('tarayıcı: klasör satırındaki zip düğmesi', await bekle(`${P('zipBar')}.querySelector('a[download="alt.zip"]')`), (await metin('zipBar')).replace(/\s+/g, ' '));
+    await tikla(`${P('zipBar')}.querySelector('a[download]')`);
+    const altZip = await indirilen('alt.zip');
+    check('tarayıcı: alt.zip indi', altZip && altZip.subarray(0, 2).toString() === 'PK');
+    await tikla(P('secimTemizle'));
+    check('tarayıcı: seçimi temizle', await bekle(`${P('secimCubugu')}.hidden && ![...${P('liste')}.querySelectorAll('input')].some((k) => k.checked)`));
+    await tikla(P('tumu'));
+    check('tarayıcı: tümünü seç', await bekle(`[...${P('liste')}.querySelectorAll('input')].every((k) => k.checked) && ${P('tumu')}.textContent === 'Seçimi kaldır'`));
+    await tikla(`[...${P('liste')}.querySelectorAll('.gsatir')].find((s) => s.dataset.ad === 'alt').querySelector('.ac')`);
+    check('tarayıcı: klasöre girince seçim sıfırlandı', await bekle(`${P('yol')}.textContent.includes('alt') && ${P('secimCubugu')}.hidden && ${P('zipBar')}.hidden`));
+    await goruntu('3-alt-klasor');
     check('tarayıcı: sayfada yakalanmamış hata yok', hatalar.length === 0, JSON.stringify(hatalar));
     cdp.close();
   } finally {
     if (tarayici) { try { execFileSync('taskkill', ['/pid', String(tarayici.pid), '/T', '/F'], { stdio: 'ignore' }); } catch { /* zaten kapandı */ } }
-    await sleep(500);
-    try { fs.rmSync(profil, { recursive: true, force: true }); } catch { /* tarayıcı dosyaları bırakıyor olabilir */ }
+    // Edge süreçleri kapanırken profil ve indirme klasörünü bir süre tutabilir (yoksa calistir.js geçici klasörü silemez).
+    for (let i = 0; i < 30; i++) {
+      await sleep(500);
+      try {
+        for (const d of [profil, path.join(TMP, 'tarayici-indirilen')]) fs.rmSync(d, { recursive: true, force: true });
+        break;
+      } catch { /* tarayıcı dosyaları bırakıyor olabilir */ }
+    }
   }
 }
 
