@@ -52,6 +52,13 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
     });
     const call = (method, params = {}) => new Promise((r, j) => { const i = ++id; pending.set(i, r); cdp.send(JSON.stringify({ id: i, method, params })); setTimeout(() => j(new Error(`CDP zaman aşımı: ${method}`)), 15000); });
     const ev = async (expression) => { const r = await call('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }); if (r.result?.exceptionDetails) throw new Error(JSON.stringify(r.result.exceptionDetails)); return r.result?.result?.value; };
+    // Ekran görüntüsü: KUMANDA_EKRAN (ya da TEST_TMP) klasörüne
+    const shot = async (name) => {
+      const r = await call('Page.captureScreenshot', { format: 'png' });
+      const f = path.join(process.env.KUMANDA_EKRAN || process.env.TEST_TMP || os.tmpdir(), name);
+      fs.writeFileSync(f, Buffer.from(r.result.data, 'base64'));
+      console.log(`     ekran görüntüsü: ${f}`);
+    };
 
     await call('Page.enable'); await call('Runtime.enable');
     await call('Emulation.setDeviceMetricsOverride', { width: 400, height: 800, deviceScaleFactor: 2, mobile: true });
@@ -93,7 +100,7 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
     const box = (() => { const s = Math.min(st.w / st.nw, st.h / st.nh); const cw = st.nw * s, ch = st.nh * s; return { ox: (st.w - cw) / 2, oy: (st.h - ch) / 2, cw, ch }; })();
     const P = (fx, fy) => ({ x: st.l + box.ox + fx * box.cw, y: st.t + box.oy + fy * box.ch }); // görüntüdeki oran -> sayfa
     const sent = async () => { const s = await ev('window.__sent.splice(0)'); return s; };
-    const touch = async (type, pts) => call('Input.dispatchTouchEvent', { type, touchPoints: pts.map((p, i) => ({ x: p.x, y: p.y, id: i, radiusX: 1, radiusY: 1, force: 1 })) });
+    const touch = async (type, pts) => call('Input.dispatchTouchEvent', { type, touchPoints: pts.map((p, i) => ({ x: p.x, y: p.y, id: p.id ?? i, radiusX: 1, radiusY: 1, force: 1 })) });
     const tap = async (p) => { await touch('touchStart', [p]); await sleep(40); await touch('touchEnd', []); };
     const drag = async (pts, steps = 8, ms = 16) => {
       // pts: [[başlangıç...], [bitiş...]] parmak listeleri
@@ -106,7 +113,13 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
 
     // ---- Doğrudan mod ----
     check('varsayılan mod Doğrudan', /Doğrudan/.test(await ev("document.getElementById('touchModeBtn').textContent")));
+    check('ilk kullanımda dokunma ipucu kartı (doğrudan mod) görünür', await ev("!document.getElementById('touchTip').hidden && /basılı tut, bırak = sağ tık/.test(document.getElementById('touchTip').textContent)"));
+    check('dokunma modu düğmesinin title\'ında hareketler', /sağ tık/.test(await ev("document.getElementById('touchModeBtn').title")));
+    check('çubukta Sağ tık düğmesi (dokunmatik)', await ev("(() => { const b = document.getElementById('rightBtn'); const r = b.getBoundingClientRect(); return getComputedStyle(b).display !== 'none' && r.right <= window.innerWidth && /Sağ tık/.test(b.textContent); })()"));
+    check('araç çubuğu taşmıyor (menü düğmesi görünür)', await ev("document.getElementById('menuBtn').getBoundingClientRect().right <= window.innerWidth"));
+    await shot('sagtik-0-cubuk-ipucu.png');
     await tap(P(0.25, 0.75));
+    check('ipucu kartı ilk dokunuşta kaybolur', await ev("document.getElementById('touchTip').hidden"));
     await sleep(100);
     let s = await sent();
     const mv = s.find((m) => m.t === 'move');
@@ -139,6 +152,12 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
     const z = Number((tr.match(/scale\(([\d.]+)\)/) || [])[1]);
     check('sıkıştırma ile yakınlaştı (~3x)', z > 2.5 && z <= 4, tr);
     check('yakınlaştırma düğmesi görünür', await ev("!document.getElementById('zoomBtn').hidden"), await ev("document.getElementById('zoomBtn').textContent"));
+    await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 800, deviceScaleFactor: 2, mobile: true });
+    await sleep(150);
+    check('390 px: yakınlaştırma + Sağ tık düğmesiyle çubuk taşmıyor (⋯ görünür)', await ev("document.getElementById('menuBtn').getBoundingClientRect().right <= window.innerWidth + 0.5"), String(await ev("document.getElementById('menuBtn').getBoundingClientRect().right")));
+    await shot('sagtik-3-cubuk-390-yakin.png');
+    await call('Emulation.setDeviceMetricsOverride', { width: 400, height: 800, deviceScaleFactor: 2, mobile: true });
+    await sleep(150);
     s = await sent();
     check('sıkıştırma girdi göndermedi', s.length === 0, JSON.stringify(s));
     // yakınlaştırılmışken dokunuş: toNorm dönüşümü hesaba katmalı -> merkezdeki dokunuş hâlâ ~ (0.5, 0.5) (sıkıştırma ortası merkezdi)
@@ -245,6 +264,8 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
     // ---- Touchpad modu ----
     await ev("document.getElementById('touchModeBtn').click()");
     check('mod değişti: Touchpad', /Touchpad/.test(await ev("document.getElementById('touchModeBtn').textContent")) && (await ev("localStorage.getItem('touchMode')")) === 'touchpad');
+    check('touchpad ipucu kartı ilk kez görünür', await ev("!document.getElementById('touchTip').hidden && /iki parmak dokun = sağ tık/.test(document.getElementById('touchTip').textContent)"));
+    await shot('sagtik-2-touchpad-ipucu.png');
     check('touchpad imleç göstergesi', await ev("(() => { const e = document.getElementById('tpCursor'); return !!e; })()"));
     await sent();
     // tek parmak: göreli hareket (yavaş)
@@ -281,6 +302,108 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
     s = await sent();
     check('touchpad: iki parmak dokunuş -> sağ tık', s.some((m) => m.t === 'down' && m.b === 'right'), JSON.stringify(s));
     await sleep(400); await sent();
+
+    // ---- Touchpad sağ tık: gerçek parmak gibi toleranslı iki parmak dokunuşu, uzun basma, Sağ tık düğmesi ----
+    // Parmaklar ayrı ayrı iner/kalkar. CDP tek parmağı ayrıca kaldıramadığı için olaylar sayfada (Touch nesneleriyle) gönderilir.
+    const rightSeq = (arr) => arr.filter((m) => m.t === 'down' || m.t === 'up').map((m) => `${m.t}:${m.b}`).join(',');
+    const tev = (type, on, changed) => ev(`(() => {
+      const el = document.getElementById('screen');
+      const mk = (p) => new Touch({ identifier: 70 + p.id, target: el, clientX: p.x, clientY: p.y });
+      el.dispatchEvent(new TouchEvent('${type}', { bubbles: true, cancelable: true, touches: ${JSON.stringify(on)}.map(mk), changedTouches: ${JSON.stringify(changed)}.map(mk) }));
+    })()`);
+    const twoTap = async ({ gapDown = 0, hold = 60, gapUp = 0, drift = 0, preMove = 0 } = {}) => {
+      const a = { x: c0.x - 40, y: c0.y + 80, id: 0 }, b = { x: c0.x + 40, y: c0.y + 80, id: 1 };
+      await tev('touchstart', [a], [a]);
+      const a1 = { ...a, x: a.x + preMove };
+      if (preMove) { await sleep(20); await tev('touchmove', [a1], [a1]); }
+      if (gapDown) await sleep(gapDown);
+      await tev('touchstart', [a1, b], [b]);
+      await sleep(hold / 2);
+      const a2 = { ...a1, x: a1.x + drift * 0.6, y: a1.y + drift * 0.8 }, b2 = { ...b, x: b.x - drift * 0.6, y: b.y + drift * 0.8 };
+      if (drift) await tev('touchmove', [a2, b2], [a2, b2]);
+      await sleep(hold / 2);
+      await tev('touchend', [b2], [a2]);
+      if (gapUp) await sleep(gapUp);
+      await tev('touchend', [], [b2]);
+      await sleep(60);
+    };
+    await twoTap({ gapDown: 80, hold: 180, gapUp: 100, drift: 15 });
+    s = await sent();
+    check('touchpad: parmaklar 80/100 ms farkla inip kalkınca, 15 px kayınca da sağ tık', rightSeq(s) === 'down:right,up:right', JSON.stringify(s));
+    await sleep(400); await sent();
+    await twoTap({ hold: 330 });
+    s = await sent();
+    check('touchpad: ~400 ms süren iki parmak dokunuş -> sağ tık (eskiden 375 ms sınırı)', rightSeq(s) === 'down:right,up:right', JSON.stringify(s));
+    await sleep(400); await sent();
+    await twoTap({ hold: 650 });
+    s = await sent();
+    check('touchpad: 650 ms basılı iki parmak -> sağ tık YOK', !s.some((m) => m.t === 'down'), JSON.stringify(s));
+    await sleep(400); await sent();
+    await twoTap({ gapDown: 230 });
+    s = await sent();
+    check('touchpad: ikinci parmak 230 ms sonra gelirse sağ tık YOK', !s.some((m) => m.b === 'right'), JSON.stringify(s));
+    await sleep(400); await sent();
+    await twoTap({ gapUp: 250 });
+    s = await sent();
+    check('touchpad: parmaklar 250 ms farkla kalkarsa sağ tık YOK', !s.some((m) => m.t === 'down'), JSON.stringify(s));
+    await sleep(400); await sent();
+    await twoTap({ drift: 35, hold: 120 });
+    s = await sent();
+    check('touchpad: 35 px kayan iki parmak -> sağ tık YOK', !s.some((m) => m.t === 'down'), JSON.stringify(s));
+    await sleep(400); await sent();
+    // İlk parmak ikinci gelmeden 14 px kaydı (imleç biraz oynadı): yine sağ tık, imleç başladığı yerde
+    const curBefore = await ev("(() => { const e = document.getElementById('tpCursor'); return { l: e.style.left, t: e.style.top }; })()");
+    await twoTap({ preMove: 14, gapDown: 60 });
+    s = await sent();
+    const curAfter = await ev("(() => { const e = document.getElementById('tpCursor'); return { l: e.style.left, t: e.style.top }; })()");
+    const rmv = s.filter((m) => m.t === 'move').at(-1);
+    check('touchpad: ilk parmak biraz kaydıktan sonra iki parmak dokunuş -> sağ tık', rightSeq(s) === 'down:right,up:right', JSON.stringify(s));
+    check('touchpad: o sağ tık imlecin dokunuştan önceki yerine gider', rmv && Math.abs(rmv.x - last.x) < 1e-9 && curBefore.l === curAfter.l, `${JSON.stringify(rmv)} ${JSON.stringify(curBefore)} ${JSON.stringify(curAfter)}`);
+    await sleep(400); await sent();
+    // Uzun basma (hareketsiz 500 ms): halka, bırakınca sağ tık
+    await touch('touchStart', [c0]); await sleep(620);
+    s = await sent();
+    check('touchpad: uzun basınca halka çıkar, henüz tık yok', await ev("!document.getElementById('tpHold').hidden") && !s.some((m) => m.t === 'down'), JSON.stringify(s));
+    await touch('touchEnd', []); await sleep(50);
+    s = await sent();
+    check('touchpad: uzun basıp bırakma -> imlecin yerinde sağ tık', rightSeq(s) === 'down:right,up:right' && Math.abs(s.find((m) => m.t === 'move').x - last.x) < 1e-9, JSON.stringify(s));
+    // Uzun basıp sonra kaydırma: sağ tık iptal, imleç oynar
+    await touch('touchStart', [c0]); await sleep(620);
+    for (let i = 1; i <= 6; i++) { await sleep(20); await touch('touchMove', [{ x: c0.x + i * 8, y: c0.y }]); }
+    await touch('touchEnd', []); await sleep(60);
+    s = await sent();
+    check('touchpad: uzun basıp kaydırınca sağ tık yok, imleç oynar', !s.some((m) => m.t === 'down') && s.some((m) => m.t === 'move'), JSON.stringify(s));
+    last = s.filter((m) => m.t === 'move').at(-1) || last;
+    check('halka kaydırınca kaybolur', await ev("document.getElementById('tpHold').hidden"));
+    await sleep(400); await sent();
+    // Sağ tık düğmesi: dokun -> sıradaki dokunuş (bekleme olmadan) imleç yerinde sağ tık, tek seferlik
+    const rb = await ev("(() => { const r = document.getElementById('rightBtn').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()");
+    await tap(rb); await sleep(50);
+    check('Sağ tık düğmesi: dokununca vurgulu', await ev("document.getElementById('rightBtn').classList.contains('on')"));
+    await shot('sagtik-1-dugme-acik.png');
+    // Kaydırmak hakkı harcamaz
+    await drag([[{ x: c0.x, y: c0.y + 100 }], [{ x: c0.x + 30, y: c0.y + 100 }]], 5, 20);
+    await sleep(50);
+    s = await sent();
+    check('Sağ tık açıkken imleci taşımak hakkı harcamaz', !s.some((m) => m.t === 'down') && await ev("document.getElementById('rightBtn').classList.contains('on')"), JSON.stringify(s));
+    last = s.filter((m) => m.t === 'move').at(-1) || last;
+    await tap(c0); await sleep(30);
+    s = await sent();
+    check('Sağ tık açıkken dokunuş -> hemen imleç yerinde sağ tık', rightSeq(s) === 'down:right,up:right' && Math.abs(s[0].x - last.x) < 1e-9, JSON.stringify(s));
+    check('Sağ tık tek seferlik: düğme söndü', await ev("!document.getElementById('rightBtn').classList.contains('on')"));
+    await sleep(400); await sent();
+    await tap(c0); await sleep(400);
+    s = await sent();
+    check('sonraki dokunuş yine sol tık', rightSeq(s) === 'down:left,up:left', JSON.stringify(s));
+    // Uzun basınca kilit: iki dokunuş da sağ tık, düğmeye dokununca kapanır
+    await touch('touchStart', [rb]); await sleep(650); await touch('touchEnd', []); await sleep(50);
+    check('Sağ tık düğmesi uzun basınca kilitli', await ev("(() => { const b = document.getElementById('rightBtn'); return b.classList.contains('on') && /🔒/.test(b.textContent); })()"));
+    await tap(c0); await sleep(30); await tap({ x: c0.x + 50, y: c0.y }); await sleep(30);
+    s = await sent();
+    check('kilitliyken her dokunuş sağ tık', rightSeq(s) === 'down:right,up:right,down:right,up:right', JSON.stringify(s));
+    await tap(rb); await sleep(50);
+    check('kilitliyken düğmeye dokununca kapanır', await ev("!document.getElementById('rightBtn').classList.contains('on') && !/🔒/.test(document.getElementById('rightBtn').textContent)"));
+    await sleep(400); await sent();
     // dokun + dokunup sürükle -> sol tuşla sürükleme
     await tap(c0); await sleep(80);
     await drag([[c0], [{ x: c0.x + 60, y: c0.y + 40 }]], 8, 20);
@@ -305,6 +428,14 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
 
     // ---- Kalem: pen kaynaklı fare olayları yok sayılır ----
     await ev("document.getElementById('touchModeBtn').click()"); // doğrudan moda dön
+    check('ipucu kartı her mod için yalnızca bir kez', await ev("document.getElementById('touchTip').hidden"));
+    // Doğrudan modda Sağ tık düğmesi: dokunulan yere sağ tık
+    await sent();
+    await ev("document.getElementById('rightBtn').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); document.getElementById('rightBtn').dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))");
+    await tap(P(0.7, 0.3)); await sleep(50);
+    s = await sent();
+    check('doğrudan: Sağ tık açıkken dokunuş -> dokunulan yere sağ tık', s.map((m) => `${m.t}${m.b ? ':' + m.b : ''}`).join(',') === 'move,down:right,up:right' && Math.abs(s[0].x - 0.7) < 0.01 && Math.abs(s[0].y - 0.3) < 0.01, JSON.stringify(s));
+    await sleep(500); await sent();
     await ev('window.__kalem.splice(0)');
     // Kalemle sürükleme: down -> move... -> up; arada "out" olmamalı (setPointerCapture sonrası alt öğenin
     // pointerleave olayı çizgiyi koparıyordu).
