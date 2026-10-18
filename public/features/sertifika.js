@@ -146,7 +146,9 @@
   serit.className = 'srt-serit';
   serit.id = 'sertifikaSerit';
   serit.hidden = true;
-  RC.ui.home(serit);
+  // Kartların üstünde: ana menü uzun (kumanda, çizim kartları); altta kalınca telefonda görünmüyordu.
+  const modlar = document.querySelector('#vHome .modes');
+  if (modlar) modlar.before(serit); else RC.ui.home(serit);
 
   const seritGizli = () => { try { return localStorage.getItem(SERIT_ANAHTAR) === '1'; } catch { return false; } };
   function seritCiz() {

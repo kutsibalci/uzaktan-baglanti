@@ -89,7 +89,7 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
     await ev(`(() => { const f = document.getElementById('setupForm'); f.username.value='deneme'; f.password.value='deneme123'; f.password2.value='deneme123'; f.requestSubmit(); })()`);
     for (let i = 0; i < 40 && !(await ev("!document.getElementById('vHome').hidden")); i++) await sleep(250);
 
-    check('ana menüde Kumanda kartı (üçüncü kart)', await ev("(() => { const m = [...document.querySelectorAll('#vHome .modes .mode')]; return m.length === 3 && m[2].id === 'modeKumanda' && !m[2].disabled; })()"));
+    check('ana menüde Kumanda kartı (çekirdek kartlardan sonra)', await ev("(() => { const m = [...document.querySelectorAll('#vHome .modes .mode')]; const i = m.findIndex((e) => e.id === 'modeKumanda'); return i >= 2 && !m[i].disabled; })()"));
     await shot('kumanda-0-ana-menu-iphone.png');
     await ev("document.getElementById('modeKumanda').click()");
     await sleep(200);
