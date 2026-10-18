@@ -31,7 +31,7 @@ echo.
 echo [3/3] HTTPS adresi aciliyor (yalnizca senin Tailscale cihazlarin erisebilir)...
 echo       Ilk seferde HTTPS ozelligini acman icin bir baglanti gosterilebilir:
 echo       baglantiyi tarayicida acip "Enable" de, sonra burada bekle.
-"%TS%" serve --bg 3000
+"%TS%" serve --bg 3080
 echo.
 "%TS%" serve status
 echo.

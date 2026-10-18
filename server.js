@@ -11,7 +11,7 @@ const { clientInfo, isPrivate, tailscaleInfo } = require('./lib/network');
 const { VideoManager, detectEncoders } = require('./lib/video');
 const ext = require('./lib/extensions');
 
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = Number(process.env.PORT) || 3080; // 3000'i birçok geliştirme aracı kullanıyor (Grafana, React...)
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
 const helper = new Helper();

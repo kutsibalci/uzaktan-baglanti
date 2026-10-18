@@ -34,13 +34,13 @@ GitHub Actions paketi oluşturup Releases'e ekler. Elle paket: `powershell -Exec
 ## Kaynak koddan çalıştırma
 Gereksinim: Windows 10/11, [Node.js](https://nodejs.org) 20 veya üstü.
 1. `baslat.bat` dosyasına çift tıkla (ilk açılışta bağımlılıkları indirir).
-2. Bu bilgisayarda `http://localhost:3000` adresini açıp yönetici hesabını oluştur.
+2. Bu bilgisayarda `http://localhost:3080` adresini açıp yönetici hesabını oluştur.
 3. Diğer cihazdan, sunucu penceresinde yazan adrese gir.
 
 İsteğe bağlı:
 - `tailscale-kur.bat` — her yerden erişim + HTTPS (H.264 için gerekli)
 - `surucu-kur.bat` — ikinci ekran özelliği için sanal monitör sürücüsü
-- `usb-baglan.bat` — Android telefonu USB kablosuyla bağla (adb reverse; Wi-Fi gerekmez, telefonda `http://localhost:3000`)
+- `usb-baglan.bat` — Android telefonu USB kablosuyla bağla (adb reverse; Wi-Fi gerekmez, telefonda `http://localhost:3080`)
 
 ## Tepsi simgesi (konsol penceresi olmadan)
 `tepsi-baslat.bat` sunucuyu arka planda başlatır ve görev çubuğunun sağına bir simge koyar (`baslat.bat` konsol modu olarak çalışmaya devam eder; ikisini aynı anda açmayın, ikisi de aynı portu kullanır).

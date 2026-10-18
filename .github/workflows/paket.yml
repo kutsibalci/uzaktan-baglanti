@@ -51,7 +51,7 @@ jobs:
 
           1. Zip'i bir klasöre aç.
           2. ``baslat.bat`` dosyasına çift tıkla.
-          3. Bu bilgisayarda http://localhost:3000 adresini açıp yönetici hesabını oluştur.
+          3. Bu bilgisayarda http://localhost:3080 adresini açıp yönetici hesabını oluştur.
 
           SHA256: ``$hash``
           "@

@@ -1,13 +1,13 @@
 @echo off
 rem USB ile Android telefondan baglanti (adb reverse).
-rem Telefondaki "localhost:3000" adresi USB kablosu uzerinden bu bilgisayardaki sunucuya yonlendirilir.
+rem Telefondaki "localhost:3080" adresi USB kablosu uzerinden bu bilgisayardaki sunucuya yonlendirilir.
 rem localhost guvenli baglam sayildigi icin H.264 goruntu de calisir; Wi-Fi gerekmez.
 rem Metinler konsolda bozulmasin diye ASCII yazildi (i, s, g, o, u, c).
 setlocal
 cd /d "%~dp0"
 
 rem Sunucunun varsayilan portu (server.js). Ortam degiskeni okunmaz: komut satirina dogrulanmamis metin girmesin.
-set "PORT_NO=3000"
+set "PORT_NO=3080"
 
 echo ============================================================
 echo  USB ile baglanti (Android)

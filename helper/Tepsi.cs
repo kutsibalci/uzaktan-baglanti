@@ -11,7 +11,7 @@
 //   Tepsi.exe --cikis                  çalışan örneği düzgün kapatır (sunucu dahil), kapanınca 0 döner
 //   Tepsi.exe --baslangic ac|kapat|durum   "Windows açılınca başlat" kısayolu (durum: varsa 0, yoksa 1)
 //   Tepsi.exe --oturum-acilisi         başlangıç kısayolunun kullandığı sessiz açılış (karşılama balonu yok)
-// Ortam: PORT (varsayılan 3000), TEPSI_SESSIZ=1 (balon bildirimi gösterme; testler için),
+// Ortam: PORT (varsayılan 3080), TEPSI_SESSIZ=1 (balon bildirimi gösterme; testler için),
 //        TEPSI_BASLANGIC_KLASORU (Başlangıç klasörü yerine; testler için)
 using System;
 using System.Collections;
@@ -35,8 +35,11 @@ static class Program
     static int Main(string[] args)
     {
         string root = Path.GetDirectoryName(Path.GetDirectoryName(Path.GetFullPath(Application.ExecutablePath)));
-        // Aynı klasörden çalışan tek örnek (başka bir kopyanın tepsisiyle karışmasın diye ada klasörün özeti eklenir).
-        string id = Hash(root.ToLowerInvariant());
+        // Aynı klasör + aynı port için tek örnek (başka kopyanın ya da başka porttaki tepsinin — ör. testlerin — tepsisiyle
+        // karışmasın diye ada klasörün ve portun özeti eklenir).
+        int portNo;
+        if (!int.TryParse(Environment.GetEnvironmentVariable("PORT"), out portNo) || portNo <= 0 || portNo >= 65536) portNo = 3080;
+        string id = Hash(root.ToLowerInvariant() + "|" + portNo);
         string mutexName = "Local\\UzaktanBaglanti.Tepsi." + id;
         string acName = mutexName + ".Ac";
         string cikisName = mutexName + ".Cikis";
@@ -232,7 +235,7 @@ class TepsiUygulamasi : ApplicationContext
         Directory.CreateDirectory(dataDir);
         logPath = Path.Combine(dataDir, "sunucu.log");
         int p;
-        port = int.TryParse(Environment.GetEnvironmentVariable("PORT"), out p) && p > 0 && p < 65536 ? p : 3000;
+        port = int.TryParse(Environment.GetEnvironmentVariable("PORT"), out p) && p > 0 && p < 65536 ? p : 3080;
         sessiz = Environment.GetEnvironmentVariable("TEPSI_SESSIZ") == "1";
         string envToken = Environment.GetEnvironmentVariable("TRAY_TOKEN");
         token = !string.IsNullOrEmpty(envToken) && envToken.Length >= 16 ? envToken : RastgeleBelirtec();

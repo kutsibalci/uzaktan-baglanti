@@ -9,7 +9,6 @@ const http = require('http');
 const { spawn, spawnSync, execFileSync } = require('child_process');
 const ROOT = path.join(__dirname, '..');
 const WebSocket = require(path.join(ROOT, 'node_modules', 'ws'));
-const { buildExe } = require(path.join(ROOT, 'lib', 'helper'));
 const PORT = Number(process.env.TEST_PORT || 3999);
 const TOKEN = 'tepsi-uygulama-testi-0123456789abcdef';
 
@@ -88,7 +87,11 @@ let tray = null;
   // 1. Derleme
   let exe;
   try {
-    exe = buildExe('Tepsi', { target: 'winexe', refs: ['System.Drawing.dll', 'System.Windows.Forms.dll', 'System.Web.Extensions.dll'] });
+    // Kullanıcının çalışan tepsisi helperTepsi.exe'yi kilitler; test ayrı bir exe'ye derler (aynı helper klasöründe,
+    // çünkü kök klasör exe'nin konumundan bulunur). Tek örnek kilidi port'a göre ayrıldığı için onunla çakışmaz.
+    exe = path.join(ROOT, 'helper', 'Tepsi-test.exe');
+    execFileSync(path.join(process.env.WINDIR || 'C:\\Windows', 'Microsoft.NET', 'Framework64', 'v4.0.30319', 'csc.exe'), ['/nologo', '/optimize', '/target:winexe', `/out:${exe}`,
+      '/r:System.Drawing.dll', '/r:System.Windows.Forms.dll', '/r:System.Web.Extensions.dll', path.join(ROOT, 'helper', 'Tepsi.cs')], { stdio: 'pipe' });
     check('Tepsi.exe derlendi', fs.existsSync(exe));
   } catch (e) {
     check('Tepsi.exe derlendi', false, e.message);
@@ -180,6 +183,7 @@ let tray = null;
     try { fs.rmSync(path.join(startupDir, 'Uzaktan Bağlantı.lnk'), { force: true }); } catch { /* yok */ }
     setTimeout(() => {
       try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* kilitliyse kalsın */ }
+      try { fs.rmSync(path.join(ROOT, 'helper', 'Tepsi-test.exe'), { force: true }); } catch { /* kilitliyse kalsın */ }
       console.log(`\n${pass} kontrol geçti`);
       process.exit();
     }, 500);
