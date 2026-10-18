@@ -81,7 +81,8 @@ async function runSuite(file) {
   // İndirilenler/profil klasörü yerine bunun altını kullanır (REMOTE_UPLOAD_DIR, REMOTE_BROWSE_ROOT).
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rc-tmp-'));
   const opts = suiteOptions(file);
-  const ortam = { TEST_TMP: tmpDir, REMOTE_UPLOAD_DIR: path.join(tmpDir, 'yuklenen'), REMOTE_BROWSE_ROOT: path.join(tmpDir, 'kok'), ...opts.env };
+  // PORT_HTTPS=0: ev ağı HTTPS'i (features/sertifika.js) boş rastgele portta; gerçek 3443 ile ve paralel testlerle çakışmaz.
+  const ortam = { TEST_TMP: tmpDir, REMOTE_UPLOAD_DIR: path.join(tmpDir, 'yuklenen'), REMOTE_BROWSE_ROOT: path.join(tmpDir, 'kok'), PORT_HTTPS: '0', ...opts.env };
   fs.mkdirSync(path.join(tmpDir, 'kok'));
   let server;
   try {

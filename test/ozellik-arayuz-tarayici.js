@@ -143,11 +143,13 @@ const YAKALAYICI = `
     await tap('#menuBtn');
     await sent();
     const st = await rect('#stage');
-    await tap({ x: st.x, y: st.y + 100 });
+    // Menünün altında kalan bir nokta (menüye satır eklendikçe menü uzar; ortaya dokunmak menünün içine düşebilir)
+    const disari = { x: st.x, y: Math.max(st.y + 100, mp.bottom + 30) };
+    await tap(disari);
     check('menü dışarı dokununca kapandı', !(await shown('#menuPanel')));
     let s = await sent();
     check('kapatan dokunuş bilgisayara tıklama göndermedi', !s.some((m) => m.t === 'down' || m.t === 'up'), JSON.stringify(s));
-    await tap({ x: st.x, y: st.y + 100 });
+    await tap(disari);
     s = await sent();
     check('menü kapalıyken dokunuş yine tıklar', s.some((m) => m.t === 'down' && m.b === 'left'), JSON.stringify(s));
     // Esc
