@@ -5,7 +5,9 @@
 //   istemci -> { t: 'kalem-destek' }  -> { t: 'kalem-destek', ok, hata? }   (bu bilgisayar sentetik kalemi destekliyor mu)
 const SCREEN_NAME = /^\\\\\.\\DISPLAY\d+$/;
 const DURUMLAR = new Set(['hover', 'down', 'move', 'up', 'out']);
-const HIZ_SINIRI = 120; // saniyede en fazla bu kadar hover/move olayı (down/up/out asla atılmaz)
+// Saniyede en fazla bu kadar hover/move olayı (down/up/out asla atılmaz). İstemci ara noktaları da gönderir
+// (getCoalescedEvents): Apple Pencil 240 Hz, iki katı pay.
+const HIZ_SINIRI = 480;
 
 const sayi = (v) => typeof v === 'number' && Number.isFinite(v);
 const kistir = (v, lo, hi) => Math.min(hi, Math.max(lo, v));

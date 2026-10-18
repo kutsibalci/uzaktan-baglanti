@@ -333,6 +333,7 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
     s = await sent();
     check('kalemin ürettiği dokunma olayı çekirdekte ikinci kez işlenmez', !s.some((m) => m.t === 'down'), JSON.stringify(s));
     await ev('window.__kalem.splice(0)');
+    await sleep(1100); // avuç içi reddi: kalemden sonraki 1 sn parmak yok sayılır (public/features/kalem.js)
     await tap(P(0.25, 0.75)); await sleep(50);
     s = await sent();
     check('kalemden sonra parmak dokunuşu yine tıklar', s.some((m) => m.t === 'down' && m.b === 'left'), JSON.stringify(s));
