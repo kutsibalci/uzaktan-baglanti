@@ -81,8 +81,12 @@ async function runSuite(file) {
   // İndirilenler/profil klasörü yerine bunun altını kullanır (REMOTE_UPLOAD_DIR, REMOTE_BROWSE_ROOT).
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rc-tmp-'));
   const opts = suiteOptions(file);
-  const ortam = { TEST_TMP: tmpDir, REMOTE_UPLOAD_DIR: path.join(tmpDir, 'yuklenen'), REMOTE_BROWSE_ROOT: path.join(tmpDir, 'kok'), ...opts.env };
+  // REMOTE_INDIRME_DIR: durum izleyicisinin 'İndirilenler' klasörü; REMOTE_DURUM_KURU=1: durum panelinden program kapatılmaz
+  // (gerçek kapatmayı yalnızca kendi alt sürecini kapatan test '// @ortam REMOTE_DURUM_KURU=0' ile açar).
+  const ortam = { TEST_TMP: tmpDir, REMOTE_UPLOAD_DIR: path.join(tmpDir, 'yuklenen'), REMOTE_BROWSE_ROOT: path.join(tmpDir, 'kok'),
+    REMOTE_INDIRME_DIR: path.join(tmpDir, 'indirilenler'), REMOTE_DURUM_KURU: '1', ...opts.env };
   fs.mkdirSync(path.join(tmpDir, 'kok'));
+  fs.mkdirSync(path.join(tmpDir, 'indirilenler'));
   let server;
   try {
     if (opts.server) {

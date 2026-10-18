@@ -143,6 +143,8 @@ const YAKALAYICI = `
     await tap('#menuBtn');
     await sent();
     const st = await rect('#stage');
+    // Menünün altında kalan nokta (menü uzadıkça ortası menünün içine düşer: ör. 📊 Bilgisayar durumu satırı)
+    st.y = Math.max(st.y, mp.bottom - 100 + 30);
     await tap({ x: st.x, y: st.y + 100 });
     check('menü dışarı dokununca kapandı', !(await shown('#menuPanel')));
     let s = await sent();
