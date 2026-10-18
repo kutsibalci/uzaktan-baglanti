@@ -130,6 +130,12 @@ body.rc-salt .ctl, body.rc-genislet .no-extend { display: none !important; }
 /* Doğrudan modda "basılı tutuldu" göstergesi: şimdi sürükle = sol tuşla sürükleme, bırak = sağ tık */
 #tpHold { position: absolute; width: 56px; height: 56px; margin: -28px 0 0 -28px; border: 3px solid var(--accent); border-radius: 50%; background: rgba(59,130,246,.18); pointer-events: none; z-index: 1; animation: tpHold .18s ease-out; }
 @keyframes tpHold { from { transform: scale(.4); opacity: 0; } }
+/* Dokunma modunun ilk kullanımında bir kez çıkan ipucu kartı (girdiyi engellemez) */
+#touchTip { position: absolute; left: 8px; right: 8px; top: 8px; margin: 0 auto; max-width: 460px; z-index: 2; pointer-events: none;
+  background: rgba(26,29,36,.94); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: 13px; line-height: 1.4; color: var(--text); }
+#touchTip small { color: var(--muted); }
+#rightBtn { font-size: 12px !important; padding: 0 6px !important; line-height: 1.1; }
+#rightBtn span { display: block; }
 /* Yalnızca dokunmatik cihazlarda gösterilen düğmeler */
 @media not all and (any-pointer: coarse) { .touch-only { display: none !important; } }
 #overlay { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.6); color: var(--text); font-size: 16px; padding: 20px; text-align: center; }

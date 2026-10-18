@@ -10,6 +10,7 @@
 //   setmode <ekran> <gen> <yuk>         -> tip 2: JSON {"ok":bool}
 //   move <ekran> <nx> <ny>              -> fareyi ekranda 0..1 normalize konuma taşır
 //   map <ekran> <nx> <ny>               -> tip 2: JSON {"name","x","y"} move/pen'in gideceği fiziksel piksel (girdi göndermez)
+//   cursor                              -> tip 2: JSON {"ok","x","y"} imlecin şu anki yeri, fiziksel piksel (girdi göndermez; kumanda modu)
 //   down|up <left|right|middle>
 //   wheel <dy> <dx>
 //   key <vk> <1|0>
@@ -38,6 +39,7 @@ class RemoteHelper
     [DllImport("shcore.dll")] static extern int SetProcessDpiAwareness(int value);
     [DllImport("shcore.dll")] static extern int GetDpiForMonitor(IntPtr hMonitor, int type, out uint dpiX, out uint dpiY);
     [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT p);
     [DllImport("user32.dll", SetLastError = true)] static extern uint SendInput(uint n, INPUT[] inputs, int size);
     [DllImport("user32.dll")] static extern uint MapVirtualKey(uint code, uint mapType);
     [DllImport("user32.dll")] static extern bool GetCursorInfo(ref CURSORINFO ci);
@@ -304,6 +306,14 @@ class RemoteHelper
                     if (m == null || a.Length < 4 || !ParseUnit(a[2], out nx) || !ParseUnit(a[3], out ny)) { Write(2, Encoding.UTF8.GetBytes("{\"ok\":false}")); break; }
                     var p = MapPoint(m.Bounds, nx, ny);
                     Write(2, Encoding.UTF8.GetBytes(string.Format(CultureInfo.InvariantCulture, "{{\"ok\":true,\"name\":{0},\"x\":{1},\"y\":{2}}}", Json(m.Name), p.X, p.Y)));
+                    break;
+                }
+            case "cursor":
+                {
+                    // Yalnızca okur (kumanda modu göreli hareketi buradan hesaplar).
+                    POINT p;
+                    bool ok = GetCursorPos(out p);
+                    Write(2, Encoding.UTF8.GetBytes(string.Format(CultureInfo.InvariantCulture, "{{\"ok\":{0},\"x\":{1},\"y\":{2}}}", ok ? "true" : "false", p.x, p.y)));
                     break;
                 }
             case "down":

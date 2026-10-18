@@ -12,6 +12,11 @@
   const TAP_MOVE = 10;         // px: dokunuş sayılması için en fazla hareket
   const TAP_MS = 250;          // ms: dokunuş sayılması için en uzun süre
   const HOLD_MS = 450;         // ms: doğrudan mod: bu kadar hareketsiz basılı tutunca "tutuldu" (sonra sürükle = sol tuşla sürükleme, bırak = sağ tık)
+  const PAD_HOLD_MS = 500;     // ms: touchpad: bu kadar hareketsiz basılı tutup bırakmak = sağ tık
+  // İki parmak dokunuşu (touchpad'de sağ tık). Gerçek parmaklar aynı anda inip kalkmaz ve biraz kayar; bu yüzden toleranslı:
+  const TWO_TAP_MS = 500;      // ms: ilk parmağın inişinden son parmağın kalkışına en uzun süre
+  const TWO_TAP_GAP = 150;     // ms: iki parmak birbirinden en fazla bu kadar farklı inip kalkabilir
+  const TWO_TAP_MOVE = 20;     // px: her parmağın kendi başlangıcından en fazla hareketi (ikinci parmaktan önceki kayma dahil)
   const WHEEL_STEP = 30;       // px: kaydırmada bir tekerlek çentiği (120) için parmak hareketi
   const SNAP_PX = 30;          // px / ms: art arda iki dokunuş bu kadar yakınsa ikincisi ilkinin yerine gider (çift tık tutsun;
   const SNAP_MS = 450;         //          Windows çift tıkı ancak birkaç piksel içinde sayar, parmak o kadar isabetli değil)
@@ -100,6 +105,13 @@
 
   const isTap = (dist, ms) => dist <= TAP_MOVE && ms <= TAP_MS;
 
+  // İki parmak hareketi dokunuş mu? o: { downGap, upGap (ms: iniş/kalkış farkı), duration (ms), move (px: en çok kayan parmak),
+  // acted: hareketin bir etkisi oldu mu (tekerlek gönderildi, yakınlaştı, görünüm kaydı) }. Sıkıştırma/kaydırma eşikleri (24/12 px)
+  // aşılsa da etkisi olmadıysa ve 20 px'i geçmediyse dokunuş sayılır (tekerlek çentiği ancak 30 px'te gider).
+  function isTwoFingerTap(o) {
+    return !o.acted && o.downGap <= TWO_TAP_GAP && o.upGap <= TWO_TAP_GAP && o.duration <= TWO_TAP_MS && o.move <= TWO_TAP_MOVE;
+  }
+
   // Kaydırma: biriken parmak hareketini (px) tekerlek çentiklerine çevirir. { n: çentik (işaretli), rest: kalan px }
   function wheelNotches(acc, step = WHEEL_STEP) {
     const n = Math.trunc(acc / step);
@@ -125,7 +137,8 @@
 
   return {
     ZOOM_MIN, ZOOM_MAX, PINCH_THRESHOLD, PAN_THRESHOLD, TAP_MOVE, TAP_MS, HOLD_MS, WHEEL_STEP, SNAP_PX, SNAP_MS,
-    clamp, accelGain, moveCursor, classifyTwoFinger, clampView, pinchView, followCursor, contentBox, isTap,
+    PAD_HOLD_MS, TWO_TAP_MS, TWO_TAP_GAP, TWO_TAP_MOVE,
+    clamp, accelGain, moveCursor, classifyTwoFinger, clampView, pinchView, followCursor, contentBox, isTap, isTwoFingerTap,
     wheelNotches, snapTap, visibleArea,
   };
 });

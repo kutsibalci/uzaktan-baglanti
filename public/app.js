@@ -866,7 +866,12 @@
   //            ve sayfayı kaydırmak isteyince metin seçiliyor / pencere sürükleniyordu. Bilerek sürüklemek için önce kısa bir
   //            "tut" gerekir — touchpad modundaki "dokun, sonra dokunup sürükle" ile aynı fikir: tuşa basmak ayrı bir hareket.
   //  Touchpad: dizüstü touchpad'i gibi. Tek parmak imleci göreli (ivmeli) taşır, dokunuş = sol tık,
-  //            iki parmak dokunuş = sağ tık, iki parmak kaydırma = tekerlek, çift dokunup sürükleme = sol tuşla sürükleme.
+  //            iki parmak dokunuş = sağ tık, iki parmak kaydırma = tekerlek, çift dokunup sürükleme = sol tuşla sürükleme,
+  //            hareketsiz basılı tut (PAD_HOLD_MS, halka) sonra bırak = sağ tık (arada kaydırırsan iptal, imleç oynar).
+  //            İki parmak dokunuşu toleranslıdır (Dokunmatik.isTwoFingerTap): parmaklar 150 ms'ye kadar farklı inip kalkabilir,
+  //            toplam 500 ms, her parmak 20 px'e kadar kayabilir; ilk parmak ikinci gelmeden biraz kaymışsa imleç geri alınır.
+  //            Eskiden eşikler (12/24 px, 375 ms) gerçek parmakta çoğu zaman tutmuyordu: "sağ tık basamıyoruz".
+  // "Sağ tık" düğmesi (çubukta, yalnızca dokunmatik): dokun = sıradaki dokunuş sağ tık (tek seferlik), uzun bas = kilitli.
   // Her iki modda: iki parmak sıkıştırma = yakınlaştırma (1x–4x), iki parmak çift dokunuş = 1x.
   // Basılı düğme her durumda bırakılır: parmak kalkınca, touchcancel'da, sekme gizlenince/pencere odağı gidince,
   // görüntüleyiciden çıkarken ('stop'tan önce), bağlantı koparken (sunucu da izleme bitince bırakır).
@@ -888,6 +893,7 @@
   let tapTimer = null;             // touchpad: bekleyen tek tık (çift dokunup sürükleme olabilir)
   let rightTimer = null;           // touchpad: bekleyen sağ tık (iki parmak çift dokunuş olabilir)
   let lastTwoTap = 0;
+  let rightArm = null;             // "Sağ tık" düğmesi: null | 'once' (sıradaki dokunuş sağ tık) | 'lock' (her dokunuş, kapatılana dek)
   const touchHeld = new Set();     // dokunuşla basılı tutulan fare düğmeleri
 
   const tpCursor = document.createElement('div');
@@ -913,6 +919,13 @@
   const midOf = (a, b) => { const p = local(a), q = local(b); return { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }; };
   const distOf = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
   const hasId = (list, id) => [...list].some((t) => t.identifier === id);
+  // İki parmak hareketi: her parmağın kendi başlangıcından en çok kayması (dokunuş mu kararı için, px).
+  function trackMove(g, list) {
+    for (const t of list) {
+      const s = g.starts.get(t.identifier);
+      if (s) g.move = Math.max(g.move, Math.hypot(t.clientX - s.x, t.clientY - s.y));
+    }
+  }
 
   function press(b) {
     if (touchHeld.has(b)) return;
@@ -928,7 +941,8 @@
   function applyView() {
     canvas.style.transform = view.z > 1 ? `translate(${view.tx}px, ${view.ty}px) scale(${view.z})` : '';
     $('zoomBtn').hidden = view.z <= 1;
-    $('zoomBtn').textContent = `${view.z.toFixed(1)}× ✕`;
+    // Telefonda kısa ("3×"): çubukta Sağ tık düğmesiyle birlikte sığsın.
+    $('zoomBtn').innerHTML = `${+view.z.toFixed(1)}×<span class="tb-label"> ✕</span>`;
     drawCursor();
   }
   function setView(v) {
@@ -958,16 +972,85 @@
     for (let i = 0; i < times; i++) click(b);
   }
 
+  // Hareketlerin kısa açıklaması: düğmenin title'ında ve her mod ilk kullanıldığında bir kez gösterilen ipucu kartında.
+  // Kart girdiyi engellemez (pointer-events: none); ilk dokunuşta ya da 8 sn sonra kaybolur.
+  const TOUCH_TIPS = {
+    touchpad: ['Touchpad', 'dokun = tık · iki parmak dokun = sağ tık · uzun bas = sağ tık · iki parmak kaydır = tekerlek · çift dokun + sürükle = sürükle'],
+    direct: ['Doğrudan', 'dokun = tık · basılı tut, bırak = sağ tık · basılı tut + sürükle = sürükle · kaydır = tekerlek'],
+  };
+  const touchTip = document.createElement('div');
+  touchTip.id = 'touchTip';
+  touchTip.hidden = true;
+  stage.appendChild(touchTip);
+  let tipTimer = null;
+  const isCoarse = () => !!window.matchMedia?.('(any-pointer: coarse)').matches;
+  function hideTip() { clearTimeout(tipTimer); touchTip.hidden = true; }
+  function maybeShowTip() {
+    const key = `touchTip:${touchMode}`;
+    if (!canInput() || !isCoarse() || storage.get(key)) return;
+    storage.set(key, '1');
+    const [name, text] = TOUCH_TIPS[touchMode];
+    touchTip.innerHTML = `<b>${name}:</b> ${text}<br><small>Sağ tık için çubuktaki <b>Sağ tık</b> düğmesi de var (uzun bas = kilitli).</small>`;
+    touchTip.hidden = false;
+    clearTimeout(tipTimer);
+    tipTimer = setTimeout(hideTip, 8000);
+  }
+
   function setTouchMode(mode) {
     cancelGesture();
     touchMode = mode;
     storage.set('touchMode', mode);
     $('touchModeBtn').innerHTML = mode === 'touchpad' ? '🖱<span class="tb-label"> Touchpad</span>' : '👆<span class="tb-label"> Doğrudan</span>';
-    $('touchModeBtn').title = mode === 'touchpad' ? 'Dokunmatik: touchpad modu (değiştir)' : 'Dokunmatik: doğrudan mod (değiştir)';
+    const [name, text] = TOUCH_TIPS[mode];
+    $('touchModeBtn').title = `Dokunmatik: ${name} modu — ${text} (değiştir)`;
     drawCursor();
   }
   setTouchMode(touchMode);
-  $('touchModeBtn').addEventListener('click', () => setTouchMode(touchMode === 'touchpad' ? 'direct' : 'touchpad'));
+  $('touchModeBtn').addEventListener('click', () => { setTouchMode(touchMode === 'touchpad' ? 'direct' : 'touchpad'); hideTip(); maybeShowTip(); });
+
+  // "Sağ tık" düğmesi (yalnızca dokunmatik, kontrol rolünde): dokun = sıradaki dokunuş sağ tık olur (tek seferlik; düğme o
+  // zamana dek vurgulu), uzun bas (RIGHT_LOCK_MS) = kilitli (her dokunuş sağ tık; düğmeye tekrar dokununca kapanır).
+  // Touchpad'de imlecin yerinde, doğrudan modda dokunulan yerde. İmleci taşımak / kaydırmak hakkı harcamaz, yalnızca dokunuş.
+  const RIGHT_LOCK_MS = 500;
+  const rightBtn = document.createElement('button');
+  rightBtn.id = 'rightBtn';
+  rightBtn.className = 'ctl touch-only';
+  rightBtn.setAttribute('aria-pressed', 'false');
+  $('touchModeBtn').after(rightBtn);
+  function setRightArm(v) {
+    rightArm = v;
+    rightBtn.classList.toggle('on', !!v);
+    rightBtn.setAttribute('aria-pressed', String(!!v));
+    // İki satır ("Sağ" / "tık"): telefonda çubukta yer dar (yakınlaştırma düğmesi de çıkabiliyor).
+    rightBtn.innerHTML = `<span>${v === 'lock' ? '🔒' : ''}Sağ</span> <span>tık</span>`;
+    rightBtn.title = v === 'lock' ? 'Sağ tık kilitli: her dokunuş sağ tık (kapatmak için dokun)'
+      : v ? 'Sıradaki dokunuş sağ tık olacak (iptal için dokun)' : 'Sağ tık: dokun = sıradaki dokunuş sağ tık, uzun bas = kilitli';
+  }
+  setRightArm(null);
+  // Sağ tık hakkı varsa kullanır (tek seferlikse biter) ve true döner.
+  function takeRight() {
+    if (!rightArm) return false;
+    if (rightArm === 'once') setRightArm(null);
+    return true;
+  }
+  let rightPress = null;
+  rightBtn.addEventListener('pointerdown', () => {
+    const p = { locked: false };
+    p.timer = setTimeout(() => { p.locked = true; setRightArm('lock'); navigator.vibrate?.(25); }, RIGHT_LOCK_MS);
+    rightPress = p;
+  });
+  function endRightPress(apply) {
+    const p = rightPress;
+    rightPress = null;
+    if (!p) return;
+    clearTimeout(p.timer);
+    if (apply && !p.locked) setRightArm(rightArm ? null : 'once');
+  }
+  rightBtn.addEventListener('pointerup', () => endRightPress(true));
+  rightBtn.addEventListener('pointercancel', () => endRightPress(false));
+  rightBtn.addEventListener('click', (e) => { if (e.detail === 0) setRightArm(rightArm ? null : 'once'); }); // klavyeyle
+  rightBtn.addEventListener('contextmenu', (e) => e.preventDefault());
+  on('viewer:start', () => setTimeout(maybeShowTip, 0));
   $('zoomBtn').addEventListener('click', () => setView({ z: 1, tx: 0, ty: 0 }));
   window.addEventListener('resize', () => setView(view));
 
@@ -983,6 +1066,8 @@
     clearTimeout(tapTimer); clearTimeout(rightTimer);
     tapTimer = rightTimer = null;
     cancelGesture();
+    setRightArm(null);
+    hideTip();
     cursor = { x: 0.5, y: 0.5 };
     lastPoint = lastTap = null;
     setView({ z: 1, tx: 0, ty: 0 });
@@ -1018,28 +1103,46 @@
     e.preventDefault();
     if (fromPen()) for (const t of e.changedTouches) penTouchIds.add(t.identifier);
     if (!canView()) return;
+    hideTip();
     const f = fingers(e.touches);
     // Ekrandaki parmakların hepsi yeniyse önceki hareketin bitişi kaçırılmıştır (touchend/touchcancel gelmedi): bırak.
     if (gesture && f.every((t) => hasId(e.changedTouches, t.identifier))) cancelGesture();
     if (f.length >= 2) {
       if (gesture?.two) return;
+      // İkinci parmaktan önce inen (belki biraz kaymış) tek parmak hareketi iki parmak dokunuşunun başlangıcı sayılır.
+      const prev = gesture && f.some((t) => t.identifier === gesture.id) ? gesture : null;
       endSingle();
       flushTap();
-      gesture = { two: true, d0: distOf(f[0], f[1]), m0: midOf(f[0], f[1]), start: { ...view }, kind: null, t0: Date.now(), acc: 0 };
+      const now = Date.now();
+      const two = f.slice(0, 2);
+      gesture = {
+        two: true, d0: distOf(two[0], two[1]), m0: midOf(two[0], two[1]), start: { ...view }, kind: null, acc: 0,
+        t0: prev ? prev.t0 : now, downGap: prev ? now - prev.t0 : 0, up1: 0, move: 0,
+        acted: !!(prev && (prev.dragging || prev.kind === 'drag')), cur0: prev?.cur0 || null,
+        starts: new Map(two.map((t) => [t.identifier, prev && t.identifier === prev.id ? { x: prev.x0, y: prev.y0 } : { x: t.clientX, y: t.clientY }])),
+      };
       gesture.wy = gesture.m0.y;
+      trackMove(gesture, f);
       return;
     }
     if (f.length !== 1 || gesture) return;
     const t = f[0];
     if (curMode() === 'touchpad') {
-      gesture = { pad: true, id: t.identifier, x0: t.clientX, y0: t.clientY, x: t.clientX, y: t.clientY, time: Date.now(), t0: Date.now(), moved: false, dragging: false, second: !!tapTimer };
+      gesture = { pad: true, id: t.identifier, x0: t.clientX, y0: t.clientY, x: t.clientX, y: t.clientY, time: Date.now(), t0: Date.now(), moved: false, dragging: false, held: false, second: !!tapTimer, cur0: { ...cursor } };
       if (tapTimer) { clearTimeout(tapTimer); tapTimer = null; }
+      const g = gesture;
+      g.timer = setTimeout(() => {
+        if (gesture !== g || g.moved) return;
+        g.held = true;
+        showHold(g);
+        navigator.vibrate?.(25);
+      }, T.PAD_HOLD_MS);
       drawCursor();
       return;
     }
     if (!canInput()) return;
     // kind: null (henüz karar yok) | 'scroll' (tekerlek) | 'hold' (basılı tutuldu) | 'drag' (sol tuşla sürükleme)
-    gesture = { id: t.identifier, x0: t.clientX, y0: t.clientY, x: t.clientX, y: t.clientY, kind: null, axis: null, acc: 0 };
+    gesture = { id: t.identifier, x0: t.clientX, y0: t.clientY, x: t.clientX, y: t.clientY, t0: Date.now(), kind: null, axis: null, acc: 0 };
     lastPoint = toNorm(t.clientX, t.clientY);
     const g = gesture;
     g.timer = setTimeout(() => {
@@ -1055,22 +1158,25 @@
     if (!gesture) return;
     const f = fingers(e.touches);
     if (gesture.two) {
-      if (f.length < 2) return;
       const g = gesture;
+      trackMove(g, f);
+      if (f.length < 2) return;
       const d = distOf(f[0], f[1]), m = midOf(f[0], f[1]);
       if (!g.kind) g.kind = T.classifyTwoFinger(g.d0, d, g.m0, m);
       if (g.kind === 'pinch') {
         view = T.pinchView(g.start, g.d0, d, g.m0, m, viewBox());
         applyView();
+        g.acted = true;
       } else if (g.kind === 'pan') {
         // Doğrudan modda yakınlaştırılmışken görünüm kayar; aksi halde tekerlek.
         if (view.z > 1 && curMode() === 'direct') {
           setView({ z: view.z, tx: g.start.tx + m.x - g.m0.x, ty: g.start.ty + m.y - g.m0.y });
+          g.acted = true;
         } else if (canInput()) {
           const w = T.wheelNotches(g.acc + m.y - g.wy);
           g.acc = w.rest;
           g.wy = m.y;
-          if (w.n) send({ t: 'wheel', dy: w.n * 120, dx: 0 });
+          if (w.n) { send({ t: 'wheel', dy: w.n * 120, dx: 0 }); g.acted = true; }
         }
       }
       return;
@@ -1115,6 +1221,10 @@
       if (Math.hypot(t.clientX - g.x0, t.clientY - g.y0) <= T.TAP_MOVE) return;
       // Eşik aşılınca baştan beri olan hareket uygulanır (dokunuşta titreme imleci oynatmasın).
       g.moved = true;
+      // Basılı tutup sonra kaydırınca sağ tık iptal: imleç oynar.
+      clearTimeout(g.timer);
+      g.held = false;
+      holdRing.hidden = true;
       dx = t.clientX - g.x0; dy = t.clientY - g.y0; dt = now - g.t0;
       if (g.second && canInput()) {
         // Çift dokunup sürükleme: sol tuş basılı.
@@ -1139,17 +1249,19 @@
     forgetPenTouches(e);
     if (!gesture) return;
     const left = fingers(e.touches).length;
-    // Tek parmak hareketi kendi parmağı kalkınca biter; iki parmak hareketi tüm parmaklar kalkınca.
-    if (gesture.two ? left > 0 : left > 0 && !hasId(e.changedTouches, gesture.id)) return;
+    const now = Date.now();
+    // Tek parmak hareketi kendi parmağı kalkınca biter; iki parmak hareketi tüm parmaklar kalkınca (ilk kalkış zamanı tutulur).
+    if (gesture.two && left > 0) { trackMove(gesture, e.changedTouches); gesture.up1 = gesture.up1 || now; return; }
+    if (!gesture.two && left > 0 && !hasId(e.changedTouches, gesture.id)) return;
     const g = gesture;
     gesture = null;
     clearTimeout(g.timer);
     holdRing.hidden = true;
-    const now = Date.now();
     if (g.two) {
-      if (g.kind || now - g.t0 > T.TAP_MS * 1.5) return;
+      trackMove(g, e.changedTouches);
+      if (!T.isTwoFingerTap({ downGap: g.downGap, upGap: g.up1 ? now - g.up1 : 0, duration: now - g.t0, move: g.move, acted: g.acted })) return;
       // İki parmak dokunuş: çift ise 1x'e dön, tek ise (touchpad) sağ tık.
-      if (now - lastTwoTap < DOUBLE_TAP_MS + T.TAP_MS) {
+      if (g.t0 - lastTwoTap < DOUBLE_TAP_MS) {
         lastTwoTap = 0;
         clearTimeout(rightTimer); rightTimer = null;
         setView({ z: 1, tx: 0, ty: 0 });
@@ -1157,6 +1269,8 @@
       }
       lastTwoTap = now;
       if (touchMode !== 'touchpad' || !canInput()) return;
+      // İlk parmak ikinci gelmeden biraz kaydıysa imleç dokunuşun başladığı yere döner (sağ tık amaçlanan yere).
+      if (g.cur0) { cursor = g.cur0; drawCursor(); }
       // Yakınlaştırılmışken ikinci dokunuşu bekle (1x'e dönüş olabilir).
       if (view.z > 1) rightTimer = setTimeout(() => { rightTimer = null; clickAtCursor('right'); }, DOUBLE_TAP_MS);
       else clickAtCursor('right');
@@ -1165,6 +1279,13 @@
     if (g.pad) {
       if (g.dragging) { release('left'); return; }
       if (g.moved || !canInput()) return;
+      // Uzun basıp bırakma ya da "Sağ tık" düğmesi açıkken dokunuş: hemen sağ tık (önceki dokunuşun bekleyen tıkı önce).
+      if (g.held || (rightArm && T.isTap(0, now - g.t0))) {
+        if (g.second) clickAtCursor('left');
+        takeRight();
+        clickAtCursor('right');
+        return;
+      }
       if (g.second) { clickAtCursor('left', T.isTap(0, now - g.t0) ? 2 : 1); return; }
       if (!T.isTap(0, now - g.t0)) return;
       // Tek tık biraz beklenir: hemen ardından dokunup sürüklenirse sol tuşla sürükleme olur.
@@ -1174,6 +1295,12 @@
     if (g.kind === 'drag') {
       release('left');
     } else if (g.kind === 'hold' && canInput()) {
+      takeRight();
+      moveNow(g.x0, g.y0);
+      click('right');
+    } else if (!g.kind && canInput() && takeRight()) {
+      // "Sağ tık" düğmesi açık: dokunulan yere sağ tık.
+      lastTap = null;
       moveNow(g.x0, g.y0);
       click('right');
     } else if (!g.kind && canInput()) {
