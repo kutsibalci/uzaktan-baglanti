@@ -42,6 +42,21 @@ Gereksinim: Windows 10/11, [Node.js](https://nodejs.org) 20 veya üstü.
 - `surucu-kur.bat` — ikinci ekran özelliği için sanal monitör sürücüsü
 - `usb-baglan.bat` — Android telefonu USB kablosuyla bağla (adb reverse; Wi-Fi gerekmez, telefonda `http://localhost:3080`)
 
+## Ev ağında HTTPS (Tailscale olmadan iPhone'da H.264 ve ses)
+iPhone Safari H.264 görüntüyü ve sesi yalnızca şifreli (HTTPS) sayfada çalıştırır. Sunucu ilk açılışta kendi kök sertifikasını
+(CA, 10 yıl, "Uzaktan Bağlantı Yerel CA — <bilgisayar adı>") ve onunla imzalı bir sunucu sertifikası (≤ 825 gün; tüm yerel IPv4
+adresleri, bilgisayar adı, `ad.local`, `localhost`) üretir ve HTTP'nin yanında **https://<ev ağı IP'si>:3443** adresini de dinler
+(`PORT_HTTPS` ile değişir). Dışarıya hiçbir şey gönderilmez; anahtarlar `data\sertifika\` klasöründe, yalnızca bu kullanıcıya açık.
+- **Telefona bir kez kurulum:** HTTP adresinden girince ana menüde öneri şeridi, ⋯ menüde **🔒 Ev ağında HTTPS** rehberi çıkar.
+  iPhone/iPad: Safari'de "Sertifikayı indir" (.mobileconfig) → Ayarlar → İndirilen Profil → Yükle → **Ayarlar → Genel → Hakkında →
+  Sertifika Güven Ayarları → anahtarı aç** (bu adım unutulursa çalışmaz). Android: .cer → Ayarlar → Güvenlik → Sertifika yükle → CA sertifikası.
+  Sayfa, cihazın sertifikaya güvenip güvenmediğini kendisi dener ve "Şifreli adrese geç" düğmesini gösterir.
+- **Güvenlik:** kök sertifika *Name Constraints* ile yalnızca yerel adlara (localhost, `*.local`, bilgisayar adı) ve özel IP aralıklarına
+  (10/8, 172.16/12, 192.168/16, Tailscale 100.64/10, 127/8) kısıtlıdır: anahtarı çalınsa bile internet sitelerini taklit edemez.
+  İndirme uçları oturum istemez ama yalnızca ev ağı / Tailscale / bu bilgisayardan erişilir.
+- IP adresi değişirse (DHCP) sunucu sertifikası aynı CA ile kendiliğinden yeniden imzalanır; telefondaki profil geçerli kalır.
+- Yönetim → **Ev ağı HTTPS**: kapat / aç, kök sertifikayı yeniden üret ya da sil (telefondaki eski profil geçersizleşir).
+
 ## Tepsi simgesi (konsol penceresi olmadan)
 `tepsi-baslat.bat` sunucuyu arka planda başlatır ve görev çubuğunun sağına bir simge koyar (`baslat.bat` konsol modu olarak çalışmaya devam eder; ikisini aynı anda açmayın, ikisi de aynı portu kullanır).
 - Simgeye çift tıkla: arayüzü aç. Sağ tık menüsü: misafir kodunu kopyala, bağlı kişiler / bağlantıyı kes, **Windows açılınca başlat**, günlüğü aç, yeniden başlat, çıkış.

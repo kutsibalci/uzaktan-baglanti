@@ -1,4 +1,5 @@
 const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -129,6 +130,32 @@ server.requestTimeout = 0; // yerine yukarıdaki istek başına süre
 
 const wss = new WebSocketServer({ server, maxPayload: 64 * 1024, verifyClient: ({ req }) => allowed(req) });
 const clients = new Set(); // giriş yapmış bağlantılar
+
+// ---------- Ev ağı HTTPS'i (features/sertifika.js açar/kapatır) ----------
+// Aynı istek işleyici ve aynı WebSocket sunucusu. Sertifika yoksa ya da kapalıysa hiç dinlenmez.
+// PORT_HTTPS=0 -> boş rastgele port (testler).
+const PORT_HTTPS = process.env.PORT_HTTPS ? Number(process.env.PORT_HTTPS) : 3443;
+let httpsServer = null;
+const httpsYonet = {
+  port: () => (httpsServer?.listening ? httpsServer.address().port : null),
+  // tls: { key, cert } (PEM). Zaten açıksa yalnızca sertifika değişir (açık bağlantılar sürer).
+  ac(tls) {
+    if (httpsServer) { httpsServer.setSecureContext(tls); return Promise.resolve(); }
+    const s = https.createServer(tls, (req, res) => server.emit('request', req, res));
+    s.requestTimeout = 0;
+    s.on('upgrade', (req, sock, head) => wss.handleUpgrade(req, sock, head, (ws) => wss.emit('connection', ws, req)));
+    return new Promise((resolve, reject) => {
+      s.once('error', reject);
+      s.listen(PORT_HTTPS, '0.0.0.0', () => { s.off('error', reject); httpsServer = s; resolve(); });
+    });
+  },
+  // Yeni bağlantı alınmaz; HTTP bağlantıları kapanır. WebSocket'ler (upgrade) bu sunucuda sayılmaz: onları özellik keser.
+  kapat() {
+    const s = httpsServer;
+    httpsServer = null;
+    if (s) { s.close(); s.closeAllConnections(); }
+  },
+};
 
 const QUALITY = { quality: 60, maxWidth: 1600, fps: 20, kbps: 4000, codec: 'jpeg' };
 const clamp = (v, lo, hi, def) => (Number.isFinite(Number(v)) ? Math.min(hi, Math.max(lo, Number(v))) : def);
@@ -716,7 +743,7 @@ function lanAddresses() {
 
 captureLoop();
 const features = ext.init({
-  helper, video, store, clients, sendJson, buildExe, PORT, kick, clientInfo,
+  helper, video, store, clients, sendJson, buildExe, PORT, kick, clientInfo, https: httpsYonet,
   dataDir: store.DATA_DIR,
   guestCode: () => (store.settings.guestOtp ? guestCode : null),
   broadcast(obj, filter = () => true) { for (const c of clients) if (filter(c)) sendJson(c, obj); },
@@ -732,6 +759,8 @@ server.listen(PORT, '0.0.0.0', async () => {
   const tsi = await tailscaleInfo();
   console.log('\n=== Uzaktan Bağlantı sunucusu çalışıyor ===');
   for (const ip of lanAddresses()) if (ip !== tsi.ip) console.log(`  Ev ağı       : http://${ip}:${PORT}`);
+  const hp = httpsYonet.port();
+  if (hp) for (const ip of lanAddresses()) if (ip !== tsi.ip) console.log(`  Ev ağı HTTPS : https://${ip}:${hp}   (önce telefona sertifika: menü > 🔒 Ev ağında HTTPS)`);
   console.log(`  Bu bilgisayar: http://localhost:${PORT}`);
   if (tsi.running) {
     if (tsi.httpsUrl) console.log(`  Her yerden   : ${tsi.httpsUrl}   (Tailscale, önerilen)`);
