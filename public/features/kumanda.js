@@ -196,6 +196,9 @@
     el.addEventListener('pointerup', birak);
     el.addEventListener('pointercancel', birak);
     el.addEventListener('contextmenu', (e) => e.preventDefault());
+    // Dokunuştan sonra tarayıcının ürettiği click engellenir: düğme basılıyken kumanda kapanırsa (←) bu click
+    // alttaki ana menüye (ör. Yönetim düğmesine) düşüyordu.
+    el.addEventListener('touchend', (e) => e.preventDefault(), { passive: false });
   }
 
   // Touchpad alanı (hesaplar çekirdekteki touchpad moduyla aynı: public/dokunmatik.js)
