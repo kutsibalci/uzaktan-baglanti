@@ -12,6 +12,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="style.css">
+<script src="hata.js"></script>
 </head>
 <body>
   <!-- Bağlanıyor -->
@@ -24,7 +25,7 @@
     <form id="setupForm" class="card">
       <h1>Hoş geldin 👋</h1>
       <p class="muted">İlk kurulum: bu bilgisayarın yönetici hesabını oluştur.</p>
-      <input name="username" placeholder="Kullanıcı adı" autocomplete="username" required minlength="3">
+      <input name="username" placeholder="Kullanıcı adı" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" required minlength="3">
       <input name="password" type="password" placeholder="Şifre (en az 6 karakter)" autocomplete="new-password" required minlength="6">
       <input name="password2" type="password" placeholder="Şifre (tekrar)" autocomplete="new-password" required minlength="6">
       <label class="check"><input name="remember" type="checkbox" checked> Bu cihazı hatırla</label>
@@ -43,7 +44,7 @@
       </div>
       <p id="noSetupMsg" class="warn" hidden>Henüz hesap yok. Önce bilgisayarda <b>http://localhost:3000</b> adresini açıp yönetici hesabını oluşturun. Bu arada misafir koduyla bağlanabilirsiniz.</p>
       <form id="tAccount" class="tabpane">
-        <input name="username" placeholder="Kullanıcı adı" autocomplete="username" required>
+        <input name="username" placeholder="Kullanıcı adı" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" required>
         <input name="password" type="password" placeholder="Şifre" autocomplete="current-password" required>
         <label class="check"><input name="remember" type="checkbox" checked> Bu cihazı hatırla (bir daha şifre sorma)</label>
         <button type="submit">Giriş yap</button>
@@ -174,7 +175,7 @@
       <div class="box">
         <table id="usersTable"></table>
         <form id="addUserForm" class="row gap wrap">
-          <input name="username" placeholder="Kullanıcı adı" required minlength="3">
+          <input name="username" placeholder="Kullanıcı adı" autocapitalize="none" autocorrect="off" spellcheck="false" required minlength="3">
           <input name="password" type="password" placeholder="Şifre" required minlength="6" autocomplete="new-password">
           <select name="role"><option value="control">Kontrol</option><option value="view">Salt izleme</option><option value="admin">Yönetici</option></select>
           <button type="submit" class="small">Ekle</button>

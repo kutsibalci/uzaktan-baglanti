@@ -78,6 +78,7 @@ const server = http.createServer(async (req, res) => {
   res.on('close', () => { if (req.complete) clearTimeout(reqTimer); });
   if (!allowed(req)) { res.writeHead(403).end(); return; }
   const url = new URL(req.url, 'http://x');
+  if (url.pathname === '/api/hata' && req.method === 'POST') return istemciHatasi(req, res);
   if (url.pathname === '/api/features') {
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache' });
     res.end(JSON.stringify(ext.clientFeatures()));
@@ -94,6 +95,33 @@ const server = http.createServer(async (req, res) => {
     res.end(data);
   });
 });
+
+// Tarayıcı hataları (public/hata.js): telefonda konsol olmadığı için günlüğe yazılır.
+// Oturum gerekmez (sayfa açılırken çıkan hatalar da gelsin); boyut ve sıklık sınırlı, yalnızca günlüğe yazılır.
+const hataSayaci = new Map(); // ip -> { n, bas }
+function istemciHatasi(req, res) {
+  const ip = req.socket.remoteAddress || '';
+  const now = Date.now();
+  const c = hataSayaci.get(ip) || { n: 0, bas: now };
+  if (now - c.bas > 60000) { c.n = 0; c.bas = now; }
+  c.n++;
+  hataSayaci.set(ip, c);
+  if (hataSayaci.size > 1000) hataSayaci.clear();
+  let body = '';
+  let fazla = false;
+  req.setEncoding('utf8');
+  req.on('data', (d) => { body += d; if (body.length > 4096) { fazla = true; req.destroy(); } });
+  req.on('end', () => {
+    res.writeHead(204).end();
+    if (fazla || c.n > 20) return;
+    try {
+      const m = JSON.parse(body);
+      const temiz = (s, n) => String(s ?? '').replace(/[\r\n]+/g, ' | ').replace(/[\x00-\x1f]/g, '').slice(0, n);
+      const ua = temiz(req.headers['user-agent'], 160);
+      console.warn(`İstemci hatası (${clientInfo(req).ip}, ${ua}): ${temiz(m.mesaj, 500)} @ ${temiz(m.yer, 300)}${m.yigin ? ` — ${temiz(m.yigin, 1500)}` : ''}`);
+    } catch { /* bozuk gövde */ }
+  });
+}
 
 // ---------- WebSocket ----------
 
