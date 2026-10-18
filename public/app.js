@@ -31,6 +31,7 @@
   const intervals = [];        // son birkaç saniyenin kare aralıkları { t: çizim anı, ms } (titreşim/takılma için)
   let codecLabel = '';
   let httpToken = null;       // özelliklerin HTTP istekleri için (X-Oturum başlığı)
+  let authHook = () => false; // RC.setAuthHook: hello gelince girişi bir özellik üstlenebilir (true dönerse)
 
   // Özellik betikleri (public/features/*.js) için olay sistemi.
   // Sunucudan gelen tanınmayan JSON mesajları türüne göre buraya iletilir;
@@ -148,6 +149,7 @@
     $('noSetupMsg').hidden = !(m.needsSetup && !m.canSetup);
     const token = storage.get('deviceToken');
     if (resumeToken) { lastAttempt = 'resume'; send({ t: 'resume', token: resumeToken }); }
+    else if (authHook(m)) lastAttempt = 'ozellik'; // özellik girişi üstlendi (ör. QR eşleştirme)
     else if (token) { lastAttempt = 'token'; send({ t: 'token', token }); }
     else if (m.canSetup) show('vSetup');
     else showLogin();
@@ -183,6 +185,10 @@
       if (token) { lastAttempt = 'token'; send({ t: 'token', token }); return; }
     } else if (lastAttempt === 'token') {
       storage.del('deviceToken');
+    } else if (lastAttempt === 'ozellik') {
+      // Özellik girişi olmadı (ör. QR'ın süresi dolmuş): bu cihaz zaten hatırlanıyorsa onunla gir.
+      const token = storage.get('deviceToken');
+      if (token) { lastAttempt = 'token'; send({ t: 'token', token }); return; }
     }
     if (lastAttempt === 'setup') {
       document.querySelector('#setupForm .error').textContent = m.error;
@@ -1451,6 +1457,10 @@
     stats: () => ({ ...lastStats }),
     // Kalem özelliği, kalem olaylarını kendisi işlediği sürece true dönen bir fonksiyon kaydeder.
     setPenActive(fn) { penActive = typeof fn === 'function' ? fn : () => false; },
+    // Girişi üstlenmek isteyen özellik (QR eşleştirme): fn(hello) giriş mesajını kendisi gönderip true döner.
+    // Sunucunun 'auth' cevabını çekirdek işler; başarısızsa kayıtlı cihaz anahtarı varsa onunla denenir.
+    setAuthHook(fn) { authHook = typeof fn === 'function' ? fn : () => false; },
+    deviceName,
     toNorm,
     moveNow,
     queueMove,

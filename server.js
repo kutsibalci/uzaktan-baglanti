@@ -241,6 +241,7 @@ async function handleAuth(ws, m) {
       case 'token': return await doToken(ws, m);
       case 'guest': return await doGuest(ws, m);
       case 'resume': return await doResume(ws, m);
+      default: await ext.handlePreAuth(ws, m); // özelliklerin giriş yolları (ör. QR eşleştirme, features/eslestir.js)
     }
   } finally {
     ws.busy = false;
@@ -745,6 +746,7 @@ captureLoop();
 const features = ext.init({
   helper, video, store, clients, sendJson, buildExe, PORT, kick, clientInfo, https: httpsYonet,
   dataDir: store.DATA_DIR,
+  auth: { finish: (ws, s) => finishAuth(ws, s), fail, forgive: (ip) => failures.delete(ip) },
   guestCode: () => (store.settings.guestOtp ? guestCode : null),
   broadcast(obj, filter = () => true) { for (const c of clients) if (filter(c)) sendJson(c, obj); },
 });
