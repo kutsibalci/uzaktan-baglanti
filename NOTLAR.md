@@ -201,6 +201,22 @@
       **(henüz gerçek cihazda test edilmedi: iPhone'da Sol tık tut + sürükle, şerit ve iki parmak düzeltmeleri; doğrulama kodunun iPhone'da
       görünümü; iPhone'un QR'daki https://<ev-ip>:3443 adresini sertifikayla açması; baslat.bat'ın Windows Terminal'de açıldığı durumda
       konsol korumasının gerçek sunucuda görünmesi — klasik conhost'ta ve bu oturumun Windows Terminal'inde ölçüldü)**
+- [x] Akıllı Uygulama Denetimi (SAC) dayanıklılığı: SAC açık ve yeni derlenmiş imzasız exe'leri rastgele engelliyor (Tepsi.exe'nin yeni
+      derlemesi engellendi; Code Integrity günlüğünde başka bir kopyanın RemoteHelper.exe'si için 3077 görüldü). Engelli spawn Node'da
+      eşzamanlı `UNKNOWN` fırlatıyordu → RemoteHelper engellenince sunucu açılışta çöküyordu. Şimdi `lib/helper.js` `spawnHelper`: engel
+      (UNKNOWN/EACCES/EPERM ya da 0xC0000428/4551/1260 çıkışı) kaydedilir, exe bir daha başlatılmaz (döngü yok), RemoteHelper engelliyken
+      giriş/yönetim çalışır (ekran listesi boş). Uyarı günlükte, yönetim panelinde (kanıt: CodeIntegrity 3077/3033, yönetici gerekmez,
+      yalnızca bu klasörün helper\ exe'leri) ve yöneticiye ana menüde. `arka-plan-baslat.bat` / `arka-plan-durdur.bat` + `tools\arka-plan.ps1`:
+      tepsisiz, yalnızca imzalı powershell.exe ile gizli bekçi (yeniden başlatma 2/5/15/60 sn, 10 dk'da 5 çökmede durur, günlük 5 MB döndürme,
+      PID dosyası, düzgün kapanış için TRAY_TOKEN'lı /api/tepsi/kapat). "Windows açılınca başlat" yönetim panelinden: HKCU Run değeri
+      `UzaktanBaglanti` (arka plan ya da Tepsi). Tepsi yokken Windows bildirimi (WinRT toast, sessiz, oran sınırlı). Onay penceresi açılamazsa
+      bu bilgisayardaki yönetici oturumuna onay kutusu (`features/baslatma.js`). Testler: `ozellik-baslatma` (engel taklidi = metin dosyası
+      .exe, sahte Run anahtarı), `ozellik-arka-plan`, `ozellik-baslatma-tarayici` (iPhone boyutu). Bildirim bu bilgisayarda bir kez elle
+      gösterildi: Bildirim Merkezi geçmişine düştü (sonra silindi), ekranda görünüşü gözle doğrulanmadı.
+      Gerçek SAC engelinin Node'daki hatası ölçüldü: bu çalışmada yeni derlenen Perde.exe / Durum.exe engellendi (3077) ve spawn eşzamanlı
+      `UNKNOWN` (errno -4094) fırlattı — taklitle aynı.
+      **(henüz gerçek kullanımda denenmedi: gerçek oturum açılışında Run değerinden başlama — yalnızca sahte anahtarla sınandı;
+      onay kutusunun / uyarının iPhone'da görünümü — yalnızca başsız Edge'de 390x844)**
 
 ## Sıradaki
 1. Yukarıdaki özelliklerin gerçek telefon/tablet/kalemle denenmesi (ikinci ekran dahil)

@@ -19,7 +19,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawnHelper, engeller } = require('../lib/helper');
 
 // Kapatılamaz süreçler (küçük harf, .exe'siz). Kapatılırsa Windows çöker, oturum kapanır ya da ekran gider.
 const KRITIK = new Set(['system', 'idle', 'secure system', 'registry', 'memory compression', 'smss', 'csrss', 'wininit', 'winlogon',
@@ -75,7 +75,8 @@ module.exports.init = (api) => {
   function baslat() {
     if (proc || !exe) return;
     clearTimeout(yenidenTimer);
-    const p = spawn(exe, [String(process.pid)], { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });
+    const p = spawnHelper('Durum', exe, [String(process.pid)], { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });
+    if (!p) return; // Windows engelledi: bir daha denenmez (uyarı yönetim panelinde)
     proc = p;
     ayrintiAcik = null;
     let kalan = '';
@@ -195,7 +196,7 @@ module.exports.init = (api) => {
       esitle();
       api.sendJson(ws, {
         t: 'durum-ilk', gecmis, son, izleyiciler: liste(), kuru,
-        hata: exe ? undefined : `Ölçüm programı derlenemedi${derlemeHatasi ? `: ${derlemeHatasi.split('\n')[0]}` : '.'}`,
+        hata: exe ? engeller.get('Durum')?.mesaj : `Ölçüm programı derlenemedi${derlemeHatasi ? `: ${derlemeHatasi.split('\n')[0]}` : '.'}`,
       });
     } else {
       aboneler.delete(ws);

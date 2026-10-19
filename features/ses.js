@@ -3,6 +3,7 @@
 // -> her Opus paketi ikili mesaj [3][paket] olarak abonelere gider. Abone yokken hiçbir süreç çalışmaz.
 const fs = require('fs');
 const { spawn } = require('child_process');
+const { spawnHelper, engelli, engeller } = require('../lib/helper');
 
 let FFMPEG = null;
 try { FFMPEG = require('ffmpeg-static'); } catch { /* paket yok */ }
@@ -77,14 +78,21 @@ module.exports.init = (api) => {
   let restarts = 0;
   let restartTimer = null;
 
-  const available = () => !!exe && !!FFMPEG;
-  const reason = () => (!FFMPEG ? 'ffmpeg bulunamadı.' : buildError ? 'Ses yardımcı programı derlenemedi.' : '');
+  const available = () => !!exe && !!FFMPEG && !engelli('Ses');
+  const reason = () => (!FFMPEG ? 'ffmpeg bulunamadı.' : buildError ? 'Ses yardımcı programı derlenemedi.' : engeller.get('Ses')?.mesaj || '');
 
   function start() {
     if (chain || !subs.size || !available()) return;
+    const ses = spawnHelper('Ses', exe, [], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+    if (!ses) {
+      // Windows engelledi: bir daha denenmez, dinleyenlere söylenir.
+      for (const ws of subs) api.sendJson(ws, { t: 'ses-durum', acik: false, msg: `Ses aktarılamıyor: ${reason()}` });
+      subs.clear();
+      return;
+    }
     const c = { stopped: false, headers: 0, packets: 0, startedAt: Date.now() };
     chain = c;
-    c.ses = spawn(exe, [], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+    c.ses = ses;
     c.ff = spawn(FFMPEG, [
       '-hide_banner', '-loglevel', 'error',
       '-f', 's16le', '-ar', '48000', '-ac', '2', '-i', '-',

@@ -7,7 +7,7 @@
 //
 // Perdeyi acan baglantilarin hepsi kapaninca, izlemeyi birakinca ya da kontrol yetkisini kaybedince
 // perde kendiliginden kalkar. Bilgisayarin basindaki kisi Ctrl+Alt+Shift+P ile her zaman kapatabilir.
-const { spawn } = require('child_process');
+const { spawnHelper, engeller } = require('../lib/helper');
 
 const ACILIS_SURESI = 8000;
 const KAPANIS_BEKLE = 2000;  // eski surecin cikmasi icin en fazla bekleme (kisayol cakismasin)
@@ -58,7 +58,9 @@ module.exports.init = (api) => {
       const tamam = (sonuc) => { if (!bitti) { bitti = true; clearTimeout(zaman); resolve(sonuc); } };
       // exe bir dizi de olabilir ([program, ...arguman]); testler sahte perdeyi node ile calistirir.
       const [komut, ...arglar] = Array.isArray(exe) ? exe : [exe];
-      const p = spawn(komut, arglar, { stdio: ['pipe', 'pipe', 'inherit'], windowsHide: true });
+      const p = spawnHelper('Perde', komut, arglar, { stdio: ['pipe', 'pipe', 'inherit'], windowsHide: true });
+      // Windows engelledi (bir daha denenmez); zamanlayici henuz kurulmadi, dogrudan cevap verilir.
+      if (!p) { bitti = true; resolve({ ok: false, hata: engeller.get('Perde')?.mesaj || 'Perde programi baslatilamadi.' }); return; }
       proc = p;
       const gecerli = () => proc === p;
       let tampon = '';

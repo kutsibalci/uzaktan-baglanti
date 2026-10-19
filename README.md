@@ -73,6 +73,20 @@ adresleri, bilgisayar adı, `ad.local`, `localhost`) üretir ve HTTP'nin yanınd
 - Sunucu çıktısı `data\sunucu.log` dosyasındadır. Sunucu çökerse birkaç kez kendiliğinden yeniden başlatılır.
 - Komut satırı: `helper\Tepsi.exe --cikis` çalışan tepsiyi düzgün kapatır.
 
+### Tepsisiz arka plan (Akıllı Uygulama Denetimi açıksa önerilen)
+Windows 11'in **Akıllı Uygulama Denetimi** (Smart App Control) imzasız, yeni derlenmiş exe'leri (ör. `Tepsi.exe`) engelleyebilir.
+`arka-plan-baslat.bat` aynı işi yalnızca Windows'un imzalı `powershell.exe`'siyle yapar (`tools\arka-plan.ps1`; yeni exe yok):
+- Sunucu konsol penceresi ve tepsi simgesi olmadan çalışır; zaten çalışıyorsa (tepsi ya da konsol dahil) ikinci kopya açılmaz, yalnızca tarayıcıda arayüz açılır.
+- Çıktı `data\sunucu.log`'a eklenir (5 MB'ı aşınca `sunucu.log.1`'e taşınır). Sunucu çökerse 2, 5, 15, 60 sn arayla yeniden başlatılır;
+  10 dakikada 5 çökmede durur ve günlüğe yazar. Bekçi ve sunucu PID'leri `data\arka-plan.pid`'de.
+- `arka-plan-durdur.bat`: yalnızca PID dosyasındaki kendi süreçlerini durdurur (önce düzgün kapanış); tepsi ya da `baslat.bat` ile çalışan sunucuya dokunmaz.
+- **Windows açılınca başlat:** Yönetim → "Başlatma ve Windows engelleri" → anahtar + yöntem (*Arka plan (tepsisiz)* / *Tepsi*).
+  Kullanıcının başlangıç listesine (`HKCU\...\Run`, değer `UzaktanBaglanti`) yazılır; yönetici izni gerekmez.
+- Tepsi yokken biri bağlanınca ya da yeni cihaz onay beklerken sessiz bir **Windows bildirimi** gösterilir.
+- Onay penceresi açılamazsa (ör. `RemoteHelper.exe` engellendiyse) bu bilgisayarda tarayıcıda açık yönetici oturumuna onay kutusu gelir.
+- Bir yardımcı program (`RemoteHelper`, `Pano`, `Perde`, `Ses`, `Durum`) engellenirse sunucu çökmez: günlüğe ve yönetim paneline
+  hangi özelliğin çalışmadığı, Windows günlüğündeki kanıt (Code Integrity 3077/3033) ve seçenekler yazılır; engellenen dosya döngüyle yeniden denenmez.
+
 Yönetici hesabıyla ana menüde **⏻ Güç** düğmesi bilgisayarı kilitler, uyutur, yeniden başlatır ya da kapatır (yeniden başlat/kapat 30 sn içinde iptal edilebilir). Kilitlenince ekran uzaktan görünmez.
 
 ## Dosyalar
@@ -82,6 +96,7 @@ Yönetici hesabıyla ana menüde **⏻ Güç** düğmesi bilgisayarı kilitler, 
 | `lib/` | Hesap deposu, ağ/Tailscale, H.264 video (+ `sps.js`: tarayıcıda kare bekletmeyi kapatan SPS düzeltmesi), sanal ekran, yardımcı süreç, özellikler arası olaylar (`olaylar.js`) |
 | `helper/RemoteHelper.cs` | Ekran yakalama + fare/klavye (Windows'un kendi C# derleyicisiyle derlenir) |
 | `helper/Tepsi.cs` | Görev çubuğu simgesi; sunucuyu gizli başlatır (`tepsi-baslat.bat`) |
+| `tools/arka-plan.ps1` | Tepsisiz arka plan başlatma / bekçi / durdurma (`arka-plan-baslat.bat`, `arka-plan-durdur.bat`) |
 | `helper/Pano.cs`, `Perde.cs`, `Ses.cs`, `Durum.cs` | Pano izleme (metin + resim), gizlilik perdesi, ses yakalama, bilgisayar durumu ölçümü (sunucu açılışta derler) |
 | `lib/sertifika.js`, `lib/qr.js` | Ev ağı HTTPS için yerel CA + sertifika (paketsiz X.509), QR kodlayıcı (paketsiz, SVG) |
 | `features/` | Özellik modülleri (sunucu tarafı); bkz. [features/README.md](features/README.md) |
