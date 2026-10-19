@@ -55,7 +55,7 @@ Write-Host "      Node.js $nodeVer (SHA256 doğrulandı)"
 
 # ---------- 2. Uygulama dosyaları ----------
 Write-Host "[2/5] Uygulama dosyaları kopyalanıyor..."
-foreach ($f in 'server.js', 'package.json', 'package-lock.json', 'README.md') {
+foreach ($f in 'server.js', 'package.json', 'package-lock.json', 'README.md', 'LICENSE', 'UCUNCU-TARAF.md') {
   Copy-Item "$root\$f" $stage
 }
 # Kök klasördeki tüm .bat betikleri (baslat, tepsi-baslat, usb-baglan, surucu-kur, tailscale-kur...)

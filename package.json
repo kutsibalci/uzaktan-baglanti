@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Tarayıcı üzerinden çalışan basit uzaktan masaüstü",
+  "license": "GPL-3.0-or-later",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

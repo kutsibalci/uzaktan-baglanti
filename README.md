@@ -91,3 +91,11 @@ Yönetici hesabıyla ana menüde **⏻ Güç** düğmesi bilgisayarı kilitler, 
 | `.github/workflows/paket.yml` | Etiket gönderilince zip'i Releases'e koyar |
 
 Yol haritası ve piyasa notları: [NOTLAR.md](NOTLAR.md)
+
+## Lisans
+
+Bu proje **GNU Genel Kamu Lisansı 3.0 ve sonrası (GPL-3.0-or-later)** ile lisanslıdır; tam metin [LICENSE](LICENSE). Özgürce kullanabilir, değiştirebilir ve dağıtabilirsiniz; değiştirilmiş sürümü dağıtırsanız kaynak kodunu da aynı lisansla vermeniz gerekir.
+
+Pakete dahil üçüncü taraf bileşenler (FFmpeg, ws, Node.js) ve lisansları: [UCUNCU-TARAF.md](UCUNCU-TARAF.md).
+
+Bu proje yapay zekâ (Claude) desteğiyle geliştirildi.
