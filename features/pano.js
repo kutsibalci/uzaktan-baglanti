@@ -13,7 +13,7 @@
 // Geri yankı: panoya kendi yazdığımız içerik "bilinen" anahtarıyla tanınır (metin: 't:'+metin, resim: 'r:'+piksel özeti).
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawnHelper } = require('../lib/helper');
 
 const MAX_BAYT = 1024 * 1024;
 const MAX_RESIM = 20 * 1024 * 1024;
@@ -75,7 +75,8 @@ module.exports.init = (api) => {
   function baslat() {
     if (proc) return;
     clearTimeout(yenidenTimer);
-    const p = spawn(exe, [], { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });
+    const p = spawnHelper('Pano', exe, [], { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });
+    if (!p) return; // Windows engelledi: bir daha denenmez (uyarı yönetim panelinde)
     proc = p;
     bilinen = null;
     let parcalar = [];
@@ -131,6 +132,7 @@ module.exports.init = (api) => {
   function istek(komut) {
     baslat();
     const p = proc;
+    if (!p) return Promise.resolve(null);
     return new Promise((resolve) => {
       const b = {
         resolve,

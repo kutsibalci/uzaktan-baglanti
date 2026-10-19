@@ -60,6 +60,9 @@ foreach ($f in 'server.js', 'package.json', 'package-lock.json', 'README.md', 'L
 }
 # Kök klasördeki tüm .bat betikleri (baslat, tepsi-baslat, usb-baglan, surucu-kur, tailscale-kur...)
 Get-ChildItem "$root\*.bat" | Copy-Item -Destination $stage
+# Tepsisiz arka plan başlatma (arka-plan-baslat.bat / arka-plan-durdur.bat)
+New-Item -ItemType Directory -Force "$stage\tools" | Out-Null
+Copy-Item "$root\tools\arka-plan.ps1" "$stage\tools\"
 Copy-Item "$root\lib", "$root\public" $stage -Recurse
 # Özellik modülleri (features\) olmadan pakette hiçbir özellik yüklenmez.
 if (Test-Path "$root\features") { Copy-Item "$root\features" $stage -Recurse }
