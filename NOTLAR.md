@@ -215,8 +215,11 @@
       gösterildi: Bildirim Merkezi geçmişine düştü (sonra silindi), ekranda görünüşü gözle doğrulanmadı.
       Gerçek SAC engelinin Node'daki hatası ölçüldü: bu çalışmada yeni derlenen Perde.exe / Durum.exe engellendi (3077) ve spawn eşzamanlı
       `UNKNOWN` (errno -4094) fırlattı — taklitle aynı.
-      **(henüz gerçek kullanımda denenmedi: gerçek oturum açılışında Run değerinden başlama — yalnızca sahte anahtarla sınandı;
-      onay kutusunun / uyarının iPhone'da görünümü — yalnızca başsız Edge'de 390x844)**
+      **(henüz gerçek cihazda test edilmedi: gerçek oturum açılışında Run değerinden başlama — yalnızca sahte anahtarla sınandı;
+      onay kutusunun / uyarının iPhone'da görünümü — yalnızca başsız Edge'de 390x844; bildirimin ekranda açılır görünmesi (Odak
+      Yardımı bastırabilir); oturum açılışında powershell -WindowStyle Hidden'ın kısa konsol yanıp sönmesi; Perde engeline özel
+      REMOTE_EXE_PERDE taklit testi yok; 0xC0000428/4551/1260 çıkış koduyla engel yolu — gerçek engel eşzamanlı UNKNOWN olarak görüldü;
+      gerçek makinede Tepsi + Run aynı anda)**
 
 - [x] Veri kullanımı sayacı + "Veri tasarrufu" kalitesi (mobil veri faturası için). ⏱ panelinde "Veri kullanımı" bölümü (görüntü / ses /
       dosya / diğer, gelen · giden, anlık ve oturum ortalaması, "bu hızla saatte ≈ X" — hız ve tahmine dosya aktarımları girmez), ⋯ menüde
@@ -231,7 +234,8 @@
       **iOS Safari ve iOS Chrome'da navigator.connection YOK (WebKit uygulamıyor) — iPhone'da şerit hiç çıkmaz; Veri tasarrufu menüden seçilmeli.**
       Sayaç doğruluğu başsız Edge'de CDP ağ çerçeveleriyle karşılaştırıldı (WebSocket birebir, HTTP indirme ±%0,1).
       **(henüz gerçek cihazda test edilmedi: iPhone'da panel/menü görünümü ve sayaçların operatör sayacıyla karşılaştırılması; mobil veride
-      gerçek kullanımda saatlik tüketim; Android Chrome'da 'cellular' şeridi; 32 kbps Opus'un iPhone'da ses kalitesi)**
+      gerçek kullanımda saatlik tüketim; Android Chrome'da 'cellular' şeridi; 32 kbps Opus'un iPhone'da ses kalitesi ve bit hızı değişirken kesintinin duyulması; HTTPS (TLS soketi)
+      üzerinden HTTP bayt sayımı — testler HTTP'de; JPEG yolunda Veri tasarrufunun bayt ölçümü — yalnızca H.264 ölçüldü)**
 
 - [x] "🖥🖥 Tüm ekranlar" görünümü: birden çok ekran varsa seçicide (ana menü ve ⋯ menü). Bütün monitörler gerçek fiziksel
       dizilimiyle tek görüntüde (sınır kutusu; boşluklar siyah). Hesaplar `public/ekranlar.js` (tarayıcı + sunucu ortak):
@@ -253,11 +257,17 @@
       **(henüz gerçek cihazda test edilmedi: iPhone'da hiç denenmedi; bu bilgisayarda test sırasında yalnızca BİR monitör bağlıydı —
       gerçek iki monitörle yakalama (DISPLAY2 karesi, %125/%100 karışık ölçekte gdigrab birleşimi, iki ekranda kare hızı) ölçülmedi,
       iki ekranlı durum sahte dizilimle sınandı; gerçek fare/kalem girdisi gönderilmedi (mesaj düzeyinde); monitör takıp çıkarma
-      yalnızca sahte dizilim dosyasıyla; negatif konumlu ekran yalnızca birim testinde)**
+      yalnızca sahte dizilim dosyasıyla; negatif konumlu ekran yalnızca birim testinde; kalemle tüm ekranlarda çizim yalnızca birim
+      testinde — kalem etikete dokunursa kalem olayı da gider; JPEG tür 4'te ekranlar arası birkaç ms zaman farkının yırtılması gözle bakılmadı)**
+      Veri sayacı tür 4 kareleri "Görüntü"ye sayar (bütünleştirmede eklendi). "Veri tasarrufu" tüm ekranlarda ~1280×720 piksel eşdeğeri.
 
 ## Sıradaki
 1. Yukarıdaki özelliklerin gerçek telefon/tablet/kalemle denenmesi (ikinci ekran dahil)
-2. H.264 için de masaüstü çoğaltma (ffmpeg ddagrab) — JPEG yolunda yapıldı; çıkış ↔ \\.\DISPLAYn eşlemesi DXGI_OUTPUT_DESC.DeviceName ile (`DxgiCapture.Open`)
+2. H.264 için de masaüstü çoğaltma (ffmpeg ddagrab) — JPEG yolunda yapıldı; çıkış ↔ \\.\DISPLAYn eşlemesi DXGI_OUTPUT_DESC.DeviceName ile (`DxgiCapture.Open`).
+   "Tüm ekranlar" H.264'te gdigrab (iki 1080p ekranda ~11-15 kare/sn tahmini): gerçek iki monitörde ölçülmeli; düşükse ekran başına ddagrab + overlay
+   (RemoteHelper'ın çıkış eşlemesini vermesi gerekir; SAC yeni derlenen exe'ye izin verince)
+   - `tepsi-baslat.bat`: Tepsi.exe engellenirse kendiliğinden `arka-plan-baslat.bat`'a düşme (şimdilik Windows'un kendi hatası görünür)
+   - `test/ozellik-durum.js` "explorer kapatılamaz" kontrolü, sunucunun atası explorer.exe olan oturumda (Windows Terminal → claude) "kendi süreci" diye düşüyor (temiz HEAD'de de): test ortamdan bağımsız olmalı
 3. Gerekirse herkese açık link (Cloudflare Tunnel) — şimdilik gerek yok, sadece kendi cihazlar
 4. Windows servisi olarak çalışma (UAC ve kilit ekranı)
 5. Yönetim günlüğünde 'dosya' ve 'guc' olaylarının okunur gösterimi (LOG_NAMES), özellik başına "misafire kapalı" seçeneği
