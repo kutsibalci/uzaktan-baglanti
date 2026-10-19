@@ -32,7 +32,8 @@ module.exports.init = (api) => {
 
   api.on('kalem', async (ws, m) => {
     if (!ws.streaming) return;
-    const ekran = ws.session.view.screen;
+    // "Tüm ekranlar"da (view.screen '*') istemci hedef ekranı mesajda gönderir (s); komutOlustur adı doğrular.
+    const ekran = ws.session.view.screen === '*' ? m.s : ws.session.view.screen;
     const cmd = komutOlustur(ekran, m);
     if (!cmd) return;
     // Hız sınırı: yalnızca hover/move olayları atılır, temas değişimleri her zaman geçer.

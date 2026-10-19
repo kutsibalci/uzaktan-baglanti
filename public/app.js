@@ -124,9 +124,16 @@
     };
   }
 
+  const TUM = window.Ekranlar.TUM;
   function send(obj) {
     // Görüntüleme biterken basılı tuş/düğme kalmasın: sunucu 'stop'tan sonra girdi kabul etmez, önce bırakılır.
     if (obj.t === 'stop') releaseAll();
+    // Tüm ekranlar: görüntüdeki nokta (0..1, birleşik görüntüde) içinde olduğu ekrana ve oradaki konuma çevrilir; boşluktaki
+    // nokta en yakın ekrana. Bütün yollar (fare, dokunma, touchpad, sürükleme, kalem, özellikler) buradan geçer.
+    if ((obj.t === 'move' || obj.t === 'kalem') && stream?.screen === TUM) {
+      const e = window.Ekranlar.noktaEkrana(screens, obj.x, obj.y);
+      if (e) obj = { ...obj, s: e.name, x: e.x, y: e.y };
+    }
     if (ws && ws.readyState === 1) { const s = JSON.stringify(obj); ws.send(s); traffic.giden += wsFrame(utf8.encode(s).length, true); }
   }
 
@@ -145,6 +152,7 @@
       case 'adminData': return renderAdmin(m);
       case 'vconfig': return configureDecoder(m);
       case 'durgun': stillPending = true; return; // ekran durağan: sıradaki karenin aralığı takılma sayılmaz
+      case 'ekranlar': return onScreens(m);
       case 'codec':
         // Sunucu H.264'ü başlatamadı, JPEG'e döndü.
         closeDecoder();
@@ -288,6 +296,8 @@
       o.textContent = `${s.title || `Ekran ${i + 1} — ${s.w}×${s.h}`}${s.primary && !kisa ? ' (ana)' : ''}`;
       sel.appendChild(o);
     });
+    // Birden çok ekran varsa: hepsi gerçek dizilimiyle tek görüntüde (public/ekranlar.js, public/features/tum-ekranlar.js).
+    if (list.length > 1 || current === TUM) sel.appendChild(new Option('🖥🖥 Tüm ekranlar', TUM));
     if (current) sel.value = current;
   }
 
@@ -335,7 +345,7 @@
     screens = m.screens || screens;
     stream = { mode: m.mode, screen: m.screen, started: true };
     const extend = m.mode === 'extend';
-    $('screenRow').hidden = extend || screens.length < 2;
+    $('screenRow').hidden = extend || (screens.length < 2 && m.screen !== TUM);
     fillScreens($('screenSel'), screens, m.screen, true);
     $('qualityRow').hidden = extend;
     document.body.classList.toggle('rc-genislet', extend); // .no-extend öğeler gizlenir
@@ -350,6 +360,16 @@
     emit('viewer:start', { ...stream });
   }
 
+  // Ekran düzeni değişti (monitör takıldı/çıkarıldı, çözünürlük): sunucu yeni listeyi ve izlenen ekranı gönderir.
+  function onScreens(m) {
+    screens = m.screens || screens;
+    if (!stream?.started) return;
+    if (m.screen) stream.screen = m.screen;
+    $('screenRow').hidden = stream.mode === 'extend' || (screens.length < 2 && stream.screen !== TUM);
+    fillScreens($('screenSel'), screens, stream.screen, true);
+    emit('ekranlar', { screens: [...screens], screen: stream.screen });
+  }
+
   function applyRole() {
     const viewOnly = me?.role === 'view';
     $('viewOnly').hidden = !viewOnly;
@@ -361,7 +381,12 @@
   function draw(src, afterStill = false) {
     const w = src.displayWidth || src.width, h = src.displayHeight || src.height;
     if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
-    ctx.drawImage(src, 0, 0, w, h);
+    if (src.parts) {
+      // Tüm ekranlar (JPEG): ekran başına kareler yerlerine, aradaki boşluk siyah.
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, w, h);
+      for (const p of src.parts) ctx.drawImage(p.bmp, p.x, p.y, p.w, p.h);
+    } else ctx.drawImage(src, 0, 0, w, h);
     frameCount++;
     const t = performance.now();
     if (lastDrawAt && !afterStill) intervals.push({ t, ms: t - lastDrawAt });
@@ -378,14 +403,25 @@
   let toPaint = null;          // { bmp, recv, afterStill }
   let paintQueued = false;
 
-  function onJpeg(data, recv, afterStill) {
+  const jpegBitmap = (data) => createImageBitmap(new Blob([data], { type: 'image/jpeg' }));
+  // Tüm ekranlar (ikili tür 4): ekran başına JPEG'ler çözülür; draw() hepsini birleşik görüntüye çizer.
+  async function tumBitmap(data) {
+    const k = window.Ekranlar.coz(data);
+    if (!k) throw new Error('bozuk birleşik kare');
+    const r = await Promise.allSettled(k.parts.map((p) => jpegBitmap(p.data)));
+    const parts = k.parts.map((p, i) => ({ x: p.x, y: p.y, w: p.w, h: p.h, bmp: r[i].value })).filter((p) => p.bmp);
+    return { width: k.W, height: k.H, parts, close() { for (const p of parts) p.bmp.close(); } };
+  }
+
+  // tum: tür 4 (tüm ekranlar) karesi.
+  function onJpeg(data, recv, afterStill, tum = false) {
     if (jpegBusy) {
       if (jpegWaiting) { send({ t: 'ack' }); afterStill = afterStill || jpegWaiting.afterStill; }
-      jpegWaiting = { data, recv, afterStill };
+      jpegWaiting = { data, recv, afterStill, tum };
       return;
     }
     jpegBusy = true;
-    createImageBitmap(new Blob([data], { type: 'image/jpeg' }))
+    (tum ? tumBitmap(data) : jpegBitmap(data))
       .then((bmp) => paint(bmp, recv, afterStill))
       .catch(() => {})
       .finally(() => {
@@ -393,7 +429,7 @@
         jpegBusy = false;
         const next = jpegWaiting;
         jpegWaiting = null;
-        if (next) onJpeg(next.data, next.recv, next.afterStill);
+        if (next) onJpeg(next.data, next.recv, next.afterStill, next.tum);
       });
   }
 
@@ -421,17 +457,19 @@
     intervals.length = 0;
   }
 
-  // İkili mesajın ilk baytı: 1 = JPEG kare, 2 = H.264 kare ([2][anahtar kare mi][veri]).
+  // İkili mesajın ilk baytı: 1 = JPEG kare, 2 = H.264 kare ([2][anahtar kare mi][veri]),
+  // 4 = tüm ekranlar JPEG karesi (ekran başına JPEG, biçim public/ekranlar.js paketle).
   function onFrame(ab) {
     const u8 = new Uint8Array(ab);
-    if (u8[0] > 2) { emit(`binary:${u8[0]}`, u8); return; } // özellik verisi görüntüden bağımsız
-    if (!stream) { if (u8[0] === 1) send({ t: 'ack' }); return; }
+    const jpeg = u8[0] === 1 || u8[0] === 4;
+    if (u8[0] > 2 && !jpeg) { emit(`binary:${u8[0]}`, u8); return; } // özellik verisi görüntüden bağımsız
+    if (!stream) { if (jpeg) send({ t: 'ack' }); return; }
     byteCount += u8.length;
     const recv = performance.now();
-    if (u8[0] === 1) {
+    if (jpeg) {
       const afterStill = stillPending;
       stillPending = false;
-      onJpeg(u8.subarray(1), recv, afterStill);
+      onJpeg(u8.subarray(1), recv, afterStill, u8[0] === 4);
     } else if (u8[0] === 2) {
       decodeH264(u8[1] === 1, u8.subarray(2), recv);
     }
@@ -547,6 +585,7 @@
   $('screenSel').addEventListener('change', (e) => {
     stream.screen = e.target.value;
     send({ t: 'screen', name: e.target.value });
+    emit('ekranlar', { screens: [...screens], screen: stream.screen });
   });
   $('showBtn').addEventListener('click', () => { $('toolbar').hidden = false; $('showBtn').hidden = true; });
   $('kbBtn').addEventListener('click', () => { kbInput.value = ''; kbInput.focus(); });
