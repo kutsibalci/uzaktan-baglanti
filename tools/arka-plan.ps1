@@ -22,6 +22,9 @@ param(
   [string]$VeriKlasoru = ''
 )
 $ErrorActionPreference = 'Stop'
+# Çıktı bir boruya gidiyorsa (başka programdan çağrı) UTF-8 yaz: yoksa OEM kod sayfası (857) Türkçe harfleri bozar.
+# Gerçek konsolda dokunulmaz.
+if ([Console]::IsOutputRedirected) { try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch { } }
 # Bekçi ve node bu değerleri ortamdan devralır.
 if ($PortNo -gt 0) { $env:PORT = [string]$PortNo }
 if ($VeriKlasoru) { $env:REMOTE_DATA_DIR = $VeriKlasoru }
