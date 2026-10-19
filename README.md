@@ -6,6 +6,7 @@ Windows bilgisayarı telefondan, tabletten ya da başka bir bilgisayardan **tara
 - Uzaktan kontrol: fare, klavye (Türkçe karakterler dahil), dokunmatik; farklı ölçeklemeli (ör. %125 + %100) birden çok monitör
 - H.264 görüntü (NVIDIA / AMD / Intel donanım kodlayıcı), desteklenmeyen tarayıcılarda JPEG (hızlı ekran yakalama, ağa göre "Otomatik" kalite)
 - İkinci ekran (Spacedesk tarzı) — sanal monitör sürücüsü ile
+- "Tüm ekranlar": bütün monitörler gerçek dizilimiyle tek görüntüde, fare/dokunuş ekranlar arasında geçer (etikete dokununca tek ekran)
 - Yerel hesaplar: Yönetici / Kontrol / Salt izleme
 - Cihaz hatırlama, yeni cihaz için bilgisayarda onay penceresi, tek seferlik misafir kodu
 - Her yerden erişim: Tailscale (HTTPS)

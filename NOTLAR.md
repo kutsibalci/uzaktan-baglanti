@@ -201,6 +201,27 @@
       **(henüz gerçek cihazda test edilmedi: iPhone'da Sol tık tut + sürükle, şerit ve iki parmak düzeltmeleri; doğrulama kodunun iPhone'da
       görünümü; iPhone'un QR'daki https://<ev-ip>:3443 adresini sertifikayla açması; baslat.bat'ın Windows Terminal'de açıldığı durumda
       konsol korumasının gerçek sunucuda görünmesi — klasik conhost'ta ve bu oturumun Windows Terminal'inde ölçüldü)**
+- [x] "🖥🖥 Tüm ekranlar" görünümü: birden çok ekran varsa seçicide (ana menü ve ⋯ menü). Bütün monitörler gerçek fiziksel
+      dizilimiyle tek görüntüde (sınır kutusu; boşluklar siyah). Hesaplar `public/ekranlar.js` (tarayıcı + sunucu ortak):
+      görüntüdeki nokta içinde olduğu ekrana ve o ekrandaki nx, ny'ye çevrilir (boşluk -> en yakın ekran, kumandanın
+      ekranaSigdir kuralı); `move`/`kalem` mesajı `s` (ekran adı) taşır, sunucu adı doğrular. Tüm girdi yolları (dokunma,
+      touchpad, fare, sürükleme — ekran değişse de düğme basılı kalır, kalem, yakınlaştırma) çekirdekteki `send()` üzerinden geçer.
+      H.264: tek gdigrab bölgesi = sınır kutusu (ffmpeg PerMonitorV2; ölçek doğru). Ölçek: Düşük/Orta/Otomatik toplam piksel
+      ~1280×720 / ~1920×1080 eşdeğeri (kullanıcı dizilimi Orta: 2716×764), Yüksek tam çözünürlük (en fazla 3840 geniş).
+      JPEG: her ekran RemoteHelper'ın ekran başına DXGI çoğaltmasıyla ayrı yakalanır, ikili tür 4'te birlikte gider, tarayıcı
+      birleşik görüntüye çizer (RemoteHelper değişmedi: Akıllı Uygulama Denetimi yeni derlenen exe'yi engelliyor).
+      Her ekranın köşesinde yarı saydam "1"/"2" etiketi; etikete dokununca o ekran tek başına açılır (iki parmak çift dokunuş
+      zaten 1x'e dönüş olduğu için hareket değil etiket). Ekran düzeni 2 sn'de bir yoklanır (yalnızca izleyen varken): değişince
+      izleyenlere yeni liste (`ekranlar` mesajı), H.264 yeni bölgeyle yeniden kurulur, çıkarılan tek ekranı izleyen ana ekrana geçer.
+      Ölçüm (bu dizüstünde, tek monitörde 1700×1080 bölge): gdigrab + NVENC ~30 kare/sn. Daha önce 1920×1080 gdigrab ~23 kare/sn,
+      süre alanla orantılı (960×540 ~48) ölçüldü: iki 1080p ekranda (3840×1080) ~11-15 kare/sn bekleniyor. ddagrab (DXGI) tek
+      çıkışta ~46-50 kare/sn ama çıkış ↔ \\.\DISPLAYn eşlemesini vermiyor (iki ekran da 1920×1080, ayrı GPU'larda olabilir) — seçilmedi.
+      Test: `test/ozellik-tum-ekranlar.js` (birim + sahte dizilimle uçtan uca: `REMOTE_EKRANLAR_SAHTE`, `REMOTE_GIRDI_KURU=1`),
+      `test/ozellik-tum-ekranlar-tarayici.js` (iPhone boyutu, dokunma).
+      **(henüz gerçek cihazda test edilmedi: iPhone'da hiç denenmedi; bu bilgisayarda test sırasında yalnızca BİR monitör bağlıydı —
+      gerçek iki monitörle yakalama (DISPLAY2 karesi, %125/%100 karışık ölçekte gdigrab birleşimi, iki ekranda kare hızı) ölçülmedi,
+      iki ekranlı durum sahte dizilimle sınandı; gerçek fare/kalem girdisi gönderilmedi (mesaj düzeyinde); monitör takıp çıkarma
+      yalnızca sahte dizilim dosyasıyla; negatif konumlu ekran yalnızca birim testinde)**
 
 ## Sıradaki
 1. Yukarıdaki özelliklerin gerçek telefon/tablet/kalemle denenmesi (ikinci ekran dahil)

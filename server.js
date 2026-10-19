@@ -11,6 +11,7 @@ const { VirtualDisplays } = require('./lib/vdd');
 const { clientInfo, isPrivate, tailscaleInfo } = require('./lib/network');
 const { VideoManager, detectEncoders } = require('./lib/video');
 const ext = require('./lib/extensions');
+const Ekranlar = require('./public/ekranlar'); // "Tüm ekranlar" görünümünün hesapları (tarayıcıyla ortak)
 
 const PORT = Number(process.env.PORT) || 3080; // 3000'i birçok geliştirme aracı kullanıyor (Grafana, React...)
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -161,6 +162,9 @@ const QUALITY = { quality: 60, maxWidth: 1600, fps: 20, kbps: 4000, codec: 'jpeg
 const clamp = (v, lo, hi, def) => (Number.isFinite(Number(v)) ? Math.min(hi, Math.max(lo, Number(v))) : def);
 const BUTTONS = new Set(['left', 'right', 'middle']);
 const SCREEN_NAME = /^\\\\\.\\DISPLAY\d+$/;
+const TUM = Ekranlar.TUM; // view.screen bu ise bütün ekranlar tek görüntüde; girdi mesajı hedef ekranı kendisi taşır (m.s)
+// Testler: REMOTE_GIRDI_KURU=1 ise fare/klavye komutları yardımcıya gitmez, gönderene { t: 'girdi-kuru', cmd } olarak döner.
+const GIRDI_KURU = process.env.REMOTE_GIRDI_KURU === '1';
 const VIA_NAMES = { local: 'bu bilgisayar', lan: 'ev ağı', tailscale: 'Tailscale' };
 
 wss.on('connection', (ws, req) => {
@@ -379,7 +383,7 @@ async function handleSession(ws, m) {
       if (ws.streaming && s.view.codec === 'h264') await subscribeVideo(ws);
       return;
     case 'screen':
-      if (typeof m.name === 'string' && SCREEN_NAME.test(m.name)) {
+      if (typeof m.name === 'string' && (SCREEN_NAME.test(m.name) || m.name === TUM)) {
         s.view.screen = m.name;
         ws.needsFrame = true;
         ws.held = null; // önceden yakalanan kare eski ekranın: gönderilmesin (bir an eski ekran görünürdü)
@@ -400,30 +404,37 @@ async function handleSession(ws, m) {
 
   if (!canControl || !ws.streaming) return;
   const screen = s.view.screen;
+  const input = GIRDI_KURU ? (cmd) => sendJson(ws, { t: 'girdi-kuru', cmd }) : (cmd) => helper.send(cmd);
   switch (m.t) {
-    case 'move':
-      helper.send(`move ${screen} ${clamp(m.x, 0, 1, 0).toFixed(5)} ${clamp(m.y, 0, 1, 0).toFixed(5)}`);
+    case 'move': {
+      // Tüm ekranlarda istemci noktayı içinde olduğu ekrana çevirir (public/ekranlar.js noktaEkrana); ad doğrulanır,
+      // bilinen dizilimde yoksa hareket atılır (ekran az önce çıkarılmış olabilir).
+      const sc = screen === TUM ? m.s : screen;
+      if (typeof sc !== 'string' || !SCREEN_NAME.test(sc)) break;
+      if (screen === TUM && duzen.screens.length && !duzen.screens.some((x) => x.name === sc)) break;
+      input(`move ${sc} ${clamp(m.x, 0, 1, 0).toFixed(5)} ${clamp(m.y, 0, 1, 0).toFixed(5)}`);
       break;
+    }
     case 'down':
     case 'up':
       if (BUTTONS.has(m.b)) {
-        helper.send(`${m.t} ${m.b}`);
+        input(`${m.t} ${m.b}`);
         // Basılı düğmeler: bağlantı koparsa / izleme biterse stopStream bırakır (istemci 'up' gönderemeyebilir).
         if (!ws.heldButtons) ws.heldButtons = new Set();
         if (m.t === 'down') ws.heldButtons.add(m.b); else ws.heldButtons.delete(m.b);
       }
       break;
     case 'wheel':
-      helper.send(`wheel ${Math.round(clamp(m.dy, -1200, 1200, 0))} ${Math.round(clamp(m.dx, -1200, 1200, 0))}`);
+      input(`wheel ${Math.round(clamp(m.dy, -1200, 1200, 0))} ${Math.round(clamp(m.dx, -1200, 1200, 0))}`);
       break;
     case 'key': {
       const vk = Math.round(clamp(m.vk, 1, 254, 0));
-      if (vk) helper.send(`key ${vk} ${m.down ? 1 : 0}`);
+      if (vk) input(`key ${vk} ${m.down ? 1 : 0}`);
       break;
     }
     case 'text':
       if (typeof m.s === 'string' && m.s.length && m.s.length <= 1000) {
-        helper.send(`text ${Buffer.from(m.s, 'utf8').toString('base64')}`);
+        input(`text ${Buffer.from(m.s, 'utf8').toString('base64')}`);
       }
       break;
   }
@@ -455,10 +466,13 @@ async function startStream(ws, m) {
     s.view.screen = s.virtualScreen;
     s.view.maxWidth = Math.max(w, h);
     store.log('extend', { user: s.username, ip: ws.ip, size: `${w}x${h}` });
+  } else if (m.screen === TUM && screens.length) {
+    s.view.screen = TUM;
   } else {
     const wanted = screens.find((x) => x.name === m.screen) || screens.find((x) => x.primary) || screens[0];
     s.view.screen = wanted?.name;
   }
+  duzenGuncelle(screens);
 
   // İstemci WebCodecs destekliyorsa (HTTPS/localhost) H.264, yoksa JPEG.
   s.view.codec = Array.isArray(m.codecs) && m.codecs.includes('h264') && video.available ? 'h264' : 'jpeg';
@@ -481,13 +495,74 @@ async function startStream(ws, m) {
 async function subscribeVideo(ws) {
   const v = ws.session.view;
   const { screens } = await helper.info();
-  const sc = screens.find((x) => x.name === v.screen);
+  duzenGuncelle(screens);
+  // Tüm ekranlar: bölge ekranların sınır kutusu (lib/video.js grabRegion, tum).
+  const sc = v.screen === TUM ? screens.length && { ...Ekranlar.birlesim(screens), tum: true } : screens.find((x) => x.name === v.screen);
   if (sc && ws.readyState === 1 && ws.streaming) video.subscribe(ws, sc, v);
+}
+
+// ---------- Ekran düzeni ----------
+// Son bilinen ekran listesi: tüm ekranlar JPEG yakalaması ve girdi doğrulaması bunu kullanır (her karede "info" sorulmaz).
+// İzleyen biri varken düzen 2 sn'de bir yoklanır; değişince (monitör takıldı/çıkarıldı, çözünürlük ya da konum değişti)
+// izleyenlere yeni liste gider ({ t: 'ekranlar', screens, screen }), H.264 akışı yeni bölgeyle yeniden kurulur (bölgesi
+// değişmeyen akış sürer), JPEG'de yeni kare istenir. İzlenen tek ekran çıkarıldıysa ana ekrana geçilir.
+const DUZEN_MS = 2000;
+const duzen = { screens: [], key: '' };
+// yoklama: yalnızca düzen denetimi değişikliği "görür" (anahtarı o ilerletir); diğer çağıranlar yalnızca listeyi tazeler.
+function duzenGuncelle(screens, yoklama = false) {
+  const key = Ekranlar.duzenAnahtari(screens);
+  duzen.screens = screens;
+  if (!duzen.key) { duzen.key = key; return false; }
+  if (!yoklama || key === duzen.key) return false;
+  duzen.key = key;
+  return true;
+}
+
+let duzenYoklaniyor = false;
+async function duzenYokla() {
+  if (duzenYoklaniyor || ![...clients].some((c) => c.streaming)) return;
+  duzenYoklaniyor = true;
+  try {
+    const { screens } = await helper.info();
+    if (!duzenGuncelle(screens, true)) return;
+    console.log(`Ekran düzeni değişti: ${duzen.key}`);
+    const list = describeScreens(screens);
+    for (const c of clients) {
+      if (!c.streaming) continue;
+      const v = c.session.view;
+      if (v.screen !== TUM && !screens.some((x) => x.name === v.screen)) {
+        const ana = screens.find((x) => x.primary) || screens[0];
+        if (ana) v.screen = ana.name;
+      }
+      sendJson(c, { t: 'ekranlar', screens: list, screen: v.screen });
+      c.needsFrame = true;
+      c.held = null;
+      if (v.codec === 'h264') await subscribeVideo(c);
+    }
+    wakeCapture();
+  } catch { /* yardımcı yeniden başlıyor */ } finally {
+    duzenYoklaniyor = false;
+  }
+}
+setInterval(duzenYokla, DUZEN_MS).unref();
+
+// Tüm ekranlar, JPEG: her ekran ayrı yakalanır (RemoteHelper'ın ekran başına masaüstü çoğaltması; tek bölgeyi GDI ile
+// yakalamaktan çok daha hızlı), tek ikili mesajda (tür 4) birlikte gider; tarayıcı birleşik görüntüye çizer, boşluklar siyah.
+async function tumKare(p) {
+  const pc = Ekranlar.parcalar(duzen.screens, p.maxWidth);
+  if (!pc) return Buffer.alloc(0);
+  const list = [], jpegs = [];
+  for (const x of pc.list) {
+    const jpeg = await helper.request(`cap ${p.quality} ${x.w} ${x.name}`);
+    if (jpeg.length) { list.push(x); jpegs.push(jpeg); }
+  }
+  if (!list.length) return Buffer.alloc(0);
+  return Buffer.concat([TUM_HEADER, Ekranlar.paketle(pc.W, pc.H, list, jpegs)]);
 }
 
 function stopStream(ws) {
   if (ws.heldButtons?.size) {
-    for (const b of ws.heldButtons) helper.send(`up ${b}`);
+    if (!GIRDI_KURU) for (const b of ws.heldButtons) helper.send(`up ${b}`);
     ws.heldButtons.clear();
   }
   ws.streaming = false;
@@ -564,7 +639,8 @@ async function handleAdmin(ws, m) {
 // Windows'ta Node zamanlayıcıları ~15.6 ms adımlıdır: ack/ayar gelince döngü zamanlayıcıyı beklemeden uyandırılır.
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const JPEG_HEADER = Buffer.from([1]); // ikili mesajın ilk baytı: 1 = JPEG, 2 = H.264
+const JPEG_HEADER = Buffer.from([1]); // ikili mesajın ilk baytı: 1 = JPEG, 2 = H.264, 4 = tüm ekranlar (ekran başına JPEG)
+const TUM_HEADER = Buffer.from([4]);
 const JPEG_INFLIGHT = 2;      // onaysız yolda olabilecek kare sayısı
 const ACK_TIMEOUT_MS = 3000;  // bu sürede onay gelmezse kare kayıp sayılır
 const EARLY_MS = 4;           // zamanlayıcı adımı yüzünden geç kalmamak için bu kadar erken yakalanabilir
@@ -601,8 +677,9 @@ function jpegParams(c) {
   return { quality: Math.min(q, v.quality), maxWidth: Math.min(w, v.maxWidth) };
 }
 
+// frame: ikili mesajın tamamı (ilk bayt 1 = JPEG ya da 4 = tüm ekranlar).
 function sendJpeg(c, frame, p, t) {
-  c.send(Buffer.concat([JPEG_HEADER, frame]), { binary: true });
+  c.send(frame, { binary: true });
   c.lastFrame = frame;
   c.needsFrame = false;
   c.still = false;
@@ -712,7 +789,10 @@ async function captureLoop() {
     for (const [key, { p, screen, list }] of groups) {
       let frame;
       const t0 = performance.now();
-      try { frame = await helper.request(`cap ${key}`); } catch { await sleep(300); continue; }
+      try {
+        if (screen === TUM) frame = await tumKare(p);
+        else { frame = await helper.request(`cap ${key}`); if (frame.length) frame = Buffer.concat([JPEG_HEADER, frame]); }
+      } catch { await sleep(300); continue; }
       const t = performance.now();
       for (const c of list) {
         const v = c.session.view;

@@ -53,4 +53,11 @@ Telefonda çubukta yalnızca geri, ⌨, Tuşlar, dokunmatik modu, küçük gecik
 - `sertifika.js` — `GET /api/sertifika/*` (oturumsuz ama yalnızca özel ağdan; `/yokla` güven denetimi), yönetimde aç/kapat/yeniden üret/sil. `PORT_HTTPS` (varsayılan 3443; testte `0` = rastgele).
 
 ## İkili mesaj türleri (ilk bayt)
-1 = JPEG kare, 2 = H.264 kare (çekirdek). 3 = ses (Opus). Yeni tür eklerken buraya yazın.
+1 = JPEG kare, 2 = H.264 kare (çekirdek). 3 = ses (Opus). 4 = "Tüm ekranlar" JPEG karesi (çekirdek; ekran başına JPEG, biçim `public/ekranlar.js` paketle).
+
+## Tüm ekranlar (çekirdek + `public/ekranlar.js`, etiketler `public/features/tum-ekranlar.js`)
+- `view.screen === '*'`: bütün ekranlar tek görüntüde. Bu modda `move` ve `kalem` mesajları hedef ekranı `s` alanında taşır
+  (istemcinin `send()`'i çevirir; özellikler `RC.send({ t: 'move', x, y })` ile birleşik görüntüdeki noktayı göndermeye devam eder).
+- Sunucu ekran düzeni değişince izleyenlere `{ t: 'ekranlar', screens, screen }` gönderir; tarayıcıda yerel olay `ekranlar`.
+- Testler: `REMOTE_EKRANLAR_SAHTE` (ekran dizilimi taklidi: JSON ya da dosya yolu), `REMOTE_GIRDI_KURU=1` (çekirdeğin fare/klavye
+  komutları yardımcıya gitmez, `{ t: 'girdi-kuru', cmd }` olarak döner). Yeni tür eklerken buraya yazın.
