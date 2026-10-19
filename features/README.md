@@ -16,7 +16,7 @@ Her özellik iki parçadan oluşur ve çekirdek dosyalara (server.js, public/app
 - `api.onPreAuth(tür, async (ws, m) => {})` — giriş yapmamış bağlantının mesajı (ör. QR eşleştirme); kaba kuvvet kilidi çekirdekte denetlenir. Giriş: `api.auth.finish(ws, { username, role, deviceId, token, deviceName })`, `api.auth.fail(ws, hata, kayıt?)`, `api.auth.forgive(ip)`.
 - `api.onAuth(ws => {})`, `api.onClose(ws => {})`, `api.adminData(async () => ({ <ad>: {...} }))`
 - Çekirdek: `api.helper`, `api.video`, `api.store`, `api.clients`, `api.sendJson(ws, obj)`, `api.broadcast(obj, filtre)`, `api.buildExe(ad, {target})`, `api.dataDir`, `api.PORT`, `api.https` (ev ağı HTTPS dinleyicisi: `ac({ key, cert })`, `kapat()`, `port()` — yalnızca `features/sertifika.js` kullanır), `api.log(...)`, `api.guestCode()`, `api.kick(ws => bool, neden)`, `api.clientInfo(req)`
-- Özellikler arası olaylar: `require('../lib/olaylar')` (ortak EventEmitter; özellikler birbirini doğrudan require etmez). Şimdilik: `dosya-geldi` (dosya.js yayar → tepsi.js tepsi bildirimine çevirir).
+- Özellikler arası olaylar: `require('../lib/olaylar')` (ortak EventEmitter; özellikler birbirini doğrudan require etmez). Şimdilik: `dosya-geldi` (dosya.js yayar → tepsi.js tepsi bildirimine çevirir), `http-bayt` (ws; lib/extensions.js her oturumlu HTTP isteği bitince yayar, baytlar `ws.httpBayt = { alinan, gonderilen }` → veri.js), `veri-tasarruf` (ws; veri.js yayar → ses.js bit hızını seçer).
 - Ortak yardımcılar: `lib/zip.js` (akışla zip yazıcı: deflate/store, data descriptor, ZIP64, UTF-8 adlar; dosya.js zip indirmede kullanır).
 - `ws.session` → `{ username, role, guest, view: { screen, ... } }`, `ws.streaming`, `ws.isLocal`, `ws.via`
 
@@ -24,6 +24,7 @@ Her özellik iki parçadan oluşur ve çekirdek dosyalara (server.js, public/app
 - `RC.send(obj)`, `RC.on(tür, fn)` — sunucu mesajları ve yerel olaylar: `auth`, `viewer:start`, `viewer:stop`, `admin`, `disconnect`, `binary:<n>` (ikili mesaj, ilk bayt n ≥ 3)
 - `RC.setPenActive(fn)` — kalem özelliği, kalem olaylarını kendisi işlediği sürece `fn()` true döner; o zaman çekirdek kalemin ürettiği fare/dokunma olaylarını yok sayar (aksi halde kalem fare gibi çalışır)
 - `RC.setAuthHook(fn)` — sunucu `hello` gönderince `fn(hello)` girişi üstlenip (mesajı kendisi gönderip) true dönebilir; `auth` cevabını çekirdek işler (QR eşleştirme). `RC.deviceName()` — "iPhone · Safari" gibi cihaz adı.
+- `RC.traffic()` — sayfa açıldığından beri WebSocket baytları (birikimli, çerçeve başlığı dahil): `{ goruntu, ses, diger, giden }` (veri sayacı kullanır)
 - `RC.stats()` — son bir saniyenin görüntü ölçümleri `{ fps, kbps, decodeMs, codec, intervalMs, jitterMs, maxIntervalMs, stutters }` (gecikme sayacı kullanır; durağan ekrandan sonraki aralık sayılmaz — sunucu JPEG'de aynı kareyi göndermeyince bir kez `{ t: 'durgun' }` yollar)
 - `RC.state()` (`{ me, stream, screens, connected, vdd }`; vdd: sanal ekran sürücüsü kurulu mu), `RC.canInput()`, `RC.toNorm(x, y)`, `RC.moveNow`, `RC.queueMove`, `RC.click(b)`, `RC.overlay(msg)`
 - `RC.fetch(url, opts)`, `RC.authUrl(url)`
@@ -54,6 +55,7 @@ Telefonda çubukta yalnızca geri, ⌨, Tuşlar, dokunmatik modu, küçük gecik
   tarayıcıdan (`onay-istegi` / `onay-bitti` → yalnızca bu bilgisayardaki yöneticiye; `onay-cevap`). Yardımcı exe başlatan özellikler
   `require('../lib/helper').spawnHelper(ad, exe, args, opts)` kullanır (engelliyse null döner, yeniden denemeyin). Testte `REMOTE_EXE_<AD>`
   (geçersiz exe ile engel taklidi), `REMOTE_RUN_ANAHTARI` (sahte HKCU anahtarı), `REMOTE_BILDIRIM_KURU=1`; test sunucusunda (TEST_PORT) Run ve bildirim kendiliğinden kuru.
+- `veri.js` — veri sayacı: sunucu → `{ t:'veri-http', alinan, gonderilen }` (bu bağlantının HTTP toplamı); istemci → `{ t:'veri-tasarruf', acik }` (kalite "Veri tasarrufu" mu; tüm ses dinleyenleri tasarruftaysa Opus 96 → 32 kbps). Kalite `tasarruf` = `{ quality: 35, maxWidth: 1280, fps: 15, kbps: 500 }` (public/app.js QUALITY).
 - `sertifika.js` — `GET /api/sertifika/*` (oturumsuz ama yalnızca özel ağdan; `/yokla` güven denetimi), yönetimde aç/kapat/yeniden üret/sil. `PORT_HTTPS` (varsayılan 3443; testte `0` = rastgele).
 
 ## İkili mesaj türleri (ilk bayt)

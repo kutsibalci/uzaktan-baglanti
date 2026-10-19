@@ -218,6 +218,21 @@
       **(henüz gerçek kullanımda denenmedi: gerçek oturum açılışında Run değerinden başlama — yalnızca sahte anahtarla sınandı;
       onay kutusunun / uyarının iPhone'da görünümü — yalnızca başsız Edge'de 390x844)**
 
+- [x] Veri kullanımı sayacı + "Veri tasarrufu" kalitesi (mobil veri faturası için). ⏱ panelinde "Veri kullanımı" bölümü (görüntü / ses /
+      dosya / diğer, gelen · giden, anlık ve oturum ortalaması, "bu hızla saatte ≈ X" — hız ve tahmine dosya aktarımları girmez), ⋯ menüde
+      "📶 Veri · 12 MB" satırı (çubuğa bir şey eklenmedi); cihaz başına bugün / bu ay (localStorage), "Oturumu sıfırla" ve "Bugün/ay sıfırla".
+      WebSocket baytları tarayıcıda sayılır (RC.traffic, çerçeve başlığı dahil); HTTP (dosya indirme/yükleme, pano resmi, <a download> dahil)
+      sunucuda soket sayaçlarıyla sayılıp 'veri-http' ile gelir. Dahil değil: TLS/Tailscale ek yükü (~%5-10), sayfanın ilk yüklenmesi
+      (index.html/js/simgeler). Kalite menüsünde "Veri tasarrufu": H.264 en fazla 500 kbps (VBR, cq 30), 15 fps, uzun kenar 1280;
+      JPEG kalite 35 / 15 fps / 1280; ses dinleyenlerin hepsi tasarruftaysa Opus 32 kbps (normal 96; zincir kısa kesintiyle yeniden başlar).
+      Ölçüm (test sunucusu, NVENC): sürekli hareketli sentetik görüntüde (testsrc2, sunucunun aynı ffmpeg argümanları) Orta ≈ 1790 MB/saat,
+      Veri tasarrufu ≈ 222 MB/saat; gerçek (çoğunlukla durağan) ekranda 12 sn'de Orta ≈ 270-295, tasarruf ≈ 30-95 MB/saat. Ses 32 kbps ≈ 14 MB/saat.
+      Mobil veri önerisi: navigator.connection.type === 'cellular' ise ana ekranda bir kerelik şerit (Aç / Hayır, cevap hatırlanır).
+      **iOS Safari ve iOS Chrome'da navigator.connection YOK (WebKit uygulamıyor) — iPhone'da şerit hiç çıkmaz; Veri tasarrufu menüden seçilmeli.**
+      Sayaç doğruluğu başsız Edge'de CDP ağ çerçeveleriyle karşılaştırıldı (WebSocket birebir, HTTP indirme ±%0,1).
+      **(henüz gerçek cihazda test edilmedi: iPhone'da panel/menü görünümü ve sayaçların operatör sayacıyla karşılaştırılması; mobil veride
+      gerçek kullanımda saatlik tüketim; Android Chrome'da 'cellular' şeridi; 32 kbps Opus'un iPhone'da ses kalitesi)**
+
 ## Sıradaki
 1. Yukarıdaki özelliklerin gerçek telefon/tablet/kalemle denenmesi (ikinci ekran dahil)
 2. H.264 için de masaüstü çoğaltma (ffmpeg ddagrab) — JPEG yolunda yapıldı; çıkış ↔ \\.\DISPLAYn eşlemesi DXGI_OUTPUT_DESC.DeviceName ile (`DxgiCapture.Open`)

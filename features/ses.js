@@ -4,6 +4,7 @@
 const fs = require('fs');
 const { spawn } = require('child_process');
 const { spawnHelper, engelli, engeller } = require('../lib/helper');
+const olaylar = require('../lib/olaylar');
 
 let FFMPEG = null;
 try { FFMPEG = require('ffmpeg-static'); } catch { /* paket yok */ }
@@ -13,6 +14,8 @@ const CONFIG = { t: 'ses-config', sampleRate: 48000, channels: 2, codec: 'opus' 
 const SEND_LIMIT = 256 * 1024; // istemcinin kuyruğu bundan büyükse paket atılır (ses için kabul edilebilir)
 const HEADER = Buffer.from([3]);
 const MAX_PACKET = 64 * 1024;          // bozuk akışa karşı paket sınırı
+// Opus bit hızı: dinleyenlerin hepsi Veri tasarrufundaysa (features/veri.js, ws.veriTasarruf) 32 kbps (saatte ~14 MB), yoksa 96 kbps.
+const KBPS = { normal: 96, tasarruf: 32 };
 
 // Ogg akışından paketleri çıkarır. Sayfa sınırında bölünen (255'lik segmentlerle devam eden) paketler birleştirilir.
 class OggReader {
@@ -90,17 +93,18 @@ module.exports.init = (api) => {
       subs.clear();
       return;
     }
-    const c = { stopped: false, headers: 0, packets: 0, startedAt: Date.now() };
+    const kbps = wantedKbps();
+    const c = { stopped: false, headers: 0, packets: 0, startedAt: Date.now(), kbps };
     chain = c;
     c.ses = ses;
     c.ff = spawn(FFMPEG, [
       '-hide_banner', '-loglevel', 'error',
       '-f', 's16le', '-ar', '48000', '-ac', '2', '-i', '-',
-      '-c:a', 'libopus', '-b:a', '96k', '-application', 'lowdelay', '-frame_duration', '20',
+      '-c:a', 'libopus', '-b:a', `${kbps}k`, '-application', 'lowdelay', '-frame_duration', '20',
       '-flush_packets', '1', '-page_duration', '20000', // her paket hemen kendi sayfasında çıksın (varsayılan 1 sn bekler)
       '-f', 'ogg', '-',
     ], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
-    api.log(`başladı (Ses.exe pid ${c.ses.pid}, ffmpeg pid ${c.ff.pid})`);
+    api.log(`başladı (${kbps} kbps, Ses.exe pid ${c.ses.pid}, ffmpeg pid ${c.ff.pid})`);
 
     c.ses.stdout.pipe(c.ff.stdin);
     c.ff.stdin.on('error', () => {}); // ffmpeg kapanınca EPIPE
@@ -160,9 +164,16 @@ module.exports.init = (api) => {
     api.log(`durdu (${c.packets} paket)`);
   }
 
+  const wantedKbps = () => ([...subs].every((ws) => ws.veriTasarruf) ? KBPS.tasarruf : KBPS.normal);
+  // Bit hızı değişmesi gerekiyorsa zincir yeniden başlatılır (kısa bir kesinti olur).
+  function retune() {
+    if (chain && subs.size && chain.kbps !== wantedKbps()) { stop(); start(); }
+  }
+  olaylar.on('veri-tasarruf', (ws) => { if (subs.has(ws)) retune(); });
+
   function unsubscribe(ws) {
     if (!subs.delete(ws)) return;
-    if (!subs.size) { restarts = 0; stop(); }
+    if (!subs.size) { restarts = 0; stop(); } else retune();
   }
 
   api.on('ses', async (ws, m) => {
@@ -170,6 +181,7 @@ module.exports.init = (api) => {
       if (!available()) { api.sendJson(ws, { t: 'ses-durum', acik: false, msg: `Ses aktarılamıyor: ${reason()}` }); return; }
       subs.add(ws);
       api.sendJson(ws, CONFIG);
+      retune();
       start();
     } else {
       unsubscribe(ws);
@@ -188,6 +200,7 @@ module.exports.init = (api) => {
       dinleyen: subs.size,
       calisiyor: !!chain,
       pid: chain ? [chain.ses.pid, chain.ff.pid] : [],
+      kbps: chain ? chain.kbps : null,
     },
   }));
 };
