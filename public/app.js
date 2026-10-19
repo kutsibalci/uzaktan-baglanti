@@ -9,6 +9,8 @@
   // auto: JPEG'de sunucu kaliteyi ve genişliği ağa göre seçer (quality/maxWidth tavandır); H.264'te "Orta" ile aynıdır.
   const QUALITY = {
     auto: { quality: 70, maxWidth: 1920, fps: 30, kbps: 4000, auto: true },
+    // Veri tasarrufu (mobil veri): H.264 en fazla 500 kbps (sürekli hareketli ekranda bile saatte ≤ ~220 MB), 15 fps, uzun kenar 1280.
+    tasarruf: { quality: 35, maxWidth: 1280, fps: 15, kbps: 500 },
     low: { quality: 40, maxWidth: 1280, fps: 20, kbps: 1500 },
     mid: { quality: 60, maxWidth: 1920, fps: 30, kbps: 4000 },
     high: { quality: 80, maxWidth: 2560, fps: 30, kbps: 8000 },
@@ -26,6 +28,15 @@
   let frameCount = 0;
   // Gecikme sayacı için son bir saniyenin ölçümleri (RC.stats() ile okunur).
   let byteCount = 0, decodeSum = 0, decodeN = 0;
+  // Veri sayacı (RC.traffic): sayfa açıldığından beri WebSocket'ten alınan/gönderilen baytlar (çerçeve başlığı dahil, TLS hariç).
+  const traffic = { goruntu: 0, ses: 0, diger: 0, giden: 0 };
+  const utf8 = new TextEncoder();
+  const wsFrame = (n, out) => n + (n < 126 ? 2 : n < 65536 ? 4 : 10) + (out ? 4 : 0); // istemci→sunucu çerçeveleri maskeli (+4)
+  function countIn(d) {
+    if (typeof d === 'string') { traffic.diger += wsFrame(utf8.encode(d).length); return; }
+    const t = d.byteLength ? new Uint8Array(d, 0, 1)[0] : 0;
+    traffic[t === 1 || t === 2 ? 'goruntu' : t === 3 ? 'ses' : 'diger'] += wsFrame(d.byteLength);
+  }
   let lastStats = { fps: 0, kbps: 0, decodeMs: null, codec: '' };
   let lastDrawAt = 0;
   const intervals = [];        // son birkaç saniyenin kare aralıkları { t: çizim anı, ms } (titreşim/takılma için)
@@ -100,7 +111,7 @@
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     ws = new WebSocket(`${proto}://${location.host}`);
     ws.binaryType = 'arraybuffer';
-    ws.onmessage = (e) => (typeof e.data === 'string' ? onJson(JSON.parse(e.data)) : onFrame(e.data));
+    ws.onmessage = (e) => { countIn(e.data); return typeof e.data === 'string' ? onJson(JSON.parse(e.data)) : onFrame(e.data); };
     ws.onclose = (e) => {
       setStatus(false);
       releaseAll();
@@ -116,7 +127,7 @@
   function send(obj) {
     // Görüntüleme biterken basılı tuş/düğme kalmasın: sunucu 'stop'tan sonra girdi kabul etmez, önce bırakılır.
     if (obj.t === 'stop') releaseAll();
-    if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
+    if (ws && ws.readyState === 1) { const s = JSON.stringify(obj); ws.send(s); traffic.giden += wsFrame(utf8.encode(s).length, true); }
   }
 
   function onJson(m) {
@@ -1586,6 +1597,8 @@
     //   intervalMs (kare aralığı ort.), jitterMs (aralığın standart sapması), maxIntervalMs, stutters (takılma sayısı) }
     // Kare yokken aralık alanları null. Durağan ekrandan (sunucu kare göndermedi) sonraki aralık sayılmaz.
     stats: () => ({ ...lastStats }),
+    // Sayfa açıldığından beri WebSocket baytları (birikimli): { goruntu (JPEG/H.264), ses, diger (JSON ve diğer ikili), giden }
+    traffic: () => ({ ...traffic }),
     // Kalem özelliği, kalem olaylarını kendisi işlediği sürece true dönen bir fonksiyon kaydeder.
     setPenActive(fn) { penActive = typeof fn === 'function' ? fn : () => false; },
     // Girişi üstlenmek isteyen özellik (QR eşleştirme): fn(hello) giriş mesajını kendisi gönderip true döner.
