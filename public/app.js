@@ -35,7 +35,7 @@
   function countIn(d) {
     if (typeof d === 'string') { traffic.diger += wsFrame(utf8.encode(d).length); return; }
     const t = d.byteLength ? new Uint8Array(d, 0, 1)[0] : 0;
-    traffic[t === 1 || t === 2 ? 'goruntu' : t === 3 ? 'ses' : 'diger'] += wsFrame(d.byteLength);
+    traffic[t === 1 || t === 2 || t === 4 ? 'goruntu' : t === 3 ? 'ses' : 'diger'] += wsFrame(d.byteLength);
   }
   let lastStats = { fps: 0, kbps: 0, decodeMs: null, codec: '' };
   let lastDrawAt = 0;

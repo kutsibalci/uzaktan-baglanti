@@ -33,10 +33,11 @@ const MAX_IZLEYICI = 20;
 const GECICI = /\.(crdownload|part|partial|download|tmp|opdownload)$/i;
 
 function koruma(ad, biz) {
-  if (biz) return 'Uzaktan Bağlantı\'nın kendi süreci (kapatılırsa bağlantı kopar).';
+  // Gezgini / sistem süreci önce: sunucu Gezgini'nden (çift tıkla) başlatılınca explorer atalar arasında "biz" de sayılır.
   const k = String(ad || '').toLowerCase().replace(/\.exe$/, '');
   if (k === 'explorer') return 'Windows Gezgini: görev çubuğu ve masaüstü. Kapatılırsa ekran boş kalır; buradan kapatılamaz.';
   if (KRITIK.has(k)) return 'Windows sistem süreci: kapatılırsa bilgisayar çöker ya da oturum kapanır.';
+  if (biz) return 'Uzaktan Bağlantı\'nın kendi süreci (kapatılırsa bağlantı kopar).';
   return null;
 }
 
