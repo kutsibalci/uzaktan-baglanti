@@ -4,7 +4,8 @@
 #   -Islem baslat  zaten çalışıyorsa ikinci kopya açmaz (yalnızca tarayıcıyı açar); değilse gizli bekçiyi başlatır,
 #                  sunucu cevap verince tarayıcıda http://localhost:<port> açar (arka-plan-baslat.bat)
 #   -Islem bekci   (iç kullanım) node'u gizli çalıştırır, çıktısını günlüğe ekler, beklenmedik kapanışta artan beklemeyle
-#                  (2, 5, 15, 60 sn) yeniden başlatır; 10 dakikada 5 çökmede durur ve günlüğe yazar
+#                  (2, 5, 15, 60 sn) yeniden başlatır; 10 dakikada 5 çökmede durur ve günlüğe yazar. Veri klasörü başına tek
+#                  bekçi (adlı Mutex): aynı anda iki 'baslat'ta kilidi alamayan bekçi hemen çıkar
 #   -Islem durdur  yalnızca PID dosyasındaki KENDİ bekçi + node süreçlerini ağacıyla durdurur, ADLA öldürmez
 #                  (önce data\arka-plan.dur işareti: bekçi sunucuyu düzgün kapatır; olmazsa PID ile) (arka-plan-durdur.bat)
 #   -Islem durum   çalışıyorsa 0, değilse 1 döner (JSON yazar)
@@ -39,6 +40,9 @@ $LogMax = 5MB
 $Betik = if ($env:REMOTE_ARKA_BETIK) { $env:REMOTE_ARKA_BETIK } else { 'server.js' }
 $Utf8 = New-Object System.Text.UTF8Encoding($false)
 [void][IO.Directory]::CreateDirectory($Veri)
+# Bekçi kilidinin adı (oturuma özel, veri klasörünün tam yolundan)
+$KilitAdi = 'Local\UzaktanBaglanti-arka-plan-' + (-join ([Security.Cryptography.SHA256]::Create().ComputeHash(
+  $Utf8.GetBytes([IO.Path]::GetFullPath($Veri).TrimEnd('\').ToLowerInvariant()))[0..11] | ForEach-Object { $_.ToString('x2') }))
 
 # ---------- Günlük ----------
 $script:logBoyut = -1
@@ -144,7 +148,12 @@ function Baslat {
       TarayiciAc
       return 0
     }
-    if ($b.HasExited) { break }
+    if ($b.HasExited) {
+      # Aynı anda başlatılan öbür bekçi kilidi aldıysa bizimki hemen çıkar: onun sunucusunu beklemeye devam et
+      # (kilit, onu tutan bekçi yaşadıkça vardır; PID dosyası o an henüz yazılmamış olabilir).
+      $m = $null
+      if ([Threading.Mutex]::TryOpenExisting($KilitAdi, [ref]$m)) { $m.Dispose() } else { break }
+    }
     Start-Sleep -Milliseconds 500
   }
   Write-Host "Sunucu zamanında cevap vermedi; ayrıntı için günlük: $Log"
@@ -202,8 +211,21 @@ function NodeDurdur($p, $belirtec) {
 }
 
 function Bekci {
-  $k = PidOku
-  if ($k -and $k.bekci -ne $PID -and (BekciMi $k.bekci)) { Yaz "başka bir bekçi zaten çalışıyor (pid $($k.bekci))"; return 0 }
+  # Veri klasörü başına tek bekçi: adlı Mutex atomiktir (PID dosyasını okuyup yazmak iki eşzamanlı başlatmada yarışıyordu).
+  # Süreç kapanınca Windows kilidi kendisi bırakır.
+  $kilit = New-Object Threading.Mutex($false, $KilitAdi)
+  $sahip = $false
+  try { $sahip = $kilit.WaitOne(0) } catch [Threading.AbandonedMutexException] { $sahip = $true }
+  if (-not $sahip) {
+    $k = PidOku
+    $ne = if ($k) { " (pid $($k.bekci))" } else { '' }
+    Yaz "başka bir bekçi zaten çalışıyor$ne; bu kopya çıkıyor"
+    return 0
+  }
+  try { return (BekciCalis) } finally { try { $kilit.ReleaseMutex() } catch { } }
+}
+
+function BekciCalis {
   PidYaz $PID $null
   $bekleme = @(2, 5, 15, 60)
   if ($env:REMOTE_ARKA_BEKLEME -match '^\d+(\.\d+)?(,\d+(\.\d+)?)*$') { $bekleme = @($env:REMOTE_ARKA_BEKLEME.Split(',') | ForEach-Object { [double]$_ }) }

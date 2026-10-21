@@ -2,7 +2,8 @@
 // Tepsisiz arka plan başlatma (tools\arka-plan.ps1, arka-plan-baslat.bat, arka-plan-durdur.bat):
 //   başlat → port cevap veriyor → ikinci başlat yeni kopya açmıyor → node'u (bu testin başlattığı, PID dosyasındaki) öldür →
 //   bekçi yeniden başlatıyor → durdur → hepsi gitti, PID dosyası temiz. Ayrıca: günlük döndürme (5 MB), başka yolla çalışan
-//   sunucuya (tepsi / konsol) dokunulmaması, art arda çökmede bekçinin durması.
+//   sunucuya (tepsi / konsol) dokunulmaması, art arda çökmede bekçinin durması, aynı anda iki başlatta tek bekçi (adlı Mutex;
+//   eskiden artan bekçi PID dosyasını silip çalışan sunucuyu durdurulamaz bırakıyordu).
 // Veri klasörü geçicidir (REMOTE_DATA_DIR): PID / günlük / dur dosyaları kullanıcının data\ klasörüne yazılmaz.
 // Yalnızca bu testin PID'leri ağacıyla sonlandırılır; tarayıcı açılmaz (REMOTE_ARKA_TARAYICI=0).
 const { spawn, spawnSync } = require('child_process');
@@ -28,12 +29,24 @@ const PID = path.join(veri, 'arka-plan.pid');
 const DUR = path.join(veri, 'arka-plan.dur');
 const LOG = path.join(veri, 'sunucu.log');
 const ENV = { ...process.env, PORT, REMOTE_DATA_DIR: veri, REMOTE_ARKA_TARAYICI: '0', REMOTE_ARKA_BEKLEME: '1,1,1,1' };
-const izlenen = new Set(); // temizlikte kesin kapatılacak PID'ler (yalnızca bizimkiler)
+const izlenen = new Set(); // bu testin bekçi / node PID'leri (temizlikte yalnızca hâlâ bizimse kapatılır)
+const T0 = Date.now();
+let konsol = null; // 5. bölümün konsol sunucusu (ChildProcess)
 
 function ps(islem, ek = {}) {
   const r = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', PS1, '-Islem', islem],
     { env: { ...ENV, ...ek }, encoding: 'utf8', timeout: 90000 });
   return { kod: r.status, out: `${r.stdout || ''}${r.stderr || ''}` };
+}
+function psAsync(islem) {
+  return new Promise((resolve) => {
+    const c = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', PS1, '-Islem', islem],
+      { env: ENV, windowsHide: true });
+    let out = '';
+    c.stdout.on('data', (b) => { out += b; });
+    c.stderr.on('data', (b) => { out += b; });
+    c.on('close', (kod) => resolve({ kod, out }));
+  });
 }
 function bat(ad) {
   const r = spawnSync('cmd.exe', ['/d', '/c', path.join(ROOT, ad)], { env: ENV, encoding: 'utf8', timeout: 90000, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -55,6 +68,19 @@ async function bekle(kosul, ms) {
   const son = Date.now() + ms;
   while (Date.now() < son) { if (await kosul()) return true; await sleep(300); }
   return false;
+}
+// Bu testin hâlâ çalışan süreçleri. PID'ler yeniden kullanılabildiği için yalnızca PID'e bakılmaz: test başladıktan sonra
+// oluşmuş olmalı ve ya komut satırında bu klasörün arka-plan.ps1'i + '-Islem bekci' olan bekçi, ya da izlenen bir bekçinin
+// node çocuğu (bekçisi ölmüş olsa da) olmalı. { bekci: [...], node: [...] }
+function bizimSurecler() {
+  const ust = [...izlenen].filter(Boolean).join(',') || '0';
+  const komut = `$t = [DateTimeOffset]::FromUnixTimeMilliseconds(${T0}).LocalDateTime; $u = @(${ust}); `
+    + `@(Get-CimInstance Win32_Process | Where-Object { $_.CreationDate -ge $t } | ForEach-Object { `
+    + `if ($_.CommandLine -and $_.CommandLine.Contains('${PS1.replace(/'/g, "''")}') -and $_.CommandLine -match '-Islem\\s+bekci') { "b$($_.ProcessId)" } `
+    + `elseif ($_.Name -eq 'node.exe' -and $u -contains [int]$_.ParentProcessId) { "n$($_.ProcessId)" } }) -join ','`;
+  const r = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', komut], { encoding: 'utf8' });
+  const l = (r.stdout || '').trim().split(',').filter(Boolean);
+  return { bekci: l.filter((x) => x[0] === 'b').map((x) => Number(x.slice(1))), node: l.filter((x) => x[0] === 'n').map((x) => Number(x.slice(1))) };
 }
 // Bekçinin node çocukları (komut satırı denetimi yok; yalnızca üst süreç PID'i)
 function cocuklar(pid) {
@@ -111,8 +137,7 @@ function cocuklar(pid) {
     check('ikinci durdur: çalışan yok (çıkış 0)', d2.kod === 0 && /çalışan sunucu yok/.test(d2.out), d2.out.trim());
 
     // ---------- 5. Başka yolla çalışan sunucu (tepsi / konsol): dokunulmaz ----------
-    const konsol = spawn(process.execPath, ['server.js'], { cwd: ROOT, env: { ...ENV, REMOTE_DATA_DIR: path.join(tmp, 'konsol') }, stdio: 'ignore', windowsHide: true });
-    izlenen.add(konsol.pid);
+    konsol = spawn(process.execPath, ['server.js'], { cwd: ROOT, env: { ...ENV, REMOTE_DATA_DIR: path.join(tmp, 'konsol') }, stdio: 'ignore', windowsHide: true });
     check('konsol sunucusu açıldı', await bekle(cevap, 40000));
     const b5 = ps('baslat');
     check('başlat: başka sunucu çalışıyor, yeni kopya açılmadı', b5.kod === 0 && /yeni kopya açılmadı/.test(b5.out) && !fs.existsSync(PID), b5.out.trim());
@@ -130,13 +155,44 @@ function cocuklar(pid) {
     check('5 çökmeden sonra bekçi durdu ve günlüğe yazdı', durdu);
     await bekle(async () => !fs.existsSync(PID), 5000);
     check('bekçi durunca PID dosyası silindi', !fs.existsSync(PID));
+
+    // ---------- 7. Aynı anda iki başlat (çift tık / Run + elle): tek bekçi, durdurulabilir ----------
+    // İkisi de PID dosyasını boş görüp birer bekçi açar; kilidi (adlı Mutex) alamayan bekçi hemen çıkmalı. Eskiden o da sunucu
+    // açıyor (EADDRINUSE ile çöküyor), çalışan sunucuyu görünce durup PID dosyasını siliyordu: 'durdur' artık durduramıyordu.
+    const t7 = log().length;
+    const [c1, c2] = await Promise.all([psAsync('baslat'), psAsync('baslat')]);
+    check('aynı anda iki başlat: ikisi de başarılı', c1.kod === 0 && c2.kod === 0, `${c1.out.trim()} | ${c2.out.trim()}`);
+    for (const m of log().slice(t7).matchAll(/bekçi başlatıldı \(pid (\d+)/g)) izlenen.add(Number(m[1]));
+    await sleep(2500); // artan bekçi (varsa) ikinci sunucuyu açıp çöksün
+    let k7 = pidOku();
+    if (k7) { izlenen.add(k7.bekci); izlenen.add(k7.node); }
+    let l7 = log().slice(t7);
+    check('PID dosyası duruyor: bekçi ve node canlı, port cevap veriyor', !!k7 && canli(k7.bekci) && canli(k7.node) && (await cevap()), JSON.stringify(k7));
+    const s7 = bizimSurecler();
+    check('tek bekçi çalışıyor (PID dosyasındaki)', s7.bekci.length === 1 && s7.bekci[0] === k7?.bekci, JSON.stringify(s7));
+    check('ikinci sunucu açılmadı (çökme yok)', (l7.match(/\] sunucu başlatıldı/g) || []).length === 1 && !/beklenmedik şekilde kapandı/.test(l7), l7.trim().slice(-600));
+    if ((l7.match(/bekçi başlatıldı/g) || []).length > 1) check('yarışan ikinci bekçi kilidi alamayıp çıktı', /bu kopya çıkıyor/.test(l7));
+    else console.log('     (iki başlat bu sefer yarışmadı: ikincisi PID dosyasını gördü)');
+    // Yarışı her seferinde garanti etmek için: bekçi çalışırken doğrudan ikinci bekçi
+    const b7 = ps('bekci');
+    l7 = log().slice(t7);
+    const k7b = pidOku();
+    check('doğrudan ikinci bekçi: kilit alınamadı, hemen çıktı, PID dosyasına dokunmadı',
+      b7.kod === 0 && /bu kopya çıkıyor/.test(l7) && k7b?.bekci === k7?.bekci && k7b?.node === k7?.node && bizimSurecler().bekci.length === 1, JSON.stringify(k7b));
+    const d7 = ps('durdur');
+    check('durdur: aynı anda başlatılan sunucu durduruldu', d7.kod === 0 && /durduruldu/.test(d7.out), d7.out.trim());
+    await sleep(500);
+    check('port artık cevap vermiyor, bekçi kalmadı', !(await cevap()) && !bizimSurecler().bekci.length);
   } catch (e) {
     check(`beklenmeyen hata: ${e.stack}`, false);
   } finally {
-    // Temizlik: yalnızca bu testin süreçleri
+    // Temizlik: yalnızca bu testin (hâlâ çalışan) süreçleri
     const k = pidOku();
     if (k) { izlenen.add(k.bekci); izlenen.add(k.node); }
-    for (const pid of izlenen) if (pid && canli(pid)) killTree(pid);
+    for (const m of log().matchAll(/bekçi başlatıldı \(pid (\d+)/g)) izlenen.add(Number(m[1])); // PID dosyasında olmayan artan bekçi
+    const s = bizimSurecler();
+    for (const pid of [...s.bekci, ...s.node]) killTree(pid);
+    if (konsol && konsol.exitCode === null && konsol.signalCode === null) killTree(konsol.pid);
     await sleep(500);
     if (process.exitCode) console.log(`--- günlük (son) ---\n${log().slice(-2500)}`);
     fs.rmSync(tmp, { recursive: true, force: true });
