@@ -266,14 +266,18 @@ async function uctanUca() {
     await tek2.bekle(() => sonJson(tek2, 'started'));
     tek2.send({ t: 'settings', quality: 40, maxWidth: 1280, fps: 20, kbps: 1500 });
     await sleep(500);
+    // Kareler düzen yazılmadan ÖNCE temizlenir: yeni birleşimin ilk karesi 'ekranlar' mesajlarını beklerken gelebilir, durağan
+    // masaüstünde de ondan sonra aynı kare bir daha gönderilmez. Eski düzenin geç gelen kareleri (2 parça) aşağıda atlanır.
+    j.bin.length = 0;
     fs.writeFileSync(duzenDosya, JSON.stringify([iki[0]]));
     const yeni = await j.bekle(() => sonJson(j, 'ekranlar'), 6000);
     check('düzen değişti: tüm ekranlar istemcisine yeni liste', yeni && yeni.screens.length === 1 && yeni.screen === '*', JSON.stringify(yeni && { n: yeni.screens.length, screen: yeni.screen }));
     const yeniTek = await tek2.bekle(() => sonJson(tek2, 'ekranlar'), 6000);
     check('düzen değişti: çıkarılan ekranı izleyen ana ekrana geçti', yeniTek?.screen === D(1), JSON.stringify(yeniTek?.screen));
-    j.bin.length = 0;
-    const k2 = await j.bekle(() => j.bin.find((d) => d[0] === 4));
-    const pk2 = k2 && E.coz(new Uint8Array(k2.buffer, k2.byteOffset + 1, k2.length - 1));
+    const coz4 = (d) => E.coz(new Uint8Array(d.buffer, d.byteOffset + 1, d.length - 1));
+    const k2 = await j.bekle(() => j.bin.find((d) => d[0] === 4 && coz4(d).parts.length === 1));
+    const son4 = [...j.bin].reverse().find((d) => d[0] === 4);
+    const pk2 = (k2 || son4) && coz4(k2 || son4);
     check('düzen değişti: JPEG karesi yeni birleşimde (tek parça, 1000:1080)', pk2 && pk2.parts.length === 1 && Math.abs(pk2.W / pk2.H - 1000 / 1080) < 0.01, pk2 ? `${pk2.W}×${pk2.H}` : 'kare yok');
     if (hs?.codec === 'h264') {
       const vc3 = await h.bekle(() => h.json.find((m) => m.t === 'vconfig'), 15000);
