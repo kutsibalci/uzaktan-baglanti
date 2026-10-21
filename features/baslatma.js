@@ -197,11 +197,12 @@ module.exports.init = (api) => {
   const sonKisi = new Map();    // kişi anahtarı -> zaman
   let dakika = { bas: 0, n: 0 };
 
-  // zorla: tepsi çalışsa da göster (onay penceresi açılamadığında)
+  // zorla: tepsi çalışsa da ve aynı türden bildirim az önce gösterilmiş olsa da göster (onay penceresi açılamadığında;
+  // dakika sınırı yine geçerli)
   function bildir(tur, baslik, metin, { zorla = false } = {}) {
     if (tepsiVar && !zorla) return false;
     const simdi = Date.now();
-    if (simdi - (sonTur.get(tur) || 0) < BILDIRIM_ARALIK) return false;
+    if (!zorla && simdi - (sonTur.get(tur) || 0) < BILDIRIM_ARALIK) return false;
     if (simdi - dakika.bas > 60000) dakika = { bas: simdi, n: 0 };
     if (dakika.n >= BILDIRIM_DAKIKA) return false;
     dakika.n++;
@@ -235,12 +236,19 @@ module.exports.init = (api) => {
   // ---------- 4. Yeni cihaz onayı tarayıcıdan ----------
   const onayMesaji = (o) => ({ t: 'onay-istegi', id: o.id, baslik: o.baslik, mesaj: o.mesaj, bitis: o.bitis, pencere: o.pencere });
 
-  onayOlay.on('istek', (o) => {
-    for (const ws of yerelYoneticiler()) api.sendJson(ws, onayMesaji(o));
+  function onayBildir(o) {
     const ek = o.pencere ? 'Bilgisayardaki pencereden' : 'Onay penceresi açılamadı: bu bilgisayarda tarayıcıda Uzaktan Bağlantı ana menüsünden';
     bildir('onay', 'Uzaktan Bağlantı: yeni cihaz onay bekliyor', `${ek} izin verin ya da reddedin (${Math.round((o.bitis - Date.now()) / 1000)} sn).`, { zorla: !o.pencere });
+  }
+  onayOlay.on('istek', (o) => {
+    for (const ws of yerelYoneticiler()) api.sendJson(ws, onayMesaji(o));
+    onayBildir(o);
   });
-  onayOlay.on('degisti', (o) => { for (const ws of yerelYoneticiler()) api.sendJson(ws, onayMesaji(o)); });
+  onayOlay.on('degisti', (o) => {
+    for (const ws of yerelYoneticiler()) api.sendJson(ws, onayMesaji(o));
+    // Pencere açıldıktan sonra kapandı (çökme, ilke kodu): istek kimseye görünmeden süre dolmasın
+    if (!o.pencere) onayBildir(o);
+  });
   onayOlay.on('bitti', (b) => { for (const ws of yerelYoneticiler()) api.sendJson(ws, { t: 'onay-bitti', ...b }); });
 
   api.on('onay-cevap', async (ws, m) => {
