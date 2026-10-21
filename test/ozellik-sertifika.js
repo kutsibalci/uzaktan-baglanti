@@ -171,6 +171,11 @@ $els = @($ch.ChainElements | % { @{ t = $_.Certificate.Thumbprint; s = @($_.Chai
   let d = await json(`http://localhost:${PORT}/api/sertifika/durum`);
   check('durum: HTTPS açık (ilk açılışta kendiliğinden), port verildi', d.acik === true && d.port > 0, JSON.stringify(d));
   check('durum: önerilen adres sayfanın adıyla (localhost)', d.adres === `https://localhost:${d.port}`, d.adres);
+  // Sertifikada olmayan adla açılan sayfa (ör. tailscale serve'ün *.ts.net adı): checkIP ada istisna atıyordu ('Invalid name', 500)
+  const yabanci = await istek(`http://localhost:${PORT}/api/sertifika/durum`, { headers: { Host: `bilgisayar.ornek.ts.net:${PORT}` } });
+  const yd = yabanci.status === 200 ? JSON.parse(yabanci.body) : {};
+  check('durum: sertifikada olmayan adla (Host *.ts.net) 200, önerilen adres ev ağı IP\'si ya da localhost',
+    yabanci.status === 200 && /^https:\/\/((\d+\.){3}\d+|localhost):\d+$/.test(yd.adres || ''), `${yabanci.status} ${yabanci.body.toString().slice(0, 120)}`);
   const HP = d.port;
   const cer = await istek(`http://localhost:${PORT}/api/sertifika/ca.cer`);
   check('ca.cer oturumsuz indirilir (DER, application/x-x509-ca-cert)', cer.status === 200 && cer.headers['content-type'] === 'application/x-x509-ca-cert');

@@ -10,10 +10,15 @@
 //   GET /api/sertifika/yokla            -> { ok } — HTTP sayfası bunu HTTPS adresinden ister: başarılıysa cihaz sertifikaya güveniyor
 // WebSocket (yönetici):
 //   { t: 'sertifika', op: 'ac' | 'kapat' | 'yeniden' | 'sil' }  -> { t: 'sertifika-durum', ...ayrıntı, ok?, error? }
+const net = require('net');
 const path = require('path');
 const sertifika = require('../lib/sertifika');
 
 const YOKLAMA_MS = 60 * 1000; // IP adresi / süre denetimi
+
+// Sertifika bu adı ya da IP'yi kapsıyor mu. Node 24'te checkIP IP olmayan metinde istisna atar ('Invalid name'): ad için
+// yalnızca checkHost, IP için yalnızca checkIP.
+const kapsar = (s, h) => !!h && !!(net.isIP(h) ? s.checkIP(h) : s.checkHost(h));
 
 module.exports.init = (api) => {
   const dir = path.join(api.dataDir, 'sertifika');
@@ -47,9 +52,8 @@ module.exports.init = (api) => {
     if (!port || !son) return null;
     const host = String(req?.headers.host || '').replace(/:\d+$/, '').replace(/^\[|\]$/g, '').toLowerCase();
     const s = son.sunucu;
-    const kapsar = (h) => h && (s.checkHost(h) || s.checkIP(h));
     const ipler = (s.subjectAltName || '').split(', ').filter((x) => x.startsWith('IP Address:')).map((x) => x.slice(11));
-    const h = kapsar(host) ? host : ipler.find((x) => x.startsWith('192.168.')) || ipler.find((x) => x !== '127.0.0.1') || 'localhost';
+    const h = kapsar(s, host) ? host : ipler.find((x) => x.startsWith('192.168.')) || ipler.find((x) => x !== '127.0.0.1') || 'localhost';
     return `https://${h}:${port}`;
   }
 
@@ -134,7 +138,7 @@ module.exports.init = (api) => {
       try {
         const o = new URL(origin);
         const s = son?.sunucu;
-        if (o.protocol === 'http:' && Number(o.port || 80) === api.PORT && s && (s.checkHost(o.hostname) || s.checkIP(o.hostname))) {
+        if (o.protocol === 'http:' && Number(o.port || 80) === api.PORT && s && kapsar(s, o.hostname)) {
           izin = { 'Access-Control-Allow-Origin': origin, Vary: 'Origin' };
         }
       } catch { /* origin yok */ }
