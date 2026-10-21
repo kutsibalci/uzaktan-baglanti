@@ -29,7 +29,7 @@ Kullanıcı gündelik Türkçe yazar; cevaplar Türkçe. Kişisel kullanım + CV
 - Bazı dosyalar CRLF: düzenlerken satır sonunu koru. PowerShell çıktısını okurken `[Console]::OutputEncoding = [Text.Encoding]::UTF8` (klasör adında "ğ" var).
 - İki monitör, farklı ölçek: DISPLAY1 1920×1080 %125, DISPLAY2 1920×1080 %100 (konum 1920,0). RemoteHelper Per-Monitor v2 DPI farkında; farkında olmayan süreç mantıksal/yanlış ölçekli piksel görür.
 - Docker Desktop açılışta başlıyor ve 3000'i (watch-party-grafana) alıyor — bu yüzden varsayılan port 3080.
-- Hedef istemci öncelikle **iPhone** (iOS 26; Safari ve iOS Chrome — ikisi de WebKit): HTTP'de WebCodecs/Clipboard API/service worker yok → H.264 ve ses yalnızca HTTPS'te (Tailscale: `https://desktop-abc1234.tailnet123.ts.net`, `tailscale serve --bg 3080`). iPhone'da Fullscreen API yok.
+- Hedef istemci öncelikle **iPhone** (iOS 26; Safari ve iOS Chrome — ikisi de WebKit): HTTP'de WebCodecs/Clipboard API/service worker yok → H.264 ve ses yalnızca HTTPS'te (Tailscale: `https://desktop-abc1234.tailnet123.ts.net` — 2026-10-21 sıfırlamadan sonra bilgisayar adı değişti; eski abc1234 adresi geçersiz; `tailscale serve --bg 3080`, Tailscale çıkış yaparsa yeniden). iPhone'da Fullscreen API yok.
 - GPU: RTX 3050 (NVENC) + AMD iGPU. NVENC SPS'e bitstream_restriction yazmaz → `lib/sps.js` ekler.
 
 ## Belgeler
