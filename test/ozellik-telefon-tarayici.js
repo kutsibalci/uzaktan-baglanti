@@ -94,7 +94,7 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
     check('Dokunmatik (window.Dokunmatik) yüklendi', await ev('!!window.Dokunmatik'));
     check('Tuşlar düğmesi eklendi', await ev("!!document.getElementById('tusBtn')"));
     check('touch-only düğmeler (any-pointer: coarse) görünüyor', await ev("getComputedStyle(document.getElementById('touchModeBtn')).display !== 'none'"));
-    await ev("localStorage.removeItem('touchMode')");
+    await ev("localStorage.removeItem('dokunmaModu')");
 
     const st = await ev("(() => { const r = document.getElementById('stage').getBoundingClientRect(); const c = document.getElementById('screen'); return { l: r.left, t: r.top, w: r.width, h: r.height, nw: c.width, nh: c.height }; })()");
     const box = (() => { const s = Math.min(st.w / st.nw, st.h / st.nh); const cw = st.nw * s, ch = st.nh * s; return { ox: (st.w - cw) / 2, oy: (st.h - ch) / 2, cw, ch }; })();
@@ -111,13 +111,16 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
     };
     await sent();
 
-    // ---- Doğrudan mod ----
-    check('varsayılan mod Doğrudan', /Doğrudan/.test(await ev("document.getElementById('touchModeBtn').textContent")));
-    check('ilk kullanımda dokunma ipucu kartı (doğrudan mod) görünür', await ev("!document.getElementById('touchTip').hidden && /basılı tut, bırak = sağ tık/.test(document.getElementById('touchTip').textContent)"));
+    // ---- Varsayılan Fare modu; sonra Dokunmatik mod ----
+    check('varsayılan mod Fare (touchpad)', /Fare/.test(await ev("document.getElementById('touchModeBtn').textContent")));
+    check('ilk kullanımda dokunma ipucu kartı (Fare modu) görünür', await ev("!document.getElementById('touchTip').hidden && /basılı tut ya da iki parmakla dokun = sağ tık/.test(document.getElementById('touchTip').textContent)"));
     check('dokunma modu düğmesinin title\'ında hareketler', /sağ tık/.test(await ev("document.getElementById('touchModeBtn').title")));
     check('çubukta Sağ tık düğmesi (dokunmatik)', await ev("(() => { const b = document.getElementById('rightBtn'); const r = b.getBoundingClientRect(); return getComputedStyle(b).display !== 'none' && r.right <= window.innerWidth && /Sağ tık/.test(b.textContent); })()"));
     check('araç çubuğu taşmıyor (menü düğmesi görünür)', await ev("document.getElementById('menuBtn').getBoundingClientRect().right <= window.innerWidth"));
     await shot('sagtik-0-cubuk-ipucu.png');
+    await ev("document.getElementById('touchModeBtn').click()");
+    check('Dokunmatik moda geçildi, ipucu (dokunmatik) görünür', /Dokunmatik/.test(await ev("document.getElementById('touchModeBtn').textContent")) && (await ev("localStorage.getItem('dokunmaModu')")) === 'direct'
+      && await ev("!document.getElementById('touchTip').hidden && /basılı tut = sağ tık/.test(document.getElementById('touchTip').textContent)"));
     await tap(P(0.25, 0.75));
     check('ipucu kartı ilk dokunuşta kaybolur', await ev("document.getElementById('touchTip').hidden"));
     await sleep(100);
@@ -188,29 +191,27 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
     await sleep(50);
     check('iki parmak çift dokunuş -> 1x', (await ev("document.getElementById('screen').style.transform")) === '' && await ev("document.getElementById('zoomBtn').hidden"));
     await sleep(400); await sent();
-    // uzun basma -> (tutuldu göstergesi, henüz girdi yok) -> bırakınca sağ tık
+    const sira = (arr) => arr.map((m) => `${m.t}${m.b ? ':' + m.b : ''}`).join(',');
+    // basılı tutma -> bırakmayı beklemeden dokunulan yere sağ tık, gösterge çıkar; bırakınca ek girdi yok
     await touch('touchStart', [P(0.6, 0.4)]); await sleep(650);
     const ringOn = await ev("!document.getElementById('tpHold').hidden");
     s = await sent();
-    check('doğrudan: basılı tutunca gösterge çıkar, düğme basılmaz', ringOn && !s.some((m) => m.t === 'down'), JSON.stringify(s));
+    check('dokunmatik: basılı tutunca (bırakmadan) dokunulan yere sağ tık, gösterge çıkar', ringOn && sira(s) === 'move,down:right,up:right' && Math.abs(s[0].x - 0.6) < 0.01 && Math.abs(s[0].y - 0.4) < 0.01, JSON.stringify(s));
     await touch('touchEnd', []);
     await sleep(50);
     s = await sent();
-    check('doğrudan: uzun basıp bırakma -> sağ tık', s.map((m) => `${m.t}${m.b ? ':' + m.b : ''}`).join(',') === 'move,down:right,up:right', JSON.stringify(s));
+    check('dokunmatik: bırakınca ek girdi yok', s.length === 0, JSON.stringify(s));
     check('gösterge bırakınca kaybolur', await ev("document.getElementById('tpHold').hidden"));
-    // hızlı sürükleme (basılı tutmadan) -> kaydırma (tekerlek), sol tuş basılmaz
-    await drag([[P(0.5, 0.3)], [P(0.5, 0.75)]]);
-    await sleep(50);
+    // basılı tutup sonra sürükleme: sağ tık gitmiştir, sürükleme olmaz
+    await touch('touchStart', [P(0.3, 0.6)]); await sleep(600);
+    for (let i = 1; i <= 6; i++) { await sleep(16); await touch('touchMove', [{ x: P(0.3, 0.6).x + i * 15, y: P(0.3, 0.6).y }]); }
+    await touch('touchEnd', []); await sleep(50);
     s = await sent();
-    check('doğrudan: hızlı dikey sürükleme -> tekerlek (parmak aşağı = yukarı kaydır), down yok', s.some((m) => m.t === 'wheel' && m.dy > 0 && m.dx === 0) && !s.some((m) => m.t === 'down' || m.t === 'up'), JSON.stringify(s));
-    check('doğrudan: kaydırmadan önce imleç parmağın altına gider', s[0]?.t === 'move' && Math.abs(s[0].x - 0.5) < 0.01 && Math.abs(s[0].y - 0.3) < 0.01, JSON.stringify(s[0]));
-    await drag([[P(0.8, 0.5)], [P(0.2, 0.5)]]);
-    await sleep(50);
-    s = await sent();
-    check('doğrudan: hızlı yatay sürükleme -> yatay tekerlek (parmak sola = sağa)', s.some((m) => m.t === 'wheel' && m.dx > 0 && m.dy === 0) && !s.some((m) => m.t === 'down'), JSON.stringify(s));
-    // basılı tut + sürükle -> sol tuşla sürükleme: move, down, move..., up
+    check('dokunmatik: basılı tutup sürükleyince yalnızca sağ tık (sürükleme yok)', sira(s) === 'move,down:right,up:right', JSON.stringify(s));
+    await sleep(400); await sent();
+    // tek parmakla sürükleme -> sol tuşla sürükleme: move, down, move..., up
     const holdDrag = async (a, b, end = 'touchEnd') => {
-      await touch('touchStart', [a]); await sleep(600);
+      await touch('touchStart', [a]); await sleep(30);
       for (let i = 1; i <= 8; i++) { await sleep(16); await touch('touchMove', [{ x: a.x + (b.x - a.x) * i / 8, y: a.y + (b.y - a.y) * i / 8 }]); }
       await sleep(30);
       if (end) await touch(end, []);
@@ -220,8 +221,9 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
     s = await sent();
     let seq = s.map((m) => m.t);
     const lastMv = s.filter((m) => m.t === 'move').at(-1);
-    check('doğrudan: basılı tut + sürükle -> move, down, move..., up', seq[0] === 'move' && Math.abs(s[0].x - 0.3) < 0.01 && seq[1] === 'down' && s[1].b === 'left' && seq.at(-1) === 'up' && seq.filter((t) => t === 'move').length >= 3 && seq.filter((t) => t === 'down').length === 1, seq.join(','));
-    check('doğrudan: sürükleme son konumda bırakılır', lastMv && Math.abs(lastMv.x - 0.6) < 0.01 && Math.abs(lastMv.y - 0.6) < 0.01 && seq.lastIndexOf('move') < seq.indexOf('up'), JSON.stringify(lastMv));
+    check('dokunmatik: tek parmakla sürükleme -> move, down, move..., up', seq[0] === 'move' && Math.abs(s[0].x - 0.3) < 0.01 && seq[1] === 'down' && s[1].b === 'left' && seq.at(-1) === 'up' && seq.filter((t) => t === 'move').length >= 3 && seq.filter((t) => t === 'down').length === 1, seq.join(','));
+    check('dokunmatik: sürükleme son konumda bırakılır', lastMv && Math.abs(lastMv.x - 0.6) < 0.01 && Math.abs(lastMv.y - 0.6) < 0.01 && seq.lastIndexOf('move') < seq.indexOf('up'), JSON.stringify(lastMv));
+    check('dokunmatik: tek parmak sürükleme tekerlek göndermez', !s.some((m) => m.t === 'wheel'), JSON.stringify(s));
     // touchcancel (iOS: sistem hareketi, bildirim...) -> up
     await holdDrag(P(0.3, 0.3), P(0.5, 0.5), 'touchCancel');
     await sleep(50);
@@ -263,8 +265,8 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
 
     // ---- Touchpad modu ----
     await ev("document.getElementById('touchModeBtn').click()");
-    check('mod değişti: Touchpad', /Touchpad/.test(await ev("document.getElementById('touchModeBtn').textContent")) && (await ev("localStorage.getItem('touchMode')")) === 'touchpad');
-    check('touchpad ipucu kartı ilk kez görünür', await ev("!document.getElementById('touchTip').hidden && /iki parmak dokun = sağ tık/.test(document.getElementById('touchTip').textContent)"));
+    check('mod değişti: Fare', /Fare/.test(await ev("document.getElementById('touchModeBtn').textContent")) && (await ev("localStorage.getItem('dokunmaModu')")) === 'touchpad');
+    check('Fare modu ipucu ikinci kez çıkmaz (başta gösterildi)', await ev("document.getElementById('touchTip').hidden"));
     await shot('sagtik-2-touchpad-ipucu.png');
     check('touchpad imleç göstergesi', await ev("(() => { const e = document.getElementById('tpCursor'); return !!e; })()"));
     await sent();
@@ -360,60 +362,37 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
     check('touchpad: ilk parmak biraz kaydıktan sonra iki parmak dokunuş -> sağ tık', rightSeq(s) === 'down:right,up:right', JSON.stringify(s));
     check('touchpad: o sağ tık imlecin dokunuştan önceki yerine gider', rmv && Math.abs(rmv.x - last.x) < 1e-9 && curBefore.l === curAfter.l, `${JSON.stringify(rmv)} ${JSON.stringify(curBefore)} ${JSON.stringify(curAfter)}`);
     await sleep(400); await sent();
-    // Uzun basma (hareketsiz 500 ms): halka, bırakınca sağ tık
+    // Uzun basma (hareketsiz 500 ms): bırakmayı beklemeden imlecin yerinde sağ tık, halka çıkar
     await touch('touchStart', [c0]); await sleep(620);
     s = await sent();
-    check('touchpad: uzun basınca halka çıkar, henüz tık yok', await ev("!document.getElementById('tpHold').hidden") && !s.some((m) => m.t === 'down'), JSON.stringify(s));
+    check('touchpad: uzun basınca hemen (bırakmadan) imlecin yerinde sağ tık, halka çıkar', await ev("!document.getElementById('tpHold').hidden") && rightSeq(s) === 'down:right,up:right' && Math.abs(s.find((m) => m.t === 'move').x - last.x) < 1e-9, JSON.stringify(s));
     await touch('touchEnd', []); await sleep(50);
     s = await sent();
-    check('touchpad: uzun basıp bırakma -> imlecin yerinde sağ tık', rightSeq(s) === 'down:right,up:right' && Math.abs(s.find((m) => m.t === 'move').x - last.x) < 1e-9, JSON.stringify(s));
-    // Uzun basıp sonra kaydırma: sağ tık iptal, imleç oynar
-    await touch('touchStart', [c0]); await sleep(620);
+    check('touchpad: bırakınca ek girdi yok', s.length === 0, JSON.stringify(s));
+    // Basılı tutma süresi dolmadan kaydırma: sağ tık yok, imleç oynar
+    await touch('touchStart', [c0]); await sleep(200);
     for (let i = 1; i <= 6; i++) { await sleep(20); await touch('touchMove', [{ x: c0.x + i * 8, y: c0.y }]); }
     await touch('touchEnd', []); await sleep(60);
     s = await sent();
-    check('touchpad: uzun basıp kaydırınca sağ tık yok, imleç oynar', !s.some((m) => m.t === 'down') && s.some((m) => m.t === 'move'), JSON.stringify(s));
+    check('touchpad: süre dolmadan kaydırınca sağ tık yok, imleç oynar', !s.some((m) => m.t === 'down') && s.some((m) => m.t === 'move'), JSON.stringify(s));
     last = s.filter((m) => m.t === 'move').at(-1) || last;
-    check('halka kaydırınca kaybolur', await ev("document.getElementById('tpHold').hidden"));
+    check('halka yok', await ev("document.getElementById('tpHold').hidden"));
     await sleep(400); await sent();
-    // Sağ tık düğmesi: dokun -> sıradaki dokunuş (bekleme olmadan) imleç yerinde sağ tık, tek seferlik
+    // Sağ tık düğmesi: dokununca HEMEN imlecin yerinde sağ tık (ekrana ayrıca dokunmadan)
     const rb = await ev("(() => { const r = document.getElementById('rightBtn').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()");
     await tap(rb); await sleep(50);
-    check('Sağ tık düğmesi: dokununca vurgulu', await ev("document.getElementById('rightBtn').classList.contains('on')"));
-    await shot('sagtik-1-dugme-acik.png');
-    // Kaydırmak hakkı harcamaz
-    await drag([[{ x: c0.x, y: c0.y + 100 }], [{ x: c0.x + 30, y: c0.y + 100 }]], 5, 20);
-    await sleep(50);
     s = await sent();
-    check('Sağ tık açıkken imleci taşımak hakkı harcamaz', !s.some((m) => m.t === 'down') && await ev("document.getElementById('rightBtn').classList.contains('on')"), JSON.stringify(s));
-    last = s.filter((m) => m.t === 'move').at(-1) || last;
-    await tap(c0); await sleep(30);
-    s = await sent();
-    check('Sağ tık açıkken dokunuş -> hemen imleç yerinde sağ tık', rightSeq(s) === 'down:right,up:right' && Math.abs(s[0].x - last.x) < 1e-9, JSON.stringify(s));
-    check('Sağ tık tek seferlik: düğme söndü', await ev("!document.getElementById('rightBtn').classList.contains('on')"));
-    await sleep(400); await sent();
+    check('Sağ tık düğmesi: dokununca hemen imleç yerinde sağ tık', rightSeq(s) === 'down:right,up:right' && Math.abs(s.find((m) => m.t === 'move').x - last.x) < 1e-9, JSON.stringify(s));
+    await shot('sagtik-1-dugme.png');
     await tap(c0); await sleep(400);
     s = await sent();
     check('sonraki dokunuş yine sol tık', rightSeq(s) === 'down:left,up:left', JSON.stringify(s));
-    // Uzun basınca kilit: iki dokunuş da sağ tık, düğmeye dokununca kapanır
-    await touch('touchStart', [rb]); await sleep(650); await touch('touchEnd', []); await sleep(50);
-    check('Sağ tık düğmesi uzun basınca kilitli', await ev("(() => { const b = document.getElementById('rightBtn'); return b.classList.contains('on') && /🔒/.test(b.textContent); })()"));
-    await tap(c0); await sleep(30); await tap({ x: c0.x + 50, y: c0.y }); await sleep(30);
+    // Dokunuştan hemen sonra Sağ tık düğmesi: bekleyen sol tık önce gider
+    await tap(c0); await sleep(60); await tap(rb); await sleep(50);
     s = await sent();
-    check('kilitliyken her dokunuş sağ tık', rightSeq(s) === 'down:right,up:right,down:right,up:right', JSON.stringify(s));
-    await tap(rb); await sleep(50);
-    check('kilitliyken düğmeye dokununca kapanır', await ev("!document.getElementById('rightBtn').classList.contains('on') && !/🔒/.test(document.getElementById('rightBtn').textContent)"));
+    check('dokun + hemen Sağ tık düğmesi -> sol tık, sonra sağ tık', rightSeq(s) === 'down:left,up:left,down:right,up:right', JSON.stringify(s));
     await sleep(400); await sent();
-    // Sağ tık düğmesi açıkken iki parmak dokunuş: sağ tık, tek seferlik hak biter (sonraki dokunuş sol tık)
     const ikiP = [{ x: c0.x - 40, y: c0.y, id: 0 }, { x: c0.x + 40, y: c0.y, id: 1 }];
-    await tap(rb); await sleep(50);
-    await touch('touchStart', ikiP); await sleep(40); await touch('touchEnd', []); await sleep(50);
-    s = await sent();
-    check('Sağ tık açıkken iki parmak dokunuş -> sağ tık, düğme söner', rightSeq(s) === 'down:right,up:right' && await ev("!document.getElementById('rightBtn').classList.contains('on')"), JSON.stringify(s));
-    await sleep(400); await sent();
-    await tap(c0); await sleep(400);
-    s = await sent();
-    check('ardından tek dokunuş sol tık', rightSeq(s) === 'down:left,up:left', JSON.stringify(s));
     // Dokunuştan 150 ms sonra iki parmak dokunuş: bekleyen sol tık kaybolmaz
     await tap(c0); await sleep(150);
     await touch('touchStart', [ikiP[0]]); await sleep(20); await touch('touchStart', ikiP); await sleep(40); await touch('touchEnd', []); await sleep(50);
@@ -449,14 +428,14 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
     await sleep(400); await sent();
 
     // ---- Kalem: pen kaynaklı fare olayları yok sayılır ----
-    await ev("document.getElementById('touchModeBtn').click()"); // doğrudan moda dön
+    await ev("document.getElementById('touchModeBtn').click()"); // dokunmatik moda dön
     check('ipucu kartı her mod için yalnızca bir kez', await ev("document.getElementById('touchTip').hidden"));
-    // Doğrudan modda Sağ tık düğmesi: dokunulan yere sağ tık
+    // Dokunmatik modda Sağ tık düğmesi: son dokunulan yerde (bilgisayarın imleci orada) hemen sağ tık, imleç oynamaz
     await sent();
-    await ev("document.getElementById('rightBtn').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); document.getElementById('rightBtn').dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))");
-    await tap(P(0.7, 0.3)); await sleep(50);
+    await tap(P(0.7, 0.3)); await sleep(400); await sent();
+    await ev("document.getElementById('rightBtn').click()"); await sleep(50);
     s = await sent();
-    check('doğrudan: Sağ tık açıkken dokunuş -> dokunulan yere sağ tık', s.map((m) => `${m.t}${m.b ? ':' + m.b : ''}`).join(',') === 'move,down:right,up:right' && Math.abs(s[0].x - 0.7) < 0.01 && Math.abs(s[0].y - 0.3) < 0.01, JSON.stringify(s));
+    check('dokunmatik: Sağ tık düğmesi -> imlecin yerinde hemen sağ tık (move yok)', s.map((m) => `${m.t}${m.b ? ':' + m.b : ''}`).join(',') === 'down:right,up:right', JSON.stringify(s));
     await sleep(500); await sent();
     await ev('window.__kalem.splice(0)');
     // Kalemle sürükleme: down -> move... -> up; arada "out" olmamalı (setPointerCapture sonrası alt öğenin

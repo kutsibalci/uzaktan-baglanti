@@ -38,7 +38,7 @@
         hedef: () => alt || gorunur('toolbar'),
         baslik: 'Kontroller burada',
         metin: alt
-          ? 'Alttaki çubukta <b>Klavye</b>, <b>Tuşlar</b> (Ctrl, Alt, Win, F1–F12, kısayollar), dokunma modu (<b>Doğrudan / Touchpad</b>), <b>Sağ tık</b> ve <b>Pano</b> var.'
+          ? 'Alttaki çubukta <b>Klavye</b>, <b>Tuşlar</b> (Ctrl, Alt, Win, F1–F12, kısayollar), dokunma modu (<b>Fare / Dokunmatik</b>), <b>Sağ tık</b> ve <b>Pano</b> var.'
           : 'Üstteki çubukta klavye, özel tuşlar (Ctrl, Alt, Win, F1–F12, kısayollar), pano, dosya, ses ve diğer kontroller var.',
       },
       {
@@ -49,8 +49,8 @@
       dokunmatik && {
         hedef: () => gorunur('stage'),
         baslik: 'Hareketler',
-        metin: '<b>Doğrudan</b> modda parmağın değdiği yer tıklanır: basılı tut, bırak = sağ tık; kaydır = tekerlek. <b>Touchpad</b> modda parmak imleci '
-          + 'sürer: iki parmakla dokun = sağ tık. Her iki modda iki parmakla sıkıştır = yakınlaştır.',
+        metin: '<b>Fare</b> modunda parmağın imleci sürer, dokun = tık. <b>Dokunmatik</b> modda dokunduğun yer tıklanır, sürükle = sürükle. '
+          + 'İkisinde de: <b>basılı tut = sağ tık</b>, iki parmakla kaydır = kaydırma, iki parmakla sıkıştır = yakınlaştır.',
       },
     ].filter(Boolean);
   }

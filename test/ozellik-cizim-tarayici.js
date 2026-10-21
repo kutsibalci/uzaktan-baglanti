@@ -302,7 +302,7 @@ const YAKALAYICI = `
     await sleep(500); await sent();
     // Süren sürüklemeye avuç değerse sol tuş bırakılır (basılı kalmaz)
     const d0 = P(0.4, 0.4);
-    await touch('touchStart', [{ ...d0, id: 1 }]); await sleep(650); // basılı tut
+    await touch('touchStart', [{ ...d0, id: 1 }]); await sleep(40); // tek parmakla sürükleme (dokunmatik)
     for (let i = 1; i <= 4; i++) { await touch('touchMove', [{ x: d0.x + i * 15, y: d0.y, id: 1 }]); await sleep(20); }
     s = await sent();
     const surukleme = s.some((m) => m.t === 'down' && m.b === 'left');

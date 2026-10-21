@@ -11,8 +11,8 @@
   const PAN_THRESHOLD = 12;    // px: orta nokta bu kadar kayarsa kaydırma
   const TAP_MOVE = 10;         // px: dokunuş sayılması için en fazla hareket
   const TAP_MS = 250;          // ms: dokunuş sayılması için en uzun süre
-  const HOLD_MS = 450;         // ms: doğrudan mod: bu kadar hareketsiz basılı tutunca "tutuldu" (sonra sürükle = sol tuşla sürükleme, bırak = sağ tık)
-  const PAD_HOLD_MS = 500;     // ms: touchpad: bu kadar hareketsiz basılı tutup bırakmak = sağ tık
+  const HOLD_MS = 450;         // ms: dokunmatik (doğrudan) mod: bu kadar hareketsiz basılı tutmak = sağ tık (hemen)
+  const PAD_HOLD_MS = 500;     // ms: Fare (touchpad) modu: bu kadar hareketsiz basılı tutmak = sağ tık (hemen)
   // İki parmak dokunuşu (touchpad'de sağ tık). Gerçek parmaklar aynı anda inip kalkmaz ve biraz kayar; bu yüzden toleranslı:
   const TWO_TAP_MS = 500;      // ms: ilk parmağın inişinden son parmağın kalkışına en uzun süre
   const TWO_TAP_GAP = 150;     // ms: iki parmak birbirinden en fazla bu kadar farklı inip kalkabilir

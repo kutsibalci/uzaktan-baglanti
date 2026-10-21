@@ -130,7 +130,7 @@ const YAKALAYICI = `
         sag: Math.max(...kids.map((e) => e.getBoundingClientRect().right)), alt: r.bottom, ust: r.top };
     })()`);
     check('telefon: alt çubukta Klavye, Tuşlar, dokunma modu, Sağ tık, Pano, Diğer (bu sırayla)', JSON.stringify(alt.ids) === JSON.stringify(['kbBtn', 'tusBtn', 'touchModeBtn', 'rightBtn', 'panoBtnPin', 'menuBtn']), alt.ids.join(','));
-    check('telefon: alt çubuk düğmeleri yazılı', JSON.stringify(alt.yazilar) === JSON.stringify(['Klavye', 'Tuşlar', 'Doğrudan', 'Sağ tık', 'Pano', 'Diğer']), alt.yazilar.join(','));
+    check('telefon: alt çubuk düğmeleri yazılı', JSON.stringify(alt.yazilar) === JSON.stringify(['Klavye', 'Tuşlar', 'Fare', 'Sağ tık', 'Pano', 'Diğer']), alt.yazilar.join(','));
     check('telefon: alt çubuk tek satır, ekranın altında, taşmıyor', alt.satir === 1 && alt.sag <= 390.5 && alt.alt <= 844.5 && alt.ust > 700, JSON.stringify(alt));
     check('telefon: diğer özellik simgeleri çubuklarda değil (Diğer menüsünde)', !(await shown('#sesBtnPin')) && !(await shown('#dosyaBtnPin')));
     const kucuk = await ev("[...document.querySelectorAll('#toolbar button, #altCubuk button')].filter((e) => e.getClientRects().length && getComputedStyle(e).display !== 'none').map((e) => { const r = e.getBoundingClientRect(); return [e.id, Math.round(r.width), Math.round(r.height)]; }).filter(([i, w, h]) => i !== 'olcumBtn' && (w < 44 || h < 44))");
@@ -163,6 +163,7 @@ const YAKALAYICI = `
     let s = await sent();
     check('kapatan dokunuş bilgisayara tıklama göndermedi', !s.some((m) => m.t === 'down' || m.t === 'up'), JSON.stringify(s));
     await tap(disari);
+    await sleep(400); // Fare modunda tek tık çift dokunuş beklemesinden (300 ms) sonra gider
     s = await sent();
     check('menü kapalıyken dokunuş yine tıklar', s.some((m) => m.t === 'down' && m.b === 'left'), JSON.stringify(s));
     // Esc
@@ -263,6 +264,7 @@ const YAKALAYICI = `
     // Tuşlar paneli açıkken görüntüye dokunmak tıklar (kenetli panel dışarı dokunuşla kapanmaz)
     const st2 = await rect('#stage');
     await tap({ x: st2.x, y: st2.top + 40 });
+    await sleep(400); // Fare modunda tek tık 300 ms sonra gider
     s = await sent();
     check('Tuşlar açıkken görüntüye dokunuş tıklar, panel açık kalır', s.some((m) => m.t === 'down') && (await shown('#tusPanel')), kod(s));
     await tap('#tusPanel .rc-x');

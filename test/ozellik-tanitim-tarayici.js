@@ -105,7 +105,7 @@ const YAKALAYICI = `
     check('1. adım: "1 / 3", kontroller', (await adim()) === '1 / 3' && /Kontroller/.test(await baslik()), `${await adim()} ${await baslik()}`);
     check('1. adımda alt çubuk vurgulu', await vurgulu('#altCubuk'));
     const metin = await ev("document.querySelector('#tanitim p').textContent");
-    check('1. adım alt çubuktaki düğmeleri sayıyor', ['Klavye', 'Tuşlar', 'Doğrudan', 'Touchpad', 'Sağ tık', 'Pano'].every((k) => metin.includes(k)), metin);
+    check('1. adım alt çubuktaki düğmeleri sayıyor', ['Klavye', 'Tuşlar', 'Fare', 'Dokunmatik', 'Sağ tık', 'Pano'].every((k) => metin.includes(k)), metin);
     check('dokunma modu ipucu tanıtımla birlikte gizli', !(await shown('#touchTip')));
     await shot('1-telefon-adim1');
     // Katmana (görüntünün ve alt çubuğun üstüne) dokunmak bilgisayara tıklama göndermez, alt çubuktaki düğmeye basmaz
@@ -127,6 +127,7 @@ const YAKALAYICI = `
     check('görüldü olarak kaydedildi', (await ev("localStorage.getItem('rc-tanitim')")) === '1');
     // Kapandıktan sonra görüntüye dokunuş yine tıklar
     await tap({ x: st.x, y: st.top + 60 });
+    await sleep(400); // Fare modunda tek tık 300 ms sonra gider
     s = await sent();
     check('tanıtım kapanınca dokunuş tıklıyor', s.some((m) => m.t === 'down'), JSON.stringify(s));
     // İkinci açılışta gelmez

@@ -135,7 +135,7 @@ const kisa = (list) => JSON.stringify(list.map((m) => (m.t === 'move' ? `move ${
     // ---- Doğrudan dokunma ----
     await sent();
     const durum = await ev("document.getElementById('touchModeBtn').textContent");
-    if (/Touchpad/.test(durum)) await tap(await rectOf('#touchModeBtn'));
+    if (/Fare/.test(durum)) await tap(await rectOf('#touchModeBtn')); // dokunmatik moda
     await tap(nokta(b, 0.75, 0.5));
     let s = await sent();
     let mv = s.find((m) => m.t === 'move');
@@ -150,10 +150,10 @@ const kisa = (list) => JSON.stringify(list.map((m) => (m.t === 'move' ? `move ${
     check('dokunma: birinci ekrana dokununca move ekran 1', mv && mv.s === D1 && Math.abs(mv.x - bk.x) < 0.01 && Math.abs(mv.y - 0.9) < 0.01, kisa(s));
     await sleep(400);
 
-    // ---- Ekranlar arası sürükleme (basılı tut + sürükle): düğme basılı kalır ----
+    // ---- Ekranlar arası sürükleme (dokunmatik modda tek parmakla sürükle): düğme basılı kalır ----
     const p0 = nokta(b, 0.4, 0.5);
     await touch('touchStart', [p0]);
-    await sleep(650); // HOLD_MS
+    await sleep(40);
     for (let i = 1; i <= 10; i++) { await touch('touchMove', [nokta(b, 0.4 + i * 0.03, 0.5)]); await sleep(30); }
     await sleep(60);
     await touch('touchEnd', []);
@@ -174,7 +174,7 @@ const kisa = (list) => JSON.stringify(list.map((m) => (m.t === 'move' ? `move ${
 
     // ---- Touchpad: imleç ekran 1'in sağ kenarından ekran 2'ye geçer ----
     await tap(await rectOf('#touchModeBtn'));
-    check('touchpad moduna geçildi', /Touchpad/.test(await ev("document.getElementById('touchModeBtn').textContent")));
+    check('touchpad (Fare) moduna geçildi', /Fare/.test(await ev("document.getElementById('touchModeBtn').textContent")));
     await sent();
     const st = await rectOf('#stage');
     const kaydir = async (x0, x1, y, adim = 12) => {
