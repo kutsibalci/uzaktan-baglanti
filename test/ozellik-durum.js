@@ -1,11 +1,14 @@
 // Bilgisayar durumu (features/durum.js): ölçüm değer aralıkları, abonelik bitince Durum.exe durur, roller, kritik süreç reddi,
-// izleyiciler (kendi başlattığımız kısa ömürlü süreç kapanınca, geçici İndirilenler klasörüne dosya gelince, bağlı değilken).
-// KURU MOD — hiçbir program kapatılmaz (REMOTE_DURUM_KURU=1); "kapat" isteği yalnızca kendi node alt sürecimiz ve sistem süreçleri
-// için (reddedilmesi beklenen) gönderilir.
+// Görev Yöneticisi gibi süreç grupları (kendi başlattığımız node grubu tek satırda "(4)", program adı = dosya açıklaması,
+// uygulama / arka plan ayrımı, grup kapatma tüm PID'lere), izleyiciler (kendi başlattığımız kısa ömürlü süreç / grubun hepsi
+// kapanınca, geçici İndirilenler klasörüne dosya gelince, bağlı değilken).
+// KURU MOD — hiçbir program kapatılmaz (REMOTE_DURUM_KURU=1); "kapat" isteği yalnızca kendi node alt süreçlerimiz ve sistem süreçleri
+// için (reddedilmesi beklenen) gönderilir. Kendi süreçlerimiz yalnızca PID'leriyle sonlandırılır.
 // @ortam REMOTE_DURUM_KURU=1
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
-const { spawn, execFileSync } = require('child_process');
+const { spawn, spawnSync, execFileSync } = require('child_process');
 const ROOT = path.join(__dirname, '..');
 const WebSocket = require(path.join(ROOT, 'node_modules', 'ws'));
 const URL = `ws://localhost:${process.env.TEST_PORT || 3999}`;
@@ -76,6 +79,40 @@ function bekleyen(ms) {
   return p;
 }
 
+// Kendi süreç grubumuz: cmd.exe -> node (kök) -> 3 node çocuk; her biri ~100 MB tutar (arka planın "en çok RAM" listesine girsin).
+// cmd.exe araya girer ki kök bu testin node zincirine (test çalıştırıcı -> sunucu) bağlanmasın: grupta yalnızca bizim süreçlerimiz olur.
+const GRUP_JS = `const { spawn } = require('child_process');
+const [, , n, ms, mb, rol] = process.argv;
+const tut = Buffer.alloc(Number(mb) * 2 ** 20, 1);
+if (rol !== 'cocuk') {
+  const c = [];
+  for (let i = 0; i < Number(n); i++) c.push(spawn(process.execPath, [__filename, '0', ms, mb, 'cocuk'], { stdio: 'ignore', windowsHide: true }));
+  console.log(JSON.stringify([process.pid, ...c.map((x) => x.pid)]));
+}
+setTimeout(() => tut.length, Number(ms));`;
+const temizlik = []; // hata olursa da kendi süreçlerimiz kapatılsın
+async function grupBaslat(cocuk, ms, mb) {
+  const js = path.join(process.env.TEST_TMP || os.tmpdir(), `durum-grup-${process.pid}.js`);
+  fs.writeFileSync(js, GRUP_JS);
+  const cmd = spawn('cmd.exe', ['/d', '/s', '/c', `""${process.execPath}" "${js}" ${cocuk} ${ms} ${mb}"`],
+    { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, windowsVerbatimArguments: true });
+  const pidler = await new Promise((resolve, reject) => {
+    let s = '';
+    cmd.stdout.on('data', (d) => { s += d; if (s.includes('\n')) resolve(JSON.parse(s)); });
+    cmd.on('exit', () => reject(new Error('grup başlatılamadı')));
+    setTimeout(() => reject(new Error('grup başlatılamadı (zaman aşımı)')), 15000);
+  });
+  // Yalnızca kendi PID'lerimiz (ağacıyla): önce cmd ağacı, sonra kalan varsa tek tek.
+  const bitir = () => {
+    spawnSync('taskkill', ['/pid', String(cmd.pid), '/T', '/F'], { stdio: 'ignore' });
+    for (const pid of pidler) { try { process.kill(pid); } catch { /* kapanmış */ } }
+  };
+  temizlik.push(bitir);
+  return { cmd, pidler, bitir };
+}
+// FileVersionInfo.FileDescription — Durum.exe'den bağımsız okuma (PowerShell).
+const dosyaAciklamasi = (exe) => ps(`(Get-Item -LiteralPath '${exe.replace(/'/g, "''")}').VersionInfo.FileDescription`);
+
 (async () => {
   check('test sunucusunun PID\'i bulundu', sunucuPid > 0, `(${sunucuPid})`);
   const a = client();
@@ -93,11 +130,13 @@ function bekleyen(ms) {
   check('abone yokken Durum.exe çalışmıyor', durumExe().length === 0);
 
   // ---------- 2. Ölçümler (salt izleme de görebilir) ----------
+  const grup = await grupBaslat(3, 120000, 100);
   v.send({ t: 'durum-abone', acik: true });
   const ilk = await v.next(t('durum-ilk'));
   check('salt izleme abone olabildi', Array.isArray(ilk.gecmis) && Array.isArray(ilk.izleyiciler) && ilk.kuru === true && !ilk.hata, ilk.hata || '');
   const olcumler = [];
-  for (let i = 0; i < 12; i++) olcumler.push(await v.next(t('durum'), 4000));
+  // İlk ölçüm daha geç gelebilir: Durum.exe yeni derlendiyse ilk açılışı yavaş, ilk turda program adları (dosya açıklamaları) okunur.
+  for (let i = 0; i < 12; i++) olcumler.push(await v.next(t('durum'), i ? 4000 : 12000));
   const m = olcumler.at(-1);
   check('CPU yüzdesi 0–100', olcumler.every((o) => between(o.cpu, 0, 100)), olcumler.map((o) => o.cpu).join(' '));
   check('RAM: kullanılan < toplam, toplam > 1 GB', m.ramTop > 2 ** 30 && between(m.ramKul, 1, m.ramTop), `${(m.ramKul / 2 ** 30).toFixed(1)}/${(m.ramTop / 2 ** 30).toFixed(1)} GB`);
@@ -107,11 +146,38 @@ function bekleyen(ms) {
   check('pil: yok ya da 0–100', m.pil === null || (between(m.pil.yuzde, 0, 100) && typeof m.pil.fis === 'boolean'), JSON.stringify(m.pil));
   check('GPU: yok ya da kullanım 0–100, VRAM ≤ toplam', m.gpu === null || (m.gpu.length > 0 && m.gpu.every((g) => g.ad && (g.kul === null || between(g.kul, 0, 100)) && (!g.vramTop || g.vramKul <= g.vramTop))), JSON.stringify(m.gpu));
   check('CPU sıcaklığı: sayı ya da "ölçülemiyor" açıklaması', between(m.cpuSic, 0, 150) || (m.cpuSic === null && typeof m.cpuSicNeden === 'string' && m.cpuSicNeden.length > 3), `${m.cpuSic} ${m.cpuSicNeden}`);
-  const s = m.surecler;
-  check('süreç listesi: 15–30 süreç, alanlar doğru', s.length >= 15 && s.length <= 30 && s.every((p) => p.pid > 0 && p.ad && /^\d+$/.test(p.ct) && between(p.cpu, 0, 100) && p.ram >= 0), `${s.length} süreç`);
-  const kendi = s.find((p) => p.pid === sunucuPid);
-  check('kritik süreçler listede korumalı', s.filter((p) => /^(csrss|svchost|dwm|lsass|system|explorer)(\.exe)?$/i.test(p.ad)).every((p) => p.koruma), '');
-  if (kendi) check('kendi sunucumuz listede korumalı', !!kendi.koruma, kendi.koruma);
+  const s = m.gruplar;
+  const uyg = s.filter((g) => g.uyg), arka = s.filter((g) => !g.uyg);
+  const uyeOf = (g) => (g.uyeler || [[g.pid, g.ct]]).map(([pid]) => pid);
+  check('süreç grupları: alanlar doğru (kök pid/ct, ad, exe, adet, toplam CPU/bellek, üyeler)', s.every((g) => g.pid > 0 && g.ad && g.exe && /^\d+$/.test(g.ct)
+    && g.n >= 1 && between(g.cpu, 0, 100) && g.ram >= 0 && (g.n === 1 ? !g.uyeler : g.uyeler.length === g.n && g.uyeler[0][0] === g.pid && g.uyeler.every((u) => /^\d+$/.test(u[1])))),
+    `${s.length} grup`);
+  check('her bölümde en fazla 30 grup (15 CPU + 15 RAM), arka planda en az 15', uyg.length <= 30 && arka.length >= 15 && arka.length <= 30, `uygulama ${uyg.length}, arka plan ${arka.length}`);
+  check('sayılar: grup ve süreç sayısı', m.sayilar && m.sayilar.uyg >= uyg.length && m.sayilar.arka >= arka.length && m.sayilar.surec > m.sayilar.uyg + 50, JSON.stringify(m.sayilar));
+  const pidSay = s.flatMap(uyeOf);
+  check('bir süreç yalnızca bir grupta', new Set(pidSay).size === pidSay.length);
+  const bizimki = s.find((g) => g.pid === grup.pidler[0]);
+  const sirali = (l) => [...l].sort((x, y) => x - y).join();
+  check('kendi node grubumuz tek satırda, 4 süreç (kök + 3 çocuk), kök önce', bizimki && bizimki.n === 4 && uyeOf(bizimki)[0] === grup.pidler[0] && sirali(uyeOf(bizimki)) === sirali(grup.pidler),
+    bizimki ? `${bizimki.ad} (${bizimki.n}) ${uyeOf(bizimki).join()}` : `listede yok (${grup.pidler.join()})`);
+  if (bizimki) {
+    const aciklama = dosyaAciklamasi(process.execPath);
+    check('  program adı = dosya açıklaması (FileDescription), exe adı ayrı', bizimki.ad === aciklama && bizimki.exe === 'node.exe', `"${bizimki.ad}" / "${aciklama}"`);
+    check('  penceresiz: arka plan işlemi, korumasız', !bizimki.uyg && !bizimki.koruma, bizimki.koruma || '');
+    check('  bellek grubun toplamı (4 × ~100 MB özel çalışma kümesi)', bizimki.ram > 4 * 90 * 2 ** 20, `${(bizimki.ram / 2 ** 20).toFixed(0)} MB`);
+  }
+  const kritikAd = /^(csrss|svchost|dwm|lsass|smss|wininit|winlogon|services|system|registry|memory compression)(\.exe)?$/i;
+  const kritikler = s.filter((g) => kritikAd.test(g.exe));
+  check('kritik sistem süreçleri arka planda ve 🔒', kritikler.length > 0 && kritikler.every((g) => g.koruma && !g.uyg), kritikler.map((g) => `${g.exe}(${g.n})`).join(' '));
+  const svc = s.filter((g) => g.exe.toLowerCase() === 'svchost.exe');
+  if (svc.length) check('  svchost ada göre tek grupta', svc.length === 1 && svc[0].n > 10 && svc[0].ad !== 'svchost.exe', `${svc.map((g) => `${g.ad} (${g.n})`).join(', ')}`);
+  const gezgin = s.find((g) => g.exe.toLowerCase() === 'explorer.exe');
+  if (gezgin) check('  Gezgini 🔒 (Gezgini nedeniyle)', /Gezgini/.test(gezgin.koruma || ''), gezgin.koruma);
+  const kendi = s.find((g) => uyeOf(g).includes(sunucuPid));
+  if (kendi) check('kendi sunucumuzun grubu korumalı, arka planda', !!kendi.koruma && !kendi.uyg, kendi.koruma);
+  // Uygulama = görünür üst düzey penceresi olan grup: her uygulama grubunun en az bir sürecinin Windows'a göre ana penceresi var.
+  const pencereli = new Set(ps("Get-Process | Where-Object { $_.MainWindowHandle -ne 0 } | ForEach-Object { $_.Id }").split(/\r?\n/).filter(Boolean).map(Number));
+  check('uygulama gruplarının penceresi ve başlığı var', uyg.every((g) => g.baslik && uyeOf(g).some((pid) => pencereli.has(pid))), uyg.map((g) => `${g.ad} (${g.n})`).join(', ') || '(açık pencere yok)');
   const oz = olcumler.slice(2).map((o) => o.oz);
   const ozOrt = oz.reduce((x, y) => x + y, 0) / oz.length;
   check('Durum.exe kendi CPU yükü %1\'in altında (ortalama)', ozOrt < 1, `ort %${ozOrt.toFixed(2)}, en çok %${Math.max(...oz)}`);
@@ -146,6 +212,35 @@ function bekleyen(ms) {
   check('  başlama zamanı tutmazsa (PID başka sürece geçmiş) reddedilir', !r.ok && /kapanmış/.test(r.msg), r.msg);
   zararsiz.kill();
 
+  // ---------- 4b. Grup kapatma (kuru): gruptaki TÜM süreçlere, yalnızca PID + başlama zamanıyla ----------
+  if (bizimki) {
+    const gpid = sirali(grup.pidler);
+    a.send({ t: 'durum-kapat', pid: bizimki.pid, ct: bizimki.ct, surecler: bizimki.uyeler, ad: bizimki.ad });
+    r = await a.next(t('durum-kapat-sonuc'));
+    check('grup: nazik kapatma 4 sürece (kuru)', r.ok && r.kuru === true && r.asama === 'nazik' && r.adet === 4 && r.ad === bizimki.ad, JSON.stringify(r));
+    r = await a.next(t('durum-kapat-sonuc'), 9000);
+    check('  5 sn sonra kontrol: 4 süreç de "hâlâ açık" (PID + ct)', r.asama === 'kontrol' && r.hala === true && r.kalan.length === 4
+      && sirali(r.kalan.map((x) => x[0])) === gpid && r.kalan.every(([pid, ct]) => bizimki.uyeler.some((u) => u[0] === pid && u[1] === ct)), JSON.stringify(r.kalan));
+    a.send({ t: 'durum-kapat', pid: r.pid, ct: r.ct, surecler: r.kalan, ad: r.ad, zorla: true });
+    r = await a.next(t('durum-kapat-sonuc'));
+    check('  zorla kapatma 4 sürece (kuru)', r.ok && r.kuru === true && r.asama === 'zorla' && r.adet === 4, JSON.stringify(r));
+    check('  kuru modda grubun hiçbir süreci kapanmadı', grup.pidler.every(canli));
+    // Bir üyenin başlama zamanı tutmuyor: o atlanır (PID başka sürece geçmiş sayılır), yalnızca diğerleri hedeflenir.
+    a.send({ t: 'durum-kapat', surecler: [bizimki.uyeler[0], [bizimki.uyeler[1][0], '123']], zorla: true });
+    r = await a.next(t('durum-kapat-sonuc'));
+    check('  başlama zamanı tutmayan üye atlandı (1 süreç hedeflendi)', r.ok && r.adet === 1 && r.pid === bizimki.pid, JSON.stringify(r));
+    // Listede korumalı bir süreç (sunucumuz) varsa hiçbiri kapatılmaz.
+    a.send({ t: 'durum-kapat', surecler: [...bizimki.uyeler, [sunucuPid, '0']], zorla: true });
+    r = await a.next(t('durum-kapat-sonuc'));
+    check('  listede kendi sunucumuz varsa grubun tamamı reddedildi', !r.ok && /Kapatılamaz/.test(r.msg), r.msg);
+    for (const kotu of [[], 'x', [[1.5, '1']], [[4, '1']], Array.from({ length: 257 }, (_, i) => [1000 + i, '1'])]) {
+      a.send({ t: 'durum-kapat', surecler: kotu });
+      r = await a.next(t('durum-kapat-sonuc'));
+      check(`  geçersiz liste reddedildi (${JSON.stringify(kotu).slice(0, 20)})`, !r.ok, r.msg);
+    }
+    check('  grubun süreçleri hâlâ çalışıyor', grup.pidler.every(canli));
+  }
+
   // ---------- 5. Kritik süreçler, kendi süreçlerimiz, geçersiz PID ----------
   const sistem = ps("Get-Process -Name winlogon,csrss,lsass,services,smss,svchost,dwm,explorer -ErrorAction SilentlyContinue | ForEach-Object { $_.ProcessName + ':' + $_.Id }")
     .split(/\r?\n/).map((x) => x.split(':')).filter((x) => x[1]);
@@ -168,7 +263,11 @@ function bekleyen(ms) {
   }
   a.send({ t: 'admin', op: 'list' });
   const kayit = (await a.next(t('adminData'))).log.filter((l) => l.event === 'durum');
-  check('kapatma istekleri günlükte (kuru diye işaretli)', kayit.length === 2 && kayit.every((l) => l.user === 'ahmet' && /deneme/.test(l.target)), `(${kayit.length} kayıt)`);
+  check('kapatma istekleri günlükte (kuru diye işaretli)', kayit.length === (bizimki ? 5 : 2) && kayit.every((l) => l.user === 'ahmet' && /deneme/.test(l.target)), `(${kayit.length} kayıt)`);
+  if (bizimki) {
+    const gk = kayit.filter((l) => /×4/.test(l.target));
+    check('  grup kaydı 4 PID\'in hepsini içeriyor', gk.length === 2 && gk.every((l) => grup.pidler.every((pid) => l.target.includes(String(pid)))), gk.map((l) => l.target).join(' | '));
+  }
 
   // ---------- 6. Abonelik bitince Durum.exe durur ----------
   v.send({ t: 'durum-abone', acik: false });
@@ -200,6 +299,27 @@ function bekleyen(ms) {
   l = await v.next(t('durum-izleyiciler'));
   check('  tetiklenen izleyici kaldırıldı', l.liste.length === 0);
   c.drop(t('durum-bildirim'));
+
+  // ---------- 7b. Grup izleyicisi: gruptaki süreçlerin HEPSİ kapanınca (kendi grubumuz, PID'leriyle kapatılır) ----------
+  if (bizimki) {
+    c.send({ t: 'durum-izle', tur: 'surec', pid: bizimki.pid, ct: bizimki.ct, surecler: bizimki.uyeler, ad: 'grup-deneme' });
+    check('grup izleyicisi kuruldu', (await c.next(t('durum-izle-sonuc'))).ok);
+    l = await v.next(t('durum-izleyiciler'));
+    const gi = l.liste[0];
+    check('  4 süreç (PID + ct) saklandı', l.liste.length === 1 && gi.surecler.length === 4 && sirali(gi.surecler.map((x) => x[0])) === sirali(grup.pidler)
+      && /4 işlemin hepsi/.test(gi.metin), `${gi?.metin} ${JSON.stringify(gi?.surecler)}`);
+    c.send({ t: 'durum-izle', tur: 'surec', surecler: [bizimki.uyeler[2]], ad: 'tek' });
+    check('  gruptaki bir süreç ayrıca izlenmez (zaten izleniyor)', !(await c.next(t('durum-izle-sonuc'))).ok);
+    for (const pid of grup.pidler.slice(1)) process.kill(pid);
+    check('  çocuklar kapandı, kök açıkken bildirim yok', await v.none(t('durum-bildirim'), 5000));
+    process.kill(grup.pidler[0]);
+    const gb = await v.next(t('durum-bildirim'), 9000);
+    check('  gruptaki hepsi kapanınca bildirim geldi', gb.tur === 'surec' && /grup-deneme/.test(gb.metin), gb.metin);
+    l = await v.next(t('durum-izleyiciler'));
+    check('  tetiklenen grup izleyicisi kaldırıldı', l.liste.length === 0);
+    c.drop(t('durum-bildirim'));
+  }
+  grup.bitir();
 
   // ---------- 8. İzleyici: İndirilenler'e yeni dosya (indirme bitince) ----------
   fs.writeFileSync(path.join(INDIRME, 'eski.txt'), 'önceden vardı');
@@ -257,4 +377,4 @@ function bekleyen(ms) {
 
   console.log(`\n${pass} kontrol geçti`);
   process.exit();
-})().catch((err) => { console.error('TEST HATASI', err); process.exit(1); });
+})().catch((err) => { console.error('TEST HATASI', err); for (const f of temizlik) f(); process.exit(1); });

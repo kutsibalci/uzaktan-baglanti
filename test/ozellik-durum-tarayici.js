@@ -1,6 +1,7 @@
 // Bilgisayar durumu paneli, gerçek tarayıcı motorunda (başsız Edge / Chrome): ana menüden ve ⋯ menüsünden açılır, ölçümler ve
-// çizgi grafikleri dolar, iPhone (390x844) ve iPad (1024x1366) boyutunda taşmaz, yönetici "Kapat" (onaylı, korumalı süreçte 🔒),
-// "Zorla kapat" düğmesi, bildirim kartı, izleyici ekleme; salt izleme rolünde düğmeler gizli.
+// çizgi grafikleri dolar, iPhone (390x844) ve iPad (1024x1366) boyutunda taşmaz; çalışan programlar Görev Yöneticisi gibi gruplu
+// ("Google Chrome (15)"), "Uygulamalar" + katlı "Arka plan işlemleri"; yönetici "Kapat" (onaylı, grubun tüm süreçlerine, korumalı
+// grupta 🔒), "Zorla kapat" düğmesi (hâlâ açık olanlara), bildirim kartı, izleyici ekleme; salt izleme rolünde düğmeler gizli.
 // Kapatma (durum-kapat) ve girdi mesajları sayfada YAKALANIR, sunucuya GİTMEZ (sunucu ayrıca kuru modda). iOS Safari emüle EDİLEMEZ:
 // yalnızca boyut, dokunma ve iPhone/iPad kullanıcı aracısı taklit edilir. Ekran görüntüleri %TEMP%\rc-durum\ altına kaydedilir.
 // @ortam REMOTE_DURUM_KURU=1
@@ -105,6 +106,8 @@ function wsIstek(username, password, mesaj) {
     const shown = (sel) => ev(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); return !!e && !e.hidden && getComputedStyle(e).display !== 'none' && e.getClientRects().length > 0; })()`);
     const until = async (expr, ms = 8000) => { for (let i = 0; i < ms / 200; i++) { if (await ev(expr).catch(() => false)) return true; await sleep(200); } return false; };
     // Panel taşıyor mu: panel ekranda, içerik yatay kaymıyor, hiçbir satır panelin dışına çıkmıyor.
+    // Program listesi doldu: Uygulamalar bölümünde satır (ya da 'açık pencereli program yok') var, 'Ölçülüyor…' değil.
+    const HAZIR = "!/Ölçülüyor/.test(document.querySelector('#durumPanel [data-r=uyg]').textContent) && document.querySelector('#durumPanel [data-r=uyg]').children.length > 0";
     const tasma = () => ev(`(() => {
       const p = document.getElementById('durumPanel'), ic = p.querySelector('.rc-panel-ic'), r = p.getBoundingClientRect();
       const disari = [...p.querySelectorAll('.dr-k, .dr-s, .dr-i, .dr-ekle, .dr-disk')].filter((e) => e.getClientRects().length)
@@ -130,7 +133,28 @@ function wsIstek(username, password, mesaj) {
     check('ana menüden panel açıldı', await shown('#durumPanel'));
     check('açılınca abone olundu', (await ev('window.__log.map((m) => m.t + ":" + m.acik)')).includes('durum-abone:true'));
     check('ölçümler geldi (CPU, RAM)', await until("/^%\\d+$/.test(document.querySelector('[data-k=cpu] b').textContent) && /GB/.test(document.querySelector('[data-k=ram] small').textContent)", 10000));
-    check('süreç listesi 15 satır', await until("document.querySelectorAll('#durumPanel .dr-s').length === 15", 8000), String(await ev("document.querySelectorAll('#durumPanel .dr-s').length")));
+    check('program listesi doldu (Uygulamalar)', await until(HAZIR, 15000), await ev("document.querySelector('#durumPanel [data-r=programlar]').textContent.slice(0, 120)"));
+    const bolum = await ev(`({ uyg: document.querySelectorAll('#durumPanel [data-r=uyg] .dr-s').length, arka: document.querySelectorAll('#durumPanel [data-r=arka] .dr-s').length,
+      arkaGizli: document.querySelector('#durumPanel [data-r=arka]').hidden, acik: document.querySelector('#durumPanel [data-r=arkaAc]').getAttribute('aria-expanded'),
+      uygSayi: document.querySelector('#durumPanel [data-r=uygSayi]').textContent, arkaSayi: document.querySelector('#durumPanel [data-r=arkaSayi]').textContent,
+      surecSayi: document.querySelector('#durumPanel [data-r=surecSayi]').textContent,
+      hepsiUyg: [...document.querySelectorAll('#durumPanel [data-r=uyg] .dr-s')].every((e) => e._p.uyg) })`);
+    check('iki bölüm: Uygulamalar (en fazla 15, hepsi pencereli) ve arka plan varsayılan katlı', bolum.uyg <= 15 && bolum.hepsiUyg && bolum.arka === 0 && bolum.arkaGizli && bolum.acik === 'false'
+      && /^\(\d+\)$/.test(bolum.uygSayi) && /^\(\d+\)$/.test(bolum.arkaSayi) && /^\d+ işlem$/.test(bolum.surecSayi), JSON.stringify(bolum));
+    await ev("document.querySelector('#durumPanel [data-r=arkaAc]').scrollIntoView({ block: 'center' })");
+    await tap('#durumPanel [data-r=arkaAc]');
+    check('"Arka plan işlemleri"ne dokununca açıldı: 15 grup, hepsi penceresiz', await until("document.querySelectorAll('#durumPanel [data-r=arka] .dr-s').length === 15 && [...document.querySelectorAll('#durumPanel [data-r=arka] .dr-s')].every((e) => !e._p.uyg)", 5000)
+      && (await ev("document.querySelector('#durumPanel [data-r=arkaAc]').getAttribute('aria-expanded')")) === 'true', String(await ev("document.querySelectorAll('#durumPanel [data-r=arka] .dr-s').length")));
+    // Satır: program adı (dosya açıklaması) + "(N)" adet, alt satırda exe adı · pencere başlığı, CPU ve bellek alt alta (telefonda).
+    const satirlar = await ev(`[...document.querySelectorAll('#durumPanel .dr-s')].map((e) => ({ ad: e.querySelector('.dr-adm').textContent, adet: e.querySelector('.dr-adet').textContent,
+      alt: e.querySelector('small').hidden ? '' : e.querySelector('small').textContent, cpu: e.querySelector('[data-n=cpu]').textContent, ram: e.querySelector('[data-n=ram]').textContent,
+      p: { ad: e._p.ad, exe: e._p.exe, n: e._p.n, baslik: e._p.baslik || '' }, adGen: e.querySelector('.dr-ad').getBoundingClientRect().width,
+      nlar: (() => { const [c, r] = e.querySelectorAll('.dr-nlar span'); return r.getBoundingClientRect().top > c.getBoundingClientRect().top; })() }))`);
+    check('satırlar: ad, (N) yalnızca birden çok süreçte, alt satırda exe adı ve başlık, % ve MB/GB', satirlar.every((x) => x.ad === x.p.ad && x.adet === (x.p.n > 1 ? `(${x.p.n})` : '')
+      && (x.p.ad === x.p.exe || x.alt.startsWith(x.p.exe)) && (!x.p.baslik || x.p.baslik === x.p.ad || x.alt.includes(x.p.baslik)) && /^%\d+(,\d)?$/.test(x.cpu) && /^\d+(,\d)? ?(MB|GB)$/.test(x.ram)),
+      JSON.stringify(satirlar.find((x) => x.ad !== x.p.ad || x.adet !== (x.p.n > 1 ? `(${x.p.n})` : '')) || satirlar[0]));
+    check('en az bir grup birden çok süreçli ("(N)")', satirlar.some((x) => x.p.n > 1), satirlar.filter((x) => x.p.n > 1).map((x) => `${x.ad} ${x.adet}`).join(', '));
+    check('telefon: CPU ile bellek alt alta, ad sütunu en az 130 px', satirlar.every((x) => x.nlar && x.adGen >= 130), `en dar ad ${Math.min(...satirlar.map((x) => x.adGen)).toFixed(0)} px`);
     await sleep(3500); // çizgi grafikleri birkaç nokta biriktirsin
     const nokta = await ev("document.querySelector('[data-k=cpu] polyline').getAttribute('points').split(' ').filter(Boolean).length");
     check('CPU çizgi grafiği noktaları birikiyor', nokta >= 3, `${nokta} nokta`);
@@ -138,34 +162,48 @@ function wsIstek(username, password, mesaj) {
     let ts = await tasma();
     check('telefon: panel ekrana sığıyor, yatay taşma yok', ts.sol >= 0 && ts.sag <= ts.gen && ts.alt <= ts.yuk && ts.sw <= ts.cw && ts.disari === 0, JSON.stringify(ts));
     await shot('1-telefon-durum');
+    await ev("document.querySelector('#durumPanel [data-r=programlar]').scrollIntoView({ block: 'start' })");
+    await sleep(300);
+    await shot('2-telefon-programlar');
+    await ev("document.querySelector('#durumPanel [data-r=arkaAc]').scrollIntoView({ block: 'start' })");
+    await sleep(300);
+    await shot('2b-telefon-arka-plan');
     await ev("document.querySelector('#durumPanel .rc-panel-ic').scrollTop = 99999");
     await sleep(300);
-    await shot('2-telefon-durum-alt');
+    await shot('2c-telefon-durum-alt');
     await ev("document.querySelector('#durumPanel .rc-panel-ic').scrollTop = 0");
 
-    // ---- Yönetici: Kapat ----
+    // ---- Yönetici: Kapat (grubun tüm süreçlerine) ----
     const kapatlar = await ev("[...document.querySelectorAll('#durumPanel .dr-s [data-act=kapat]')].filter((b) => !b.hidden).length");
-    check('yönetici: her satırda Kapat/🔒 düğmesi', kapatlar === 15, String(kapatlar));
-    const hedef = await ev("(() => { const r = [...document.querySelectorAll('#durumPanel .dr-s')].find((e) => !e._p.koruma); if (!r) return null; r.id = 'drHedef'; return { pid: r._p.pid, ct: r._p.ct, ad: r._p.ad }; })()");
+    check('yönetici: her satırda Kapat/🔒 düğmesi', kapatlar === satirlar.length, `${kapatlar}/${satirlar.length}`);
+    // Mümkünse birden çok süreçli korumasız grup (Kapat'ın tüm üyelere gittiği görülsün).
+    const hedef = await ev(`(() => { const l = [...document.querySelectorAll('#durumPanel .dr-s')].filter((e) => !e._p.koruma);
+      const r = l.find((e) => e._p.n > 1) || l[0]; if (!r) return null; r.id = 'drHedef'; r.scrollIntoView({ block: 'center' });
+      return { pid: r._p.pid, ct: r._p.ct, ad: r._p.ad, n: r._p.n, uyeler: r._p.uyeler || [[r._p.pid, r._p.ct]] }; })()`);
     if (hedef) {
       await ev('window.__onay = false');
       await tap('#drHedef [data-act=kapat]');
       let s = await sent();
       const u = await ev('window.__uyari.splice(0)');
-      check('Kapat önce onay soruyor; vazgeçince gönderilmedi', u.length === 1 && u[0].startsWith('onay:') && u[0].includes(hedef.ad) && s.length === 0, JSON.stringify(u));
+      check('Kapat önce onay soruyor (adet yazıyor); vazgeçince gönderilmedi', u.length === 1 && u[0].startsWith('onay:') && u[0].includes(hedef.ad)
+        && (hedef.n === 1 || u[0].includes(`${hedef.n} işlemin hepsi`)) && s.length === 0, JSON.stringify(u));
       await ev('window.__onay = true');
       await tap('#drHedef [data-act=kapat]');
       s = await sent();
       await ev('window.__uyari.splice(0)');
-      check('onaylayınca nazik kapatma PID ve başlama zamanıyla gönderildi', s.length === 1 && s[0].t === 'durum-kapat' && s[0].pid === hedef.pid && s[0].ct === hedef.ct && !s[0].zorla, JSON.stringify(s));
-      await ev(`window.__fake({ t: 'durum-kapat-sonuc', asama: 'kontrol', ok: true, pid: ${hedef.pid}, ct: '${hedef.ct}', ad: ${JSON.stringify(hedef.ad)}, hala: true })`);
+      check(`onaylayınca nazik kapatma grubun ${hedef.n} sürecine PID + başlama zamanıyla gönderildi`, s.length === 1 && s[0].t === 'durum-kapat' && s[0].pid === hedef.pid && s[0].ct === hedef.ct && !s[0].zorla
+        && JSON.stringify(s[0].surecler) === JSON.stringify(hedef.uyeler), JSON.stringify(s).slice(0, 300));
+      const kalan = hedef.uyeler.slice(0, 2);
+      await ev(`window.__fake({ t: 'durum-kapat-sonuc', asama: 'kontrol', ok: true, pid: ${hedef.pid}, ct: '${hedef.ct}', ad: ${JSON.stringify(hedef.ad)}, hala: true, kalan: ${JSON.stringify(kalan)} })`);
       await sleep(200);
-      check('5 sn sonra hâlâ açıksa "Zorla kapat" düğmesi çıkıyor', await shown('#durumPanel [data-r=kmsg] button'));
+      check('5 sn sonra hâlâ açıksa "Zorla kapat" düğmesi çıkıyor', await shown('#durumPanel [data-r=kmsg] button'), await ev("document.querySelector('#durumPanel [data-r=kmsg]').textContent"));
+      await ev("document.querySelector('#durumPanel [data-r=kmsg]').scrollIntoView({ block: 'center' })");
       await shot('3-telefon-zorla');
       await tap('#durumPanel [data-r=kmsg] button');
       s = await sent();
       const u2 = await ev('window.__uyari.splice(0)');
-      check('Zorla kapat ikinci onayla, zorla: true gönderildi', s.length === 1 && s[0].zorla === true && s[0].pid === hedef.pid && /KAYBOLUR/.test(u2[0] || ''), JSON.stringify(s));
+      check('Zorla kapat ikinci onayla, yalnızca hâlâ açık olanlara zorla: true gönderildi', s.length === 1 && s[0].zorla === true && s[0].pid === hedef.pid
+        && JSON.stringify(s[0].surecler) === JSON.stringify(kalan) && /KAYBOLUR/.test(u2[0] || ''), JSON.stringify(s));
     } else check('korumasız süreç bulundu', false);
     const korumali = await ev("(() => { const r = [...document.querySelectorAll('#durumPanel .dr-s')].find((e) => e._p.koruma); if (!r) return null; r.id = 'drKoruma'; return r._p.ad; })()");
     if (korumali) {
@@ -184,7 +222,10 @@ function wsIstek(username, password, mesaj) {
     const ilkSurec = await ev("document.querySelector('#durumPanel .dr-s')._p");
     await ev("(() => { const e = document.querySelector('#durumPanel .dr-s'); e.id = 'drIzle'; e.scrollIntoView({ block: 'center' }); })()");
     await tap('#drIzle [data-act=izle]');
-    check('🔔: süreç izleyicisi eklendi', await until(`document.querySelector('#durumPanel [data-r=izleyiciler]').textContent.includes(${JSON.stringify(ilkSurec.ad)})`, 5000));
+    check('🔔: grup izleyicisi eklendi', await until(`document.querySelector('#durumPanel [data-r=izleyiciler]').textContent.includes(${JSON.stringify(ilkSurec.ad)})`, 5000));
+    const izSon = await ev("window.__log.filter((m) => m.t === 'durum-izle' && m.tur === 'surec').at(-1)");
+    check('  🔔 grubun tüm süreçlerini (PID + ct) gönderdi', JSON.stringify(izSon.surecler) === JSON.stringify(ilkSurec.uyeler || [[ilkSurec.pid, ilkSurec.ct]]), JSON.stringify(izSon).slice(0, 200));
+    check('  satırdaki 🔔 izleniyor görünüyor', await until(`[...document.querySelectorAll('#durumPanel .dr-s')].some((e) => e._p.pid === ${ilkSurec.pid} && e.querySelector('[data-act=izle]').classList.contains('on'))`, 4000));
 
     // ---- Bildirim kartı ----
     await ev("window.__fake({ t: 'durum-bildirim', id: 'x1', tur: 'indirme', baslik: 'İndirme bitti', metin: 'rapor.pdf (2,1 MB) İndirilenler klasörüne geldi.', zaman: Date.now() })");
@@ -209,7 +250,7 @@ function wsIstek(username, password, mesaj) {
     check('⋯ menüsünde "Bilgisayar durumu" satırı', await shown('#durumBtn'));
     await tap('#durumBtn');
     check('menüden panel açıldı, menü kapandı', (await shown('#durumPanel')) && !(await shown('#menuPanel')));
-    await until("document.querySelectorAll('#durumPanel .dr-s').length === 15", 8000);
+    await until(HAZIR, 10000);
     const st = await rect('#stage');
     await sent();
     await tap({ x: st.left + 3, y: st.bottom - 40 }); // telefonda panel neredeyse tüm genişliği kaplar: sol kenardaki 8 px
@@ -221,10 +262,15 @@ function wsIstek(username, password, mesaj) {
     await sleep(500);
     await tap('#menuBtn');
     await tap('#durumBtn');
-    await until("document.querySelectorAll('#durumPanel .dr-s').length === 15", 8000);
+    await until(HAZIR, 10000);
     await sleep(1500);
     ts = await tasma();
     check('iPad: panel geniş (≥ 500 px) ve taşmıyor', ts.sag - ts.sol >= 500 && ts.sag <= ts.gen && ts.sw <= ts.cw && ts.disari === 0, JSON.stringify(ts));
+    const genis = await ev(`[...document.querySelectorAll('#durumPanel .dr-s')].map((e) => { const [c, r] = e.querySelectorAll('.dr-nlar span');
+      return { yan: Math.abs(c.getBoundingClientRect().top - r.getBoundingClientRect().top) < 2, ad: e.querySelector('.dr-ad').getBoundingClientRect().width }; })`);
+    check('iPad: CPU ve bellek yan yana sütun, ad sütunu en az 250 px', genis.length > 0 && genis.every((x) => x.yan && x.ad >= 250), `en dar ad ${Math.min(...genis.map((x) => x.ad)).toFixed(0)} px`);
+    await ev("document.querySelector('#durumPanel [data-r=programlar]').scrollIntoView({ block: 'start' })");
+    await sleep(300);
     await shot('5-ipad-durum');
     await tap('#durumPanel .rc-x');
 
@@ -242,7 +288,7 @@ function wsIstek(username, password, mesaj) {
     await ev(`(() => { const f = document.getElementById('tAccount'); f.username.value='bakan'; f.password.value='bakan123'; f.remember.checked = false; f.requestSubmit(); })()`);
     check('salt izleme kullanıcısı girdi', await until("!document.getElementById('vHome').hidden && RC.state().me?.role === 'view'"), await ev("[...document.querySelectorAll('section')].filter((e) => !e.hidden).map((e) => e.id).join(',') + ' ' + document.getElementById('loginError').textContent + ' ' + JSON.stringify(RC.state().me)"));
     await tap('#durumHomeBtn');
-    check('salt izleme: panel açıldı, ölçümler geliyor', await until("document.querySelectorAll('#durumPanel .dr-s').length === 15", 10000));
+    check('salt izleme: panel açıldı, ölçümler geliyor', await until(HAZIR, 10000));
     const gizli = await ev(`({
       kapat: [...document.querySelectorAll('#durumPanel .dr-s [data-act=kapat]')].some((b) => !b.hidden),
       izle: [...document.querySelectorAll('#durumPanel .dr-s [data-act=izle]')].some((b) => !b.hidden),

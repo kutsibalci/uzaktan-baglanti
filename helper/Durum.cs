@@ -3,17 +3,27 @@
 //   CPU: GetSystemTimes · RAM: GlobalMemoryStatusEx · pil: GetSystemPowerStatus · süreçler: NtQuerySystemInformation
 //   GPU: NVIDIA sürücüsünün nvml.dll'i (yoksa gizlenir) · ağ: NetworkInterface · disk: DriveInfo
 //   CPU sıcaklığı: WMI MSAcpi_ThermalZoneTemperature — genelde yönetici ister; izin yoksa "ölçülemiyor" (izin İSTENMEZ).
-// Kullanım: Durum.exe <sunucu pid>   (sunucunun kendi süreç ağacı ve konsol penceresini taşıyan süreç "biz" diye işaretlenir, kapatılamaz)
-// stdout: her saniye bir satır JSON (yalnızca ASCII): {"t":"olcum", cpu, ramKul, ramTop, uptime, ag, pil, gpu, diskler, cpuSic, cpuSicNeden, surecler, oz}
+// Kullanım: Durum.exe <sunucu pid> [kritik adlar]   (sunucunun kendi süreç ağacı ve konsol penceresini taşıyan süreç "biz" diye işaretlenir,
+//   kapatılamaz; kritik adlar: virgülle, küçük harf, .exe'siz — features/durum.js KRITIK listesi)
+// stdout: her saniye bir satır JSON (yalnızca ASCII): {"t":"olcum", cpu, ramKul, ramTop, uptime, ag, pil, gpu, diskler, cpuSic, cpuSicNeden, gruplar, sayilar, oz}
+//   gruplar: Görev Yöneticisi gibi süreç grupları. Aynı adlı ebeveyn → çocuk zinciri tek grup (Chrome'un 40 süreci tek satır; ayrı başlatılmış
+//   iki kopya iki satır), kritik sistem süreçleri ada göre tek grup (svchost). Uygulamalar (görünür üst düzey penceresi olan) ve arka plan
+//   ayrı ayrı: en çok CPU kullanan 15 + en çok RAM kullanan 15.
+//   { pid, ct (kök süreç), ad (dosya açıklaması, yoksa exe adı), exe, n, cpu, ram, uyg?, baslik?, biz?, uyeler? [[pid,"ct"],...] (n > 1 ise; kök önce) }
+//   cpu: grubun CPU zamanı / (geçen süre × mantıksal çekirdek) × 100 · ram: özel çalışma kümesi (Görev Yöneticisi'nin Bellek sütunu)
+//   sayilar: { uyg, arka (grup sayıları), surec (toplam süreç) }
 // stdin komutları (her biri tek satır cevap):
 //   ayrinti 0|1          süreç listesi + GPU ölçülsün mü (yalnızca panel açıkken 1; izleyiciler için 0 yeter)
 //   bilgi <pid>          -> {"t":"bilgi","pid":..,"var":true,"ad":"..","ct":"..","biz":false}
-//   kapat <pid> <ct>     -> pencerelerine WM_CLOSE (CloseMainWindow gibi, nazik) {"t":"kapat","ok":..,"pencere":<adet>,"msg":..}
-//   zorla <pid> <ct>     -> TerminateProcess {"t":"zorla","ok":..,"msg":..}
-//   ct: sürecin başlama zamanı (FILETIME). Eşleşmezse (PID başka sürece geçtiyse) hiçbir şey yapılmaz. "0" = denetleme.
+//   bilgiler <pid> ...   -> {"t":"bilgiler","liste":[{bilgi gibi}, ...]}
+//   kapat <pid> <ct> [<pid> <ct> ...]  -> pencerelerine WM_CLOSE (CloseMainWindow gibi, nazik) {"t":"kapat","ok":..,"pencere":<adet>,"msg":..}
+//   zorla <pid> <ct> [<pid> <ct> ...]  -> TerminateProcess {"t":"zorla","ok":..,"kapatilan":<adet>,"msg":..}
+//   ct: sürecin başlama zamanı (FILETIME). Eşleşmeyen (PID başka sürece geçmiş) ya da kapanmış süreç atlanır. "0" = denetleme.
+//   Listede kendi süreçlerimizden biri varsa hiçbirine dokunulmaz.
 // stdin kapanınca çıkar.
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.NetworkInformation;
@@ -30,7 +40,9 @@ static class Durum
     [DllImport("kernel32.dll")] static extern bool GetProcessTimes(IntPtr h, out long create, out long exit, out long kernel, out long user);
     [DllImport("kernel32.dll", SetLastError = true)] static extern IntPtr OpenProcess(int access, bool inherit, int pid);
     [DllImport("kernel32.dll", SetLastError = true)] static extern bool TerminateProcess(IntPtr h, uint code);
+    [DllImport("kernel32.dll")] static extern uint WaitForSingleObject(IntPtr h, uint ms);
     [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern uint QueryDosDevice(string ad, StringBuilder sb, int max);
     [DllImport("kernel32.dll")] static extern IntPtr LoadLibrary(string path);
     [DllImport("kernel32.dll")] static extern bool AttachConsole(int pid);
     [DllImport("kernel32.dll")] static extern bool FreeConsole();
@@ -58,6 +70,8 @@ static class Durum
     [DllImport("user32.dll")] static extern int GetWindowTextLength(IntPtr h);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder sb, int max);
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out int pid);
+    [DllImport("user32.dll")] static extern IntPtr GetShellWindow();
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] static extern IntPtr GetWindowLongPtr(IntPtr h, int i);
     [DllImport("user32.dll", SetLastError = true)] static extern bool PostMessage(IntPtr h, int msg, IntPtr w, IntPtr l);
     [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int attr, out int val, int size);
 
@@ -78,11 +92,14 @@ static class Durum
     static int sunucuPid;
     static List<long[]> konsol = new List<long[]>(); // sunucunun konsolunu taşıyan süreçler: { pid, ct }
     static volatile bool ayrinti = false;
-    static readonly int cekirdek = Environment.ProcessorCount;
+    static readonly int cekirdek = Environment.ProcessorCount; // mantıksal işlemci sayısı (Görev Yöneticisi de buna böler)
+    static HashSet<string> kritik = new HashSet<string>(); // ada göre tek grupta toplanan sistem süreçleri (küçük harf, .exe'siz)
 
     class Surec { public int pid, ppid; public string ad; public long ct, zaman, ram; }
     static Dictionary<int, Surec> anlik = new Dictionary<int, Surec>();
+    static long anlikZaman = 0; // son anlık görüntünün alındığı an (Stopwatch)
     static Dictionary<int, long[]> oncekiZaman = new Dictionary<int, long[]>(); // pid -> { ct, cpu zamanı }
+    static long oncekiAn = 0;
     static IntPtr tampon = IntPtr.Zero;
     static int tamponBoyu = 0;
 
@@ -91,6 +108,7 @@ static class Durum
         cikis = Console.OpenStandardOutput();
         var giris = new StreamReader(Console.OpenStandardInput(), Encoding.UTF8);
         if (args.Length > 0) int.TryParse(args[0], out sunucuPid);
+        if (args.Length > 1) foreach (var k in args[1].Split(',')) if (k.Trim().Length > 0) kritik.Add(k.Trim().ToLowerInvariant());
         if (IntPtr.Size != 8) { Yaz("{\"t\":\"error\",\"msg\":\"64 bit gerekli\"}"); return 1; }
         try { KonsolBul(); } catch { /* konsolsuz (ör. tepsiden başlatıldı) */ }
         var olcer = new Thread(OlcumDongusu) { IsBackground = true };
@@ -107,41 +125,75 @@ static class Durum
 
     static void Komut(string satir)
     {
-        var p = satir.Split(' ');
-        if (p[0] == "ayrinti" && p.Length == 2) { ayrinti = p[1] == "1"; return; }
-        int pid;
-        if (p.Length < 2 || !int.TryParse(p[1], out pid)) { Yaz("{\"t\":\"error\",\"msg\":\"bilinmeyen komut\"}"); return; }
-        long ct = 0;
-        if (p.Length > 2 && !long.TryParse(p[2], out ct)) ct = -1;
+        var p = satir.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        if (p.Length == 2 && p[0] == "ayrinti") { ayrinti = p[1] == "1"; return; }
+        string t = p.Length > 0 ? p[0] : "";
+        if (p.Length < 2 || (t != "bilgi" && t != "bilgiler" && t != "kapat" && t != "zorla")) { Yaz("{\"t\":\"error\",\"msg\":\"bilinmeyen komut\"}"); return; }
+        var sayi = new long[p.Length - 1];
+        for (int i = 1; i < p.Length; i++) if (!long.TryParse(p[i], out sayi[i - 1])) sayi[i - 1] = -1;
         Dictionary<int, Surec> s;
-        lock (kilit) s = Anlik();
-        Surec x;
-        bool var = s.TryGetValue(pid, out x) && pid > 4;
-        if (p[0] == "bilgi")
+        HashSet<int> biz;
+        lock (kilit) { s = Anlik(); biz = Biz(s); }
+        if (t == "bilgi") { Yaz(Bilgi(s, biz, sayi[0], "bilgi")); return; }
+        if (t == "bilgiler")
         {
-            if (!var) { Yaz("{\"t\":\"bilgi\",\"pid\":" + pid + ",\"var\":false}"); return; }
-            Yaz("{\"t\":\"bilgi\",\"pid\":" + pid + ",\"var\":true,\"ad\":" + Json(x.ad) + ",\"ct\":\"" + x.ct + "\",\"biz\":" + (Biz(s).Contains(pid) ? "true" : "false") + "}");
+            var sb = new StringBuilder("{\"t\":\"bilgiler\",\"liste\":[");
+            for (int i = 0; i < sayi.Length; i++) { if (i > 0) sb.Append(','); sb.Append(Bilgi(s, biz, sayi[i], null)); }
+            Yaz(sb.Append("]}").ToString());
             return;
         }
-        if (p[0] != "kapat" && p[0] != "zorla") { Yaz("{\"t\":\"error\",\"msg\":\"bilinmeyen komut\"}"); return; }
-        string t = p[0];
-        if (!var || (ct != 0 && ct != x.ct)) { Yaz("{\"t\":\"" + t + "\",\"ok\":false,\"msg\":\"Program zaten kapanmış.\"}"); return; }
-        if (Biz(s).Contains(pid)) { Yaz("{\"t\":\"" + t + "\",\"ok\":false,\"msg\":\"Uzaktan Bağlantı'nın kendi süreci.\"}"); return; }
+
+        // kapat / zorla: <pid> <ct> çiftleri. Kapanmış ya da PID'i başka sürece geçmiş olanlar atlanır; kendi süreçlerimizden biri varsa hiçbiri.
+        var hedef = new List<Surec>();
+        for (int i = 0; i < sayi.Length; i += 2)
+        {
+            long ct = i + 1 < sayi.Length ? sayi[i + 1] : 0;
+            Surec x;
+            if (sayi[i] <= 4 || sayi[i] > int.MaxValue || !s.TryGetValue((int)sayi[i], out x) || (ct != 0 && ct != x.ct)) continue;
+            if (biz.Contains(x.pid)) { Yaz("{\"t\":\"" + t + "\",\"ok\":false,\"msg\":" + Json("Uzaktan Bağlantı'nın kendi süreci.") + "}"); return; }
+            hedef.Add(x);
+        }
+        if (hedef.Count == 0) { Yaz("{\"t\":\"" + t + "\",\"ok\":false,\"msg\":" + Json("Program zaten kapanmış.") + "}"); return; }
         if (t == "kapat")
         {
             // Process.CloseMainWindow'un yaptığı gibi: görünür üst düzey pencerelerine WM_CLOSE (kaydetmek isteyen program sorabilir).
             int adet = 0, hata = 0;
-            foreach (var h in Pencereler(pid)) { if (PostMessage(h, 0x0010, IntPtr.Zero, IntPtr.Zero)) adet++; else hata++; }
+            foreach (var h in Pencereler(new HashSet<int>(hedef.Select(x => x.pid)))) { if (PostMessage(h, 0x0010, IntPtr.Zero, IntPtr.Zero)) adet++; else hata++; }
             if (adet > 0) Yaz("{\"t\":\"kapat\",\"ok\":true,\"pencere\":" + adet + "}");
             else Yaz("{\"t\":\"kapat\",\"ok\":true,\"pencere\":0,\"msg\":" + Json(hata > 0 ? "Pencereye ulaşılamadı (yönetici olarak çalışıyor olabilir)." : "Penceresi yok; nazikçe kapatılamıyor.") + "}");
             return;
         }
-        IntPtr hp = OpenProcess(0x0001 /* PROCESS_TERMINATE */, false, pid);
-        if (hp == IntPtr.Zero) { Yaz("{\"t\":\"zorla\",\"ok\":false,\"msg\":\"Erişim reddedildi (yönetici olarak çalışan bir program olabilir).\"}"); return; }
-        bool ok = TerminateProcess(hp, 1);
-        int err = Marshal.GetLastWin32Error();
-        CloseHandle(hp);
-        Yaz(ok ? "{\"t\":\"zorla\",\"ok\":true}" : "{\"t\":\"zorla\",\"ok\":false,\"msg\":\"Kapatılamadı (hata " + err + ").\"}");
+        // Kök önce (Chrome gibi programlarda çocuklar kendiliğinden kapanır, çökme sanıp yenisini açmazlar).
+        int tamam = 0, red = 0, sonHata = 0;
+        foreach (var x in hedef)
+        {
+            IntPtr hp = OpenProcess(0x0001 /* PROCESS_TERMINATE */ | 0x00100000 /* SYNCHRONIZE */, false, x.pid);
+            if (hp == IntPtr.Zero)
+            {
+                int e = Marshal.GetLastWin32Error();
+                if (e == 87) tamam++; // bu arada kapanmış
+                else { red++; sonHata = e; }
+                continue;
+            }
+            // Zaten kapanmakta olan süreçte TerminateProcess "erişim reddedildi" der: kapanıyorsa başarı sayılır.
+            if (TerminateProcess(hp, 1) || WaitForSingleObject(hp, 200) == 0) tamam++;
+            else { red++; sonHata = Marshal.GetLastWin32Error(); }
+            CloseHandle(hp);
+        }
+        if (red == 0) { Yaz("{\"t\":\"zorla\",\"ok\":true,\"kapatilan\":" + tamam + "}"); return; }
+        string neden = sonHata == 5 ? "erişim reddedildi, yönetici olarak çalışıyor olabilir" : "hata " + sonHata;
+        Yaz("{\"t\":\"zorla\",\"ok\":false,\"kapatilan\":" + tamam + ",\"msg\":" + Json(tamam == 0
+            ? (sonHata == 5 ? "Erişim reddedildi (yönetici olarak çalışan bir program olabilir)." : "Kapatılamadı (" + neden + ").")
+            : tamam + " işlem kapatıldı, " + red + " işlem kapatılamadı (" + neden + ").") + "}");
+    }
+
+    static string Bilgi(Dictionary<int, Surec> s, HashSet<int> biz, long n, string t)
+    {
+        Surec x;
+        int pid = n > 4 && n <= int.MaxValue ? (int)n : -1;
+        string bas = t == null ? "{" : "{\"t\":\"" + t + "\",";
+        if (pid < 0 || !s.TryGetValue(pid, out x)) return bas + "\"pid\":" + n + ",\"var\":false}";
+        return bas + "\"pid\":" + pid + ",\"var\":true,\"ad\":" + Json(x.ad) + ",\"ct\":\"" + x.ct + "\",\"biz\":" + (biz.Contains(pid) ? "true" : "false") + "}";
     }
 
     // ---------- Ölçüm döngüsü ----------
@@ -201,7 +253,7 @@ static class Durum
                 if (ayrinti)
                 {
                     sb.Append(",\"gpu\":").Append(Gpu());
-                    sb.Append(",\"surecler\":").Append(Surecler(gecen));
+                    Surecler(sb);
                 }
 
                 long c, e, k, u;
@@ -346,6 +398,7 @@ static class Durum
             tamponBoyu = Math.Max(ret + 65536, tamponBoyu * 2);
             tampon = Marshal.AllocHGlobal(tamponBoyu);
         }
+        anlikZaman = Stopwatch.GetTimestamp();
         var d = new Dictionary<int, Surec>();
         if (st != 0) return d;
         long ofs = 0;
@@ -426,44 +479,80 @@ static class Durum
         return biz;
     }
 
-    static List<IntPtr> Pencereler(int pid)
+    // Nazik kapatma için: verilen süreçlerin görünür, sahipsiz, gizlenmemiş üst düzey pencereleri.
+    static List<IntPtr> Pencereler(HashSet<int> pidler)
     {
         var l = new List<IntPtr>();
         EnumWindows((h, _) =>
         {
             int p;
             GetWindowThreadProcessId(h, out p);
-            if (p == pid && IsWindowVisible(h) && GetWindow(h, 4 /* GW_OWNER */) == IntPtr.Zero && !Gizli(h)) l.Add(h);
+            if (pidler.Contains(p) && IsWindowVisible(h) && GetWindow(h, 4 /* GW_OWNER */) == IntPtr.Zero && !Gizli(h)) l.Add(h);
             return true;
         }, IntPtr.Zero);
         return l;
     }
     static bool Gizli(IntPtr h) { int v; return DwmGetWindowAttribute(h, 14 /* DWMWA_CLOAKED */, out v, 4) == 0 && v != 0; }
 
-    static Dictionary<int, string> Basliklar()
+    // "Uygulama" penceresi (Alt+Tab / görev çubuğu gibi): görünür, sahipsiz, gizlenmemiş, başlıklı; masaüstü (Program Manager),
+    // araç pencereleri (WS_EX_TOOLWINDOW, ör. NVIDIA Overlay) ve etkinleşmeyen pencereler hariç. pid -> en üstteki penceresi (Z sırası, başlık).
+    class Pencere { public int sira; public string baslik; }
+    static Dictionary<int, Pencere> UygulamaPencereleri()
     {
-        var d = new Dictionary<int, string>();
+        var d = new Dictionary<int, Pencere>();
         var sb = new StringBuilder(256);
+        IntPtr kabuk = GetShellWindow();
+        int sira = 0;
         EnumWindows((h, _) =>
         {
-            if (!IsWindowVisible(h) || GetWindow(h, 4) != IntPtr.Zero || GetWindowTextLength(h) == 0 || Gizli(h)) return true;
+            sira++;
+            if (h == kabuk || !IsWindowVisible(h) || GetWindow(h, 4) != IntPtr.Zero || GetWindowTextLength(h) == 0 || Gizli(h)) return true;
+            long ex = GetWindowLongPtr(h, -20 /* GWL_EXSTYLE */).ToInt64();
+            bool uygPenceresi = (ex & 0x40000 /* WS_EX_APPWINDOW */) != 0;
+            if (!uygPenceresi && (ex & (0x80 /* WS_EX_TOOLWINDOW */ | 0x08000000 /* WS_EX_NOACTIVATE */)) != 0) return true;
             int p;
             GetWindowThreadProcessId(h, out p);
             if (d.ContainsKey(p)) return true;
             sb.Clear();
             GetWindowText(h, sb, 256);
-            d[p] = sb.ToString();
+            d[p] = new Pencere { sira = sira, baslik = sb.ToString() };
             return true;
         }, IntPtr.Zero);
         return d;
     }
 
-    // En çok CPU kullanan 15 + en çok RAM kullanan 15 (birleşimi). CPU yüzdesi tüm çekirdeklere göredir (Görev Yöneticisi gibi).
-    static string Surecler(double gecen)
+    // ---------- Süreç grupları (Görev Yöneticisi gibi) ----------
+    class Grup { public Surec kok; public List<Surec> uyeler = new List<Surec>(); public double cpu; public long ram; public bool biz, uyg; public int sira = int.MaxValue; public string baslik; }
+
+    static string KisaAd(string ad)
+    {
+        string k = (ad ?? "").ToLowerInvariant();
+        return k.EndsWith(".exe") ? k.Substring(0, k.Length - 4) : k;
+    }
+
+    // Grubun kökü: aynı adlı ebeveyn zincirinin en üstü (Chrome'un tüm alt süreçleri ana chrome.exe'ye bağlanır).
+    // Ebeveyn PID'i yeniden kullanılmış olabilir: ebeveyn, çocuktan önce başlamış olmalı.
+    static Surec Kok(Dictionary<int, Surec> s, Surec x)
+    {
+        for (int i = 0; i < 64; i++)
+        {
+            Surec e;
+            if (x.ppid <= 4 || x.ppid == x.pid || !s.TryGetValue(x.ppid, out e) || e.ct > x.ct || !string.Equals(e.ad, x.ad, StringComparison.OrdinalIgnoreCase)) break;
+            x = e;
+        }
+        return x;
+    }
+
+    static void Surecler(StringBuilder sb)
     {
         Dictionary<int, Surec> s;
         HashSet<int> biz;
-        lock (kilit) { s = Anlik(); biz = Biz(s); }
+        long an;
+        lock (kilit) { s = Anlik(); an = anlikZaman; biz = Biz(s); }
+        // Geçen süre iki anlık görüntü arasından ölçülür (döngünün başından değil): disk/GPU okuması uzasa da yüzde kaymaz.
+        double gecen = (an - oncekiAn) * 1e7 / Stopwatch.Frequency; // 100 ns
+        bool hazir = oncekiZaman.Count > 0 && gecen > 0 && gecen < 5e7; // panel kapalıyken (ayrinti 0) geçen uzun aralık sayılmaz
+        oncekiAn = an;
         var yeni = new Dictionary<int, long[]>();
         var cpu = new Dictionary<int, double>();
         foreach (var x in s.Values)
@@ -471,30 +560,132 @@ static class Durum
             if (x.pid == 0) continue;
             long[] o;
             double c = 0;
-            if (oncekiZaman.TryGetValue(x.pid, out o) && o[0] == x.ct) c = Math.Max(0, 100.0 * (x.zaman - o[1]) / (gecen * cekirdek));
+            if (hazir && oncekiZaman.TryGetValue(x.pid, out o) && o[0] == x.ct) c = Math.Max(0, 100.0 * (x.zaman - o[1]) / (gecen * cekirdek));
             cpu[x.pid] = c;
             yeni[x.pid] = new long[] { x.ct, x.zaman };
         }
-        bool hazir = oncekiZaman.Count > 0;
         oncekiZaman = yeni;
-        if (!hazir) return "null"; // CPU yüzdesi için bir önceki ölçüm gerekir
-        var liste = s.Values.Where(x => x.pid != 0).ToList();
-        var secilen = new HashSet<int>(liste.OrderByDescending(x => cpu[x.pid]).Take(15).Select(x => x.pid));
-        foreach (var x in liste.OrderByDescending(x => x.ram).Take(15)) secilen.Add(x.pid);
-        var basliklar = Basliklar();
-        var sb = new StringBuilder("[");
-        foreach (int pid in secilen)
+        if (!hazir) { sb.Append(",\"gruplar\":null"); return; } // CPU yüzdesi için bir önceki ölçüm gerekir
+
+        var pencereler = UygulamaPencereleri();
+        var gruplar = new Dictionary<string, Grup>();
+        int surecSayisi = 0;
+        foreach (var x in s.Values)
         {
-            var x = s[pid];
-            string b;
-            if (sb.Length > 1) sb.Append(',');
-            sb.Append("{\"pid\":").Append(pid).Append(",\"ad\":").Append(Json(x.ad)).Append(",\"ct\":\"").Append(x.ct).Append("\"")
-              .Append(",\"cpu\":").Append(Sayi(cpu[pid])).Append(",\"ram\":").Append(x.ram);
-            if (basliklar.TryGetValue(pid, out b)) sb.Append(",\"baslik\":").Append(Json(b));
-            if (biz.Contains(pid)) sb.Append(",\"biz\":true");
-            sb.Append('}');
+            if (x.pid == 0) continue;
+            surecSayisi++;
+            bool k = kritik.Contains(KisaAd(x.ad));
+            string anahtar = k ? "k:" + KisaAd(x.ad) : "p:" + Kok(s, x).pid;
+            Grup g;
+            if (!gruplar.TryGetValue(anahtar, out g)) gruplar[anahtar] = g = new Grup();
+            g.uyeler.Add(x);
+            g.cpu += cpu[x.pid];
+            g.ram += x.ram;
+            if (biz.Contains(x.pid)) g.biz = true;
+            Pencere pn;
+            if (pencereler.TryGetValue(x.pid, out pn) && pn.sira < g.sira) { g.sira = pn.sira; g.baslik = pn.baslik; g.uyg = !k; }
         }
-        return sb.Append(']').ToString();
+        var uyg = new List<Grup>();
+        var arka = new List<Grup>();
+        foreach (var g in gruplar.Values)
+        {
+            // Kök önce, sonra başlama sırasıyla (kritik grupta en eski süreç kök sayılır).
+            g.uyeler.Sort((a, b) => a.ct != b.ct ? a.ct.CompareTo(b.ct) : a.pid.CompareTo(b.pid));
+            Surec kok = g.uyeler.Count > 1 && !kritik.Contains(KisaAd(g.uyeler[0].ad)) ? Kok(s, g.uyeler[0]) : g.uyeler[0];
+            g.uyeler.Remove(kok);
+            g.uyeler.Insert(0, kok);
+            g.kok = kok;
+            (g.uyg ? uyg : arka).Add(g);
+        }
+        sb.Append(",\"gruplar\":[");
+        bool ilkGrup = true;
+        foreach (var l in new[] { uyg, arka })
+        {
+            var secilen = new HashSet<Grup>(l.OrderByDescending(g => g.cpu).ThenByDescending(g => g.ram).Take(15));
+            foreach (var g in l.OrderByDescending(g => g.ram).Take(15)) secilen.Add(g);
+            foreach (var g in secilen)
+            {
+                if (!ilkGrup) sb.Append(',');
+                ilkGrup = false;
+                var k = g.kok;
+                sb.Append("{\"pid\":").Append(k.pid).Append(",\"ct\":\"").Append(k.ct).Append('"')
+                  .Append(",\"ad\":").Append(Json(Aciklama(k) ?? k.ad)).Append(",\"exe\":").Append(Json(k.ad))
+                  .Append(",\"n\":").Append(g.uyeler.Count).Append(",\"cpu\":").Append(Sayi(g.cpu)).Append(",\"ram\":").Append(g.ram);
+                if (g.uyg) sb.Append(",\"uyg\":true");
+                if (g.baslik != null) sb.Append(",\"baslik\":").Append(Json(g.baslik));
+                if (g.biz) sb.Append(",\"biz\":true");
+                if (g.uyeler.Count > 1)
+                {
+                    sb.Append(",\"uyeler\":[");
+                    for (int i = 0; i < g.uyeler.Count; i++) sb.Append(i > 0 ? ",[" : "[").Append(g.uyeler[i].pid).Append(",\"").Append(g.uyeler[i].ct).Append("\"]");
+                    sb.Append(']');
+                }
+                sb.Append('}');
+            }
+        }
+        sb.Append("],\"sayilar\":{\"uyg\":").Append(uyg.Count).Append(",\"arka\":").Append(arka.Count).Append(",\"surec\":").Append(surecSayisi).Append('}');
+        if (yolOnbellek.Count > 2 * s.Count + 64) foreach (var pid in yolOnbellek.Keys.Where(p => !s.ContainsKey(p)).ToList()) yolOnbellek.Remove(pid);
+    }
+
+    // ---------- Program adı: dosya açıklaması (FileVersionInfo.FileDescription) ----------
+    // Yol SystemProcessIdInformation'dan: süreç açılmadan alınır (QueryFullProcessImageName svchost, MsMpEng gibi SYSTEM
+    // süreçlerinde yönetici olmadan "erişim reddedildi" der). Yol süreç başına (pid + ct), açıklama yol başına önbellekte;
+    // dosya yalnızca listelenecek grupların kökü için ve bir kez okunur.
+    static Dictionary<int, KeyValuePair<long, string>> yolOnbellek = new Dictionary<int, KeyValuePair<long, string>>();
+    static Dictionary<string, string> aciklamaOnbellek = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    static string Aciklama(Surec x)
+    {
+        KeyValuePair<long, string> y;
+        if (!yolOnbellek.TryGetValue(x.pid, out y) || y.Key != x.ct) yolOnbellek[x.pid] = y = new KeyValuePair<long, string>(x.ct, YolOku(x.pid));
+        string yol = y.Value, a;
+        if (yol == null || !(yol.Length > 2 && yol[1] == ':' || yol.StartsWith("\\\\"))) return null; // System, Registry, Memory Compression...
+        if (aciklamaOnbellek.TryGetValue(yol, out a)) return a;
+        try { a = FileVersionInfo.GetVersionInfo(yol).FileDescription; } catch { a = null; }
+        a = a == null || a.Trim().Length == 0 ? null : a.Trim();
+        aciklamaOnbellek[yol] = a;
+        return a;
+    }
+
+    static IntPtr spiiYapi = IntPtr.Zero, spiiTampon = IntPtr.Zero;
+    const int SPII_BOY = 4096;
+    static string YolOku(int pid)
+    {
+        // SYSTEM_PROCESS_ID_INFORMATION (x64): { HANDLE ProcessId; UNICODE_STRING ImageName { USHORT Length, MaximumLength; PWSTR Buffer } }
+        if (spiiYapi == IntPtr.Zero) { spiiYapi = Marshal.AllocHGlobal(24); spiiTampon = Marshal.AllocHGlobal(SPII_BOY); }
+        Marshal.WriteInt64(spiiYapi, 0, pid);
+        Marshal.WriteInt16(spiiYapi, 8, 0);
+        Marshal.WriteInt16(spiiYapi, 10, (short)SPII_BOY);
+        Marshal.WriteInt32(spiiYapi, 12, 0);
+        Marshal.WriteIntPtr(spiiYapi, 16, spiiTampon);
+        int ret;
+        if (NtQuerySystemInformation(88 /* SystemProcessIdInformation */, spiiYapi, 24, out ret) != 0) return null;
+        string nt = Marshal.PtrToStringUni(spiiTampon, (Marshal.ReadInt16(spiiYapi, 8) & 0xFFFF) / 2);
+        return DosYolu(nt);
+    }
+
+    // \Device\HarddiskVolume3\Windows\... -> C:\Windows\...
+    static Dictionary<string, string> suruculer = null;
+    static DateTime suruculerZaman = DateTime.MinValue;
+    static string DosYolu(string nt)
+    {
+        if (nt.StartsWith("\\Device\\Mup\\", StringComparison.OrdinalIgnoreCase)) return "\\\\" + nt.Substring(12);
+        for (int tur = 0; tur < 2; tur++)
+        {
+            if (suruculer == null || (tur == 1 && DateTime.UtcNow - suruculerZaman > TimeSpan.FromSeconds(30)))
+            {
+                suruculer = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                suruculerZaman = DateTime.UtcNow;
+                var sb = new StringBuilder(512);
+                foreach (var d in Environment.GetLogicalDrives())
+                {
+                    string harf = d.Substring(0, 2);
+                    sb.Clear();
+                    if (QueryDosDevice(harf, sb, 512) > 0) suruculer[sb.ToString()] = harf;
+                }
+            }
+            foreach (var kv in suruculer) if (nt.StartsWith(kv.Key + "\\", StringComparison.OrdinalIgnoreCase)) return kv.Value + nt.Substring(kv.Key.Length);
+        }
+        return nt;
     }
 
     // ---------- Çıktı ----------

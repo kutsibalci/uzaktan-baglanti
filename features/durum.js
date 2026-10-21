@@ -3,13 +3,18 @@
 // Durum.exe yalnızca biri paneli açıkken (abone) ya da CPU/pil izleyicisi varken çalışır; süreç listesi ve GPU yalnızca abone varken ölçülür.
 //   İstemci -> sunucu:
 //     { t:'durum-abone', acik }                        (herkes; salt izleme de görebilir)
-//     { t:'durum-kapat', pid, ct, zorla }              (yalnızca yönetici) önce nazik (WM_CLOSE), 5 sn sonra hâlâ açıksa istemci "Zorla kapat" sunar
-//     { t:'durum-izle', tur, pid?, ct?, ad?, esik? }   (kontrol+) tur: 'surec' (kapanınca) | 'cpu' (eşiğin altına inince) | 'pil' | 'indirme'
+//     { t:'durum-kapat', pid, ct, surecler?, ad?, zorla }   (yalnızca yönetici) önce nazik (WM_CLOSE), 5 sn sonra hâlâ açıksa istemci
+//       "Zorla kapat" sunar. surecler: [[pid, ct], ...] — gruptaki TÜM süreçler (yoksa [[pid, ct]]); biri korumalıysa hiçbiri kapatılmaz.
+//     { t:'durum-izle', tur, pid?, ct?, surecler?, ad?, esik? }   (kontrol+) tur: 'surec' (gruptaki süreçlerin hepsi kapanınca) |
+//       'cpu' (eşiğin altına inince) | 'pil' | 'indirme'
 //     { t:'durum-izle-sil', id }                       (kontrol+)
 //   Sunucu -> istemci:
 //     { t:'durum-ilk', gecmis, son, izleyiciler, kuru, hata? }     abone olunca (son 60 sn)
-//     { t:'durum', cpu, ramKul, ramTop, uptime, ag, pil, gpu, diskler, cpuSic, cpuSicNeden, surecler, oz }   saniyede bir, abonelere
-//     { t:'durum-kapat-sonuc', asama:'nazik'|'kontrol'|'zorla', ok, pid, ad, pencere?, hala?, kuru?, msg? }
+//     { t:'durum', cpu, ramKul, ramTop, uptime, ag, pil, gpu, diskler, cpuSic, cpuSicNeden, gruplar, sayilar, oz }   saniyede bir, abonelere
+//       gruplar: Görev Yöneticisi gibi süreç grupları { pid, ct (kök), ad (program adı), exe, n, cpu, ram (özel çalışma kümesi), uyg?,
+//       baslik?, koruma?, uyeler? [[pid, ct], ...] } — ayrıntı helper/Durum.cs başında. sayilar: { uyg, arka, surec }
+//     { t:'durum-kapat-sonuc', asama:'nazik'|'kontrol'|'zorla', ok, pid, ad, adet, pencere?, hala?, kalan?, kapatilan?, kuru?, msg? }
+//       (kontrol: kalan = hâlâ açık [[pid, ct], ...]; "Zorla kapat" bunu gönderir)
 //     { t:'durum-izle-sonuc', ok, msg? }, { t:'durum-izleyiciler', liste }   (liste değişince herkese)
 //     { t:'durum-bildirim', id, tur, baslik, metin, zaman, gecikmeli? }       (izleyici tetiklenince bağlı herkese;
 //       kimse bağlı değilse saklanır, bir sonraki girişte gösterilir)
@@ -30,6 +35,7 @@ const CPU_SURE = 10;            // CPU bu kadar ölçüm (sn) art arda eşiğin 
 const YOKLAMA = 2000;           // süreç / indirme izleyicileri yoklama aralığı
 const CT_ARALIK = 10000;        // izlenen süreç hâlâ aynı süreç mi (PID yeniden kullanılmış olabilir): oluşturulma zamanı denetimi
 const MAX_IZLEYICI = 20;
+const MAX_GRUP = 256;           // bir kapatma / izleme isteğinde en fazla süreç
 const GECICI = /\.(crdownload|part|partial|download|tmp|opdownload)$/i;
 
 function koruma(ad, biz) {
@@ -42,6 +48,23 @@ function koruma(ad, biz) {
 }
 
 const temizAd = (s) => String(s || '').replace(/[\u0000-\u001f]/g, '').slice(0, 120);
+
+// İstekteki süreç listesi: surecler [[pid, ct], ...] ya da tek { pid, ct }. ct yoksa '0' (denetlenmez). Geçersizse null.
+function surecListesi(m) {
+  const ham = Array.isArray(m.surecler) ? m.surecler : [[m.pid, m.ct]];
+  if (!ham.length || ham.length > MAX_GRUP) return null;
+  const l = [];
+  for (const x of ham) {
+    if (!Array.isArray(x)) return null;
+    const pid = Number(x[0]);
+    if (!Number.isInteger(pid) || pid <= 4 || pid > 0x7fffffff) return null;
+    if (l.some((y) => y[0] === pid)) continue;
+    l.push([pid, /^\d{1,20}$/.test(String(x[1] || '')) ? String(x[1]) : '0']);
+  }
+  return l;
+}
+// İzleyicinin süreçleri (eski kayıtlarda yalnızca pid + ct vardı).
+const uyeler = (i) => (Array.isArray(i.surecler) && i.surecler.length ? i.surecler : [[i.pid, i.ct || null]]);
 
 module.exports.init = (api) => {
   let exe = null, derlemeHatasi = null;
@@ -76,7 +99,7 @@ module.exports.init = (api) => {
   function baslat() {
     if (proc || !exe) return;
     clearTimeout(yenidenTimer);
-    const p = spawnHelper('Durum', exe, [String(process.pid)], { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });
+    const p = spawnHelper('Durum', exe, [String(process.pid), [...KRITIK].join(',')], { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });
     if (!p) return; // Windows engelledi: bir daha denenmez (uyarı yönetim panelinde)
     proc = p;
     ayrintiAcik = null;
@@ -136,8 +159,9 @@ module.exports.init = (api) => {
     yoklamaEsitle();
   }
 
-  // Komut: "bilgi <pid>" | "kapat <pid> <ct>" | "zorla <pid> <ct>" (yalnızca sayılar; enjeksiyon yok).
-  function istek(tur, pid, ct) {
+  // Komut: "bilgi <pid>" | "bilgiler <pid> ..." | "kapat <pid> <ct> ..." | "zorla <pid> <ct> ..." (yalnızca sayılar; enjeksiyon yok).
+  function istek(tur, sayilar) {
+    if (!sayilar.length || !sayilar.every((x) => /^\d{1,20}$/.test(String(x)))) return Promise.resolve(null);
     baslat();
     if (!proc) return Promise.resolve(null);
     const p = proc;
@@ -152,8 +176,13 @@ module.exports.init = (api) => {
         }, ISTEK_SURESI),
       };
       bekleyenler.push(b);
-      p.stdin.write(`${tur} ${pid}${tur === 'bilgi' ? '' : ` ${ct || 0}`}\n`);
+      p.stdin.write(`${tur} ${sayilar.join(' ')}\n`);
     });
+  }
+  // pid -> bilgi ({ var, ad, ct, biz }); Durum.exe çalışmıyorsa null.
+  async function bilgiler(pidler) {
+    const b = await istek('bilgiler', pidler);
+    return b && Array.isArray(b.liste) ? new Map(b.liste.map((x) => [x.pid, x])) : null;
   }
 
   function satirGeldi(satir) {
@@ -170,11 +199,12 @@ module.exports.init = (api) => {
 
   function olcumGeldi(m) {
     m.t = 'durum';
-    if (Array.isArray(m.surecler)) {
-      for (const s of m.surecler) {
-        const k = koruma(s.ad, s.biz);
-        if (k) s.koruma = k;
-        delete s.biz;
+    if (Array.isArray(m.gruplar)) {
+      // Gruptaki süreçlerin hepsi aynı exe; biri bizimse (biz) grup korumalı.
+      for (const g of m.gruplar) {
+        const k = koruma(g.exe, g.biz);
+        if (k) g.koruma = k;
+        delete g.biz;
       }
     }
     son = m;
@@ -210,39 +240,58 @@ module.exports.init = (api) => {
   });
 
   // ---------- Program kapatma (yalnızca yönetici) ----------
+  // Yalnızca PID + başlama zamanı (ct) ile, adla asla: kapanmış ya da PID'i başka sürece geçmiş olanlar atlanır;
+  // açık olanlardan biri korumalıysa (kritik, Gezgini, bizim) grubun hiçbiri kapatılmaz.
   async function dogrula(m) {
-    const pid = Number(m.pid);
-    if (!Number.isInteger(pid) || pid <= 4) return { hata: 'Geçersiz süreç.' };
-    const ct = /^\d{1,20}$/.test(String(m.ct || '')) ? String(m.ct) : '0';
-    const b = await istek('bilgi', pid);
+    const l = surecListesi(m);
+    if (!l) return { hata: 'Geçersiz süreç.' };
+    const b = await bilgiler(l.map(([pid]) => pid));
     if (!b) return { hata: 'Ölçüm programı çalışmıyor.' };
-    if (!b.var || (ct !== '0' && ct !== b.ct)) return { hata: 'Program zaten kapanmış.' };
-    const k = koruma(b.ad, b.biz);
-    if (k) return { hata: `Kapatılamaz — ${k}`, ad: b.ad };
-    return { pid, ct: b.ct, ad: b.ad };
+    const hedef = [];
+    let ad = null;
+    for (const [pid, ct] of l) {
+      const x = b.get(pid);
+      if (!x || !x.var || (ct !== '0' && ct !== x.ct)) continue;
+      const k = koruma(x.ad, x.biz);
+      if (k) return { hata: `Kapatılamaz — ${k}`, ad: x.ad };
+      hedef.push([pid, x.ct]);
+      ad = ad || x.ad;
+    }
+    if (!hedef.length) return { hata: 'Program zaten kapanmış.' };
+    return { hedef, ad };
+  }
+
+  // Hâlâ açık olanlar (aynı PID + ct). Ölçüm programı cevap vermezse hepsi açık sayılır.
+  async function halaAcik(hedef) {
+    const b = await bilgiler(hedef.map(([pid]) => pid));
+    return b ? hedef.filter(([pid, ct]) => b.get(pid)?.var && b.get(pid).ct === ct) : hedef;
   }
 
   api.on('durum-kapat', async (ws, m) => {
     const zorla = !!m.zorla;
     const asama = zorla ? 'zorla' : 'nazik';
     const v = await dogrula(m);
-    const cevap = (o) => api.sendJson(ws, { t: 'durum-kapat-sonuc', asama, pid: Number(m.pid), ad: v.ad, kuru, ...o });
+    const ad = temizAd(m.ad) || v.ad;
+    const cevap = (o) => api.sendJson(ws, { t: 'durum-kapat-sonuc', asama, pid: v.hedef?.[0][0] ?? Number(m.pid), ad, kuru, ...o });
     if (v.hata) return cevap({ ok: false, msg: v.hata });
-    api.store.log('durum', { user: ws.session.username, ip: ws.ip, op: zorla ? 'zorla-kapat' : 'kapat', target: `${v.ad} (${v.pid})${kuru ? ' — deneme, kapatılmadı' : ''}` });
-    api.log(`${ws.session.username} → ${zorla ? 'zorla kapat' : 'kapat'} ${v.ad} (${v.pid})${kuru ? ' (kuru mod)' : ''}`);
+    const adet = v.hedef.length;
+    const pidler = v.hedef.map(([pid]) => pid);
+    const hedefYazi = `${v.ad}${adet > 1 ? ` ×${adet}` : ''} (${pidler.slice(0, 40).join(', ')}${adet > 40 ? ', …' : ''})`;
+    api.store.log('durum', { user: ws.session.username, ip: ws.ip, op: zorla ? 'zorla-kapat' : 'kapat', target: `${hedefYazi}${kuru ? ' — deneme, kapatılmadı' : ''}` });
+    api.log(`${ws.session.username} → ${zorla ? 'zorla kapat' : 'kapat'} ${hedefYazi}${kuru ? ' (kuru mod)' : ''}`);
 
     let r;
-    if (kuru) r = { ok: true, pencere: zorla ? undefined : 1, msg: 'Deneme modu — program kapatılmadı.' };
-    else r = await istek(zorla ? 'zorla' : 'kapat', v.pid, v.ct);
-    if (!r) return cevap({ ok: false, msg: 'Ölçüm programı cevap vermedi.' });
-    cevap({ ok: !!r.ok, pencere: r.pencere, msg: r.msg });
+    if (kuru) r = { ok: true, pencere: zorla ? undefined : 1, kapatilan: zorla ? 0 : undefined, msg: 'Deneme modu — program kapatılmadı.' };
+    else r = await istek(zorla ? 'zorla' : 'kapat', v.hedef.flat());
+    if (!r) return cevap({ ok: false, adet, msg: 'Ölçüm programı cevap vermedi.' });
+    cevap({ ok: !!r.ok, adet, pencere: r.pencere, kapatilan: r.kapatilan, msg: r.msg });
     if (zorla || !r.ok) return;
 
-    // Nazik kapatma: penceresi yoksa hemen, varsa 5 sn sonra hâlâ açık mı bak.
+    // Nazik kapatma: penceresi yoksa hemen, varsa 5 sn sonra hâlâ açık mı bak (gruptaki her süreç için).
     const kontrol = async () => {
-      const b = await istek('bilgi', v.pid);
-      const hala = !!(b && b.var && b.ct === v.ct);
-      api.sendJson(ws, { t: 'durum-kapat-sonuc', asama: 'kontrol', ok: true, pid: v.pid, ct: v.ct, ad: v.ad, hala, kuru });
+      const kalan = await halaAcik(v.hedef);
+      const ilk = kalan[0] || v.hedef[0];
+      api.sendJson(ws, { t: 'durum-kapat-sonuc', asama: 'kontrol', ok: true, pid: ilk[0], ct: ilk[1], ad, adet, hala: kalan.length > 0, kalan, kuru });
     };
     if (!r.pencere) kontrol();
     else setTimeout(kontrol, NAZIK_BEKLEME);
@@ -253,7 +302,7 @@ module.exports.init = (api) => {
   const listeYay = () => api.broadcast({ t: 'durum-izleyiciler', liste: liste() });
 
   function aciklama(i) {
-    if (i.tur === 'surec') return `${i.ad} kapanınca`;
+    if (i.tur === 'surec') return `${i.ad}${uyeler(i).length > 1 ? ` (${uyeler(i).length} işlemin hepsi)` : ''} kapanınca`;
     if (i.tur === 'cpu') return `CPU %${i.esik} eşiğinin altına inince`;
     if (i.tur === 'pil') return `Pil %${i.esik} eşiğinin altına inince`;
     return 'İndirilenler\'e yeni dosya gelince';
@@ -275,16 +324,22 @@ module.exports.init = (api) => {
     if (kayit.izleyiciler.length >= MAX_IZLEYICI) return cevap(false, `En fazla ${MAX_IZLEYICI} izleyici kurulabilir.`);
     const i = { id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, tur: String(m.tur || ''), olusturan: ws.session.username, zaman: Date.now() };
     if (i.tur === 'surec') {
-      const pid = Number(m.pid);
-      if (!Number.isInteger(pid) || pid <= 4) return cevap(false, 'Geçersiz süreç.');
-      if (!canli(pid)) return cevap(false, 'Program zaten kapanmış.');
-      // ct (oluşturulma zamanı) saklanır: PID başka sürece verilirse (ör. yeniden başlatma sonrası) izleyici yanlış programa bağlanmasın.
-      const ct = /^\d{1,20}$/.test(String(m.ct || '')) ? String(m.ct) : null;
-      const b = await istek('bilgi', pid);
-      if (b && (!b.var || (ct && ct !== b.ct))) return cevap(false, 'Program zaten kapanmış.');
-      if (kayit.izleyiciler.some((x) => x.tur === 'surec' && x.pid === pid)) return cevap(false, 'Bu program zaten izleniyor.');
+      // Grup: gruptaki süreçlerin HEPSİ kapanınca tetiklenir. Her süreç PID + ct (oluşturulma zamanı) ile saklanır: PID başka sürece
+      // verilirse (ör. yeniden başlatma sonrası) izleyici yanlış programa bağlanmasın.
+      const l = surecListesi(m);
+      if (!l) return cevap(false, 'Geçersiz süreç.');
+      const b = await bilgiler(l.map(([pid]) => pid));
+      const acik = [];
+      for (const [pid, ct] of l) {
+        if (!canli(pid)) continue;
+        const x = b?.get(pid);
+        if (b && (!x?.var || (ct !== '0' && ct !== x.ct))) continue;
+        acik.push([pid, x?.ct || (ct !== '0' ? ct : null)]);
+      }
+      if (!acik.length) return cevap(false, 'Program zaten kapanmış.');
+      if (kayit.izleyiciler.some((x) => x.tur === 'surec' && uyeler(x).some(([p]) => acik.some(([q]) => q === p)))) return cevap(false, 'Bu program zaten izleniyor.');
       if (kayit.izleyiciler.length >= MAX_IZLEYICI) return cevap(false, `En fazla ${MAX_IZLEYICI} izleyici kurulabilir.`);
-      Object.assign(i, { pid, ct: b?.ct || ct, ad: temizAd(m.ad) || `PID ${pid}` });
+      Object.assign(i, { pid: acik[0][0], ct: acik[0][1], surecler: acik, ad: temizAd(m.ad) || `PID ${acik[0][0]}` });
     } else if (i.tur === 'cpu' || i.tur === 'pil') {
       const esik = Math.round(Number(m.esik ?? (i.tur === 'cpu' ? 10 : 20)));
       if (!(esik >= 1 && esik <= (i.tur === 'cpu' ? 95 : 99))) return cevap(false, 'Geçersiz eşik.');
@@ -356,19 +411,33 @@ module.exports.init = (api) => {
 
   function yokla() {
     for (const i of [...kayit.izleyiciler]) {
-      if (i.tur === 'surec' && !canli(i.pid)) tetikle(i, 'Program kapandı', `${i.ad} kapandı.`);
-      else if (i.tur === 'surec' && i.ct && !(i._ic?.ctZaman > Date.now() - CT_ARALIK)) ctDenetle(i);
+      if (i.tur === 'surec') surecYokla(i);
       else if (i.tur === 'indirme') indirmeYokla(i);
     }
   }
 
-  // PID canlı ama oluşturulma zamanı farklı: izlenen program kapanmış, PID başka sürece verilmiş.
+  // Kapanan süreçler listeden düşer; liste boşalınca (gruptaki hepsi kapandı) tetiklenir.
+  function kalanlar(i, kalan) {
+    if (!kayit.izleyiciler.includes(i)) return;
+    if (!kalan.length) return tetikle(i, 'Program kapandı', `${i.ad} kapandı.`);
+    if (kalan.length === uyeler(i).length) return;
+    i.surecler = kalan;
+    [i.pid, i.ct] = kalan[0];
+    kaydet();
+  }
+
+  function surecYokla(i) {
+    kalanlar(i, uyeler(i).filter(([pid]) => canli(pid)));
+    if (kayit.izleyiciler.includes(i) && uyeler(i).some(([, ct]) => ct) && !(i._ic?.ctZaman > Date.now() - CT_ARALIK)) ctDenetle(i);
+  }
+
+  // PID canlı ama oluşturulma zamanı farklı: o süreç kapanmış, PID başka sürece verilmiş.
   // (_ic kaydedilmez: sunucu açılışında ilk yoklamada hemen denetlenir.)
   async function ctDenetle(i) {
     i._ic = { ctZaman: Date.now() };
-    const b = await istek('bilgi', i.pid);
-    if (!b || !kayit.izleyiciler.includes(i)) return;
-    if (!b.var || b.ct !== i.ct) tetikle(i, 'Program kapandı', `${i.ad} kapandı.`);
+    const b = await bilgiler(uyeler(i).map(([pid]) => pid));
+    if (!b) return;
+    kalanlar(i, uyeler(i).filter(([pid, ct]) => b.get(pid)?.var && (!ct || b.get(pid).ct === ct)));
   }
 
   // Yeni dosya: geçici uzantılı değil (.crdownload/.part...), yanında aynı adlı geçici dosya yok (Firefox önce boş dosya açar)
