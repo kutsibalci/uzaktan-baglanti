@@ -18,7 +18,7 @@
     .tum-etiket { position: absolute; min-width: 34px; height: 34px; padding: 0 9px; border-radius: 9px; pointer-events: auto;
       background: rgba(10, 12, 16, .5); border: 1px solid rgba(255, 255, 255, .28); color: rgba(255, 255, 255, .9);
       font: 600 15px/32px system-ui, sans-serif; text-align: center; box-shadow: 0 1px 4px rgba(0, 0, 0, .35); }
-    .tum-etiket:active { background: rgba(59, 130, 246, .6); }
+    .tum-etiket:active { background: rgba(79, 124, 255, .6); }
   `;
   document.head.appendChild(stil);
 

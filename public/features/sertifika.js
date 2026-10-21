@@ -30,7 +30,7 @@
     .srt-diger summary { cursor: pointer; color: var(--muted); font-size: 14px; padding: 4px 0; }
     .srt-diger[open] summary { margin-bottom: 8px; }
     .srt-parmak { font-family: ui-monospace, Consolas, monospace; font-size: 11px; word-break: break-all; color: var(--muted); }
-    .srt-serit { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: rgba(59,130,246,.12); border: 1px solid var(--accent);
+    .srt-serit { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: rgba(79,124,255,.12); border: 1px solid var(--accent);
       border-radius: 12px; padding: 8px 10px; font-size: 13px; }
     .srt-serit span { flex: 1 1 180px; min-width: 0; }
     .srt-serit button, .srt-serit a.srt-btn { margin: 0; padding: 7px 10px; font-size: 13px; border-radius: 8px; }

@@ -120,7 +120,7 @@
   toggle.className = 'ctl'; // salt izleme rolünde çekirdek gizler
   toggle.title = 'Özel tuşlar: kısayollar, Ctrl/Alt/Shift/Win, oklar, F1–F12';
   toggle.setAttribute('aria-label', 'Özel tuşlar');
-  toggle.textContent = 'Tuşlar';
+  toggle.innerHTML = `${window.RCIkon ? RCIkon.svg('command') : ''}<span class="al">Tuşlar</span>`;
   document.getElementById('kbBtn').after(toggle);
 
   const SEKMELER = [['kisayol', 'Kısayollar'], ['gezinme', 'Ctrl · Oklar'], ['f', 'F1–F12']];
@@ -219,7 +219,8 @@
     const ideal = Math.max(104, Math.min(210, Math.round(vh * 0.42) - 50));
     // Panel başlığı + alt boşluk + üst kenarlık
     const disi = () => panel.head.offsetHeight + (parseFloat(getComputedStyle(panel.el).paddingBottom) || 0) + 1;
-    let h = Math.min(ideal, vh - toolbarEl.offsetHeight - disi() - SAHNE_MIN);
+    const alt = document.getElementById('altCubuk')?.offsetHeight || 0; // telefonda alt çubuk (Klavye, Tuşlar, …)
+    let h = Math.min(ideal, vh - toolbarEl.offsetHeight - alt - disi() - SAHNE_MIN);
     if (h < GOVDE_MIN + 8 && toolbarEl.offsetHeight) {
       vViewerEl.classList.add('tus-sikisik');
       h = Math.min(ideal, vh - disi() - SAHNE_MIN);

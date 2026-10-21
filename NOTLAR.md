@@ -294,6 +294,19 @@
   Güvenlik duvarı kuralı yine kullanıcının elinde (Ortak kutusunu kaldırmak ilk katman).
   **(henüz gerçek cihazda test edilmedi: başka bir cihazdan okul ağında erişim denemesi; evde ağ Özel yapılınca telefonun ev ağı
   adresinden girebilmesi)**
+- **Arayüz yenilendi** (2026-10-21): mavi → mor marka rengi ve logo (uygulama simgesiyle aynı), emoji yerine kendi çizdiğimiz SVG simge seti
+  (`public/ikon.js`, renkli kutucuklar; özelliklerin emojileri merkezden çevrilir), ana menüde renkli kartlar + araçlar ızgarası + baş harfli
+  avatar ve yetki rozeti, giriş / kurulum / onay ekranlarında logo, onay kutuları anahtar (switch), yönetimde simgeli bölümler ve bulanık
+  yapışkan başlık, araç çubuğu ve ⋯ menüsü yeni görünümde. Ayrıca: girişe dönünce açık kalan paneller (ör. bilgisayar durumu) artık kapanıyor.
+  Başsız Edge'de iPhone (390×844) ve masaüstü (1366×820) boyutunda ekran görüntüleriyle kontrol edildi.
+  **(henüz gerçek cihazda test edilmedi: iPhone Safari'de görünüm — `color-mix`, `backdrop-filter`, anahtar görünümlü onay kutuları)**
+- **Telefonda alt çubuk + ilk bağlantı tanıtımı** (2026-10-21; kullanıcı: "3 noktaya basmayan bu özellikleri göremeyecek"): TeamViewer/RustDesk
+  tarzı — telefonda (< 720 px) Klavye, Tuşlar, Doğrudan/Touchpad, Sağ tık, Pano ve **Diğer** altta, yazılı; Diğer (⋯) alttan açılan simgeli
+  ızgara (4 sütun); açılır paneller alttan açılır; üst çubukta yalnızca geri, bağlantı/fps ve gecikme. Geniş ekran ve yatay telefon eskisi gibi
+  (üst çubuk). İlk görüntü açılışında (cihaz başına bir kez) 3 adımlık tanıtım: alt çubuk → Diğer → hareketler (masaüstünde 2 adım, üst çubuk);
+  katman dokunuşları bilgisayara gitmez, Geç / Başla / Esc kapatır, Diğer → "Nasıl kullanılır?" yeniden açar. Testler: güncellenen
+  `ozellik-arayuz-tarayici`, yeni `ozellik-tanitim-tarayici` (24 kontrol).
+  **(henüz gerçek cihazda test edilmedi: iPhone'da alt çubuk + ekran klavyesi birlikteyken yer, ana ekran çizgisi (safe-area) boşluğu)**
 
 ## Sıradaki
 1. Yukarıdaki özelliklerin gerçek telefon/tablet/kalemle denenmesi (ikinci ekran dahil)

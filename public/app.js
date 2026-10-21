@@ -5,6 +5,39 @@
   const stage = $('stage');
   const kbInput = $('kbInput');
 
+  // ---------- Simgeler (ikon.js): emoji yerine SVG ----------
+  const ikon = window.RCIkon;
+  for (const el of document.querySelectorAll('[data-ik]')) {
+    if (el.tagName === 'H2') el.insertAdjacentHTML('afterbegin', ikon.svg(el.dataset.ik));
+    else if (!el.closest('.mode')) ikon.yerlestir(el, el.dataset.ik);
+  }
+  ikon.yerlestir($('backBtn'), '←');
+  $('kbBtn').innerHTML = `${ikon.svg('keyboard')}<span class="al">Klavye</span>`;
+  $('menuBtn').innerHTML = `${ikon.svg('more')}<span class="al">Diğer</span>`;
+  $('logoutBtn').innerHTML = `${ikon.svg('logout')}<span>Çıkış</span>`;
+  // Ana menü: '📁 Dosya aktarımı' gibi düğmeler renkli simge kutucuklu araç düğmesi olur; kartların simgesi de renklenir.
+  function aracDugmesi(btn) {
+    const a = ikon.ayir(btn.textContent);
+    if (!a) return;
+    btn.innerHTML = `${ikon.kutu(a.ad)}<span class="tl"></span>`;
+    btn.querySelector('.tl').textContent = a.metin;
+  }
+  function modKarti(kart) {
+    const ic = kart.querySelector('.icon');
+    if (!ic || ic.classList.contains('has-ik')) return;
+    const ad = ic.dataset.ik || ic.textContent;
+    if (!ikon.ad(ad)) return;
+    ikon.yerlestir(ic, ad);
+    kart.style.setProperty('--ik', ikon.renk(ad));
+  }
+  aracDugmesi($('adminBtn'));
+  {
+    const modes = document.querySelector('#vHome .modes');
+    const hepsi = () => modes.querySelectorAll('.mode').forEach(modKarti);
+    hepsi();
+    new MutationObserver(hepsi).observe(modes, { childList: true }); // özelliklerin kartları (çizim, kumanda) sonradan eklenir
+  }
+
   // quality/fps JPEG için, kbps H.264 için.
   // auto: JPEG'de sunucu kaliteyi ve genişliği ağa göre seçer (quality/maxWidth tavandır); H.264'te "Orta" ile aynıdır.
   const QUALITY = {
@@ -79,8 +112,11 @@
   };
 
   const VIEWS = ['vConnecting', 'vSetup', 'vLogin', 'vPending', 'vHome', 'vViewer', 'vAdmin'];
+  let panelleriKapat = null; // aşağıda (paneller) atanır
   function show(id) {
     for (const v of VIEWS) $(v).hidden = v !== id;
+    // Girişe / kuruluma dönünce açık kalan paneller (ör. bilgisayar durumu) kapanır.
+    if (id !== 'vViewer' && id !== 'vHome' && id !== 'vAdmin') panelleriKapat?.();
   }
   const visible = (id) => !$(id).hidden;
 
@@ -273,7 +309,9 @@
     overlay('');
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     $('helloName').textContent = `Merhaba, ${me.username}`;
-    $('helloRole').textContent = `Yetki: ${ROLE_NAMES[me.role] || me.role}${me.guest ? ' (misafir)' : ''}`;
+    $('helloAvatar').textContent = (me.username || '?').slice(0, 1).toLocaleUpperCase('tr-TR');
+    $('helloRole').innerHTML = '<span class="rol"></span>';
+    $('helloRole').firstChild.textContent = `${ROLE_NAMES[me.role] || me.role}${me.guest ? ' (misafir)' : ''}`;
     $('adminBtn').hidden = me.role !== 'admin';
     $('modeExtend').disabled = me.role === 'view';
     $('extendHint').textContent = me.role === 'view' ? 'Kontrol yetkisi gerekiyor'
@@ -600,6 +638,7 @@
   // RC.ui.menuItem({...}): ⋯ menüsüne satır ekler; pin: true ise geniş ekranda çubukta simge olarak da görünür.
 
   const toolbarEl = $('toolbar');
+  const altCubuk = $('altCubuk');
   const panels = []; // { el, close, drop, dismiss, anchors, openedAt }
 
   function trackPanel(entry) {
@@ -610,12 +649,23 @@
     return entry;
   }
   const openPanels = () => panels.filter((p) => !p.el.hidden && p.el.isConnected);
+  panelleriKapat = () => { for (const p of openPanels()) p.close(); };
 
   // Açılır panel çubuğun hemen altında açılır (çubuk gizliyse ekranın üstünde); yükseklik görünür alana sığar.
+  // Telefonda (alt çubuk varken) alttan açılır: alt çubuğun hemen üstüne yaslanır, içerik artınca yukarı doğru büyür.
   function placeDrop(el) {
     const vh = window.visualViewport?.height || window.innerHeight;
     const bar = visible('vViewer') && !toolbarEl.hidden ? Math.round(toolbarEl.getBoundingClientRect().bottom) : 0;
     const top = bar + 6;
+    const alt = visible('vViewer') && altCubuk.getClientRects().length ? Math.round(altCubuk.getBoundingClientRect().top) : 0;
+    el.classList.toggle('alttan', !!alt);
+    if (alt) {
+      el.style.top = 'auto';
+      el.style.bottom = `${Math.max(0, Math.round(window.innerHeight - alt + 6))}px`;
+      el.style.maxHeight = `${Math.max(160, alt - 6 - top)}px`;
+      return;
+    }
+    el.style.bottom = '';
     el.style.top = bar ? `${top}px` : `calc(${top}px + env(safe-area-inset-top))`;
     el.style.maxHeight = `${Math.max(160, Math.round(vh - top - 8))}px`;
   }
@@ -630,7 +680,7 @@
     el.hidden = true;
     el.setAttribute('role', 'dialog');
     el.setAttribute('aria-label', title);
-    el.innerHTML = '<div class="rc-panel-bas"><h3></h3><button type="button" class="rc-x" title="Kapat" aria-label="Kapat">✕</button></div><div class="rc-panel-ic"></div>';
+    el.innerHTML = `<div class="rc-panel-bas"><h3></h3><button type="button" class="rc-x" title="Kapat" aria-label="Kapat">${ikon.svg('x')}</button></div><div class="rc-panel-ic"></div>`;
     const head = el.firstChild, body = el.lastChild;
     head.querySelector('h3').textContent = title;
     const anchors = new Set([].concat(opts.anchor || []).filter(Boolean));
@@ -739,6 +789,7 @@
   }
 
   const menuItems = [];
+  const altPinler = []; // menuItem({ alt }) düğmeleri: telefonda alt çubukta (ör. Pano)
   function updateMenuBadge() {
     let dot = menuBtn.querySelector('.mdot');
     const any = menuItems.some((i) => i.st.badge && !i.st.hidden);
@@ -746,7 +797,8 @@
     if (dot) dot.hidden = !any;
   }
 
-  // o: { id, icon, label, state, title, order (varsayılan 100), onClick(e), pin, ctl, extend (false: ikinci ekranda gizli),
+  // o: { id, icon, label, state, title, order (varsayılan 100), onClick(e), pin, alt ('Pano': telefonda alt çubukta bu kısa adla), ctl,
+  //      extend (false: ikinci ekranda gizli),
   //      keepOpen (tıklayınca menü açık kalsın; aç/kapa düğmeleri için), hidden, disabled }
   // Dönen: { el, pinEl, set({ icon, label, state, title, hidden, disabled, active, badge }) }
   function menuItem(o = {}) {
@@ -756,12 +808,13 @@
     if (o.id) row.id = o.id;
     row.innerHTML = '<span class="mi"></span><span class="ml"></span><span class="ms"></span><span class="mdot" hidden></span>';
     let pin = null;
-    if (o.pin) {
+    if (o.pin || o.alt) {
       pin = document.createElement('button');
       pin.type = 'button';
       pin.className = 'tb-pin';
       if (o.id) pin.id = `${o.id}Pin`;
-      pin.innerHTML = '<span class="pi"></span><span class="mdot" hidden></span>';
+      pin.innerHTML = '<span class="pi"></span><span class="al"></span><span class="mdot" hidden></span>';
+      pin.querySelector('.al').textContent = o.alt || '';
     }
     for (const e of [row, pin]) {
       if (!e) continue;
@@ -772,7 +825,8 @@
     const item = { el: row, pinEl: pin, st };
     item.set = (patch = {}) => {
       Object.assign(st, patch);
-      row.querySelector('.mi').textContent = st.icon;
+      const mi = row.querySelector('.mi');
+      if (mi.dataset.v !== st.icon) { ikon.yerlestir(mi, st.icon); mi.dataset.v = st.icon; }
       row.querySelector('.ml').textContent = st.label;
       const ms = row.querySelector('.ms');
       ms.textContent = st.state;
@@ -783,7 +837,8 @@
       row.classList.toggle('on', st.active);
       row.querySelector('.mdot').hidden = !st.badge;
       if (pin) {
-        pin.querySelector('.pi').textContent = st.icon;
+        const pi = pin.querySelector('.pi');
+        if (pi.dataset.v !== st.icon) { ikon.yerlestir(pi, st.icon); pi.dataset.v = st.icon; }
         pin.title = st.title || (st.state ? `${st.label}: ${st.state}` : st.label);
         pin.setAttribute('aria-label', pin.title);
         pin.hidden = st.hidden;
@@ -798,7 +853,8 @@
     pin?.addEventListener('click', (e) => o.onClick?.(e));
     menuItems.push(item);
     addOrdered(menuList, row, Number(o.order ?? 100));
-    if (pin) addOrdered($('tbPins'), pin, Number(o.order ?? 100));
+    if (o.pin) addOrdered($('tbPins'), pin, Number(o.order ?? 100));
+    if (o.alt) altPinler.push({ el: pin, pin: !!o.pin, order: Number(o.order ?? 100) });
     return item.set({ icon: o.icon || '', label: o.label || '', state: o.state || '', title: o.title || '', hidden: !!o.hidden, disabled: !!o.disabled });
   }
 
@@ -1057,7 +1113,7 @@
     touchMode = mode;
     storage.set('touchMode', mode);
     document.body.classList.toggle('rc-touchpad', mode === 'touchpad'); // özellikler (ör. ekran etiketleri) dokunuşu bıraksın
-    $('touchModeBtn').innerHTML = mode === 'touchpad' ? '🖱<span class="tb-label"> Touchpad</span>' : '👆<span class="tb-label"> Doğrudan</span>';
+    $('touchModeBtn').innerHTML = mode === 'touchpad' ? `${ikon.svg('mouse')}<span class="al">Touchpad</span>` : `${ikon.svg('hand')}<span class="al">Doğrudan</span>`;
     const [name, text] = TOUCH_TIPS[mode];
     $('touchModeBtn').title = `Dokunmatik: ${name} modu — ${text} (değiştir)`;
     drawCursor();
@@ -1078,8 +1134,7 @@
     rightArm = v;
     rightBtn.classList.toggle('on', !!v);
     rightBtn.setAttribute('aria-pressed', String(!!v));
-    // İki satır ("Sağ" / "tık"): telefonda çubukta yer dar (yakınlaştırma düğmesi de çıkabiliyor).
-    rightBtn.innerHTML = `<span>${v === 'lock' ? '🔒' : ''}Sağ</span> <span>tık</span>`;
+    rightBtn.innerHTML = `${ikon.svg('rightClick')}<span class="al">${v === 'lock' ? '🔒' : ''}Sağ tık</span>`;
     rightBtn.title = v === 'lock' ? 'Sağ tık kilitli: her dokunuş sağ tık (kapatmak için dokun)'
       : v ? 'Sıradaki dokunuş sağ tık olacak (iptal için dokun)' : 'Sağ tık: dokun = sıradaki dokunuş sağ tık, uzun bas = kilitli';
   }
@@ -1672,10 +1727,20 @@
       menuItem,                                          // ⋯ menüsüne satır (pin: geniş ekranda çubukta da simge)
       panel,                                             // ✕ ile kapanan ortak panel: { el, head, body, open, close, toggle, isOpen, addAnchor, setTitle }
       closable,                                          // kendi kabuğu olan paneli Esc ile kapanacak şekilde kaydet
-      home: (el) => insertBefore('adminBtn', el),        // ana menü kartına öğe ekle
+      // ana menüye öğe ekle: düğme (ya da düğmeli kutu: düğme + açılır bölüm) araçlar ızgarasına, diğerleri (uyarı şeridi) kartların üstüne
+      home(el) {
+        const btn = el.matches('button') ? el : el.querySelector(':scope > button');
+        if (!btn) return document.querySelector('#vHome .modes').before(el);
+        insertBefore('adminBtn', el);
+        aracDugmesi(btn);
+        return el;
+      },
       adminSection(title, el) {                          // yönetim paneline bölüm ekle
         const h = document.createElement('h2');
         h.textContent = title;
+        const ik = [[/başlat/i, 'rocket'], [/pano/i, 'clipboard'], [/https|sertifika/i, 'lock'], [/dosya/i, 'folder'], [/güç/i, 'power'],
+          [/durum/i, 'activity'], [/eşleştir|qr/i, 'qr']].find(([r]) => r.test(title));
+        h.insertAdjacentHTML('afterbegin', ikon.svg(ik ? ik[1] : 'sliders'));
         const box = document.createElement('div');
         box.className = 'box';
         box.appendChild(el);
@@ -1689,6 +1754,30 @@
     },
   };
 
+  // ---------- Alt çubuk (telefon) ----------
+  // Dar ekranda sık kullanılan kontroller altta, simge + yazı olarak (başparmakla erişilir; telefon dik tutulunca görüntünün
+  // altında zaten boş alan kalır). Düğmeler TAŞINIR (kopyalanmaz): kimlikler ve dinleyiciler aynı kalır. Geniş ekranda üst
+  // çubuktadırlar. Sıra: Klavye, Tuşlar, dokunma modu, Sağ tık, menuItem({ alt }) ile eklenenler (ör. Pano), Diğer (⋯ menü).
+  const darEkran = window.matchMedia('(max-width: 719px)');
+  function yerlesim() {
+    const dar = darEkran.matches;
+    document.body.classList.toggle('rc-alt', dar);
+    const ana = ['kbBtn', 'tusBtn', 'touchModeBtn', 'rightBtn'].map($).filter(Boolean);
+    if (dar) {
+      for (const el of ana) altCubuk.appendChild(el);
+      for (const p of [...altPinler].sort((a, b) => a.order - b.order)) altCubuk.appendChild(p.el);
+      altCubuk.appendChild(menuBtn);
+    } else {
+      let onceki = $('status');
+      for (const el of ana) { onceki.after(el); onceki = el; }
+      for (const p of altPinler) { if (p.pin) addOrdered($('tbPins'), p.el, p.order); else p.el.remove(); }
+      toolbarEl.appendChild(menuBtn);
+    }
+    relayout();
+  }
+  yerlesim();
+  darEkran.addEventListener?.('change', yerlesim);
+
   // Özellik betiklerini yükle, sonra bağlan.
   fetch('/api/features')
     .then((r) => (r.ok ? r.json() : []))
@@ -1700,5 +1789,5 @@
       s.onerror = () => { console.error('Özellik yüklenemedi:', src); resolve(); };
       document.body.appendChild(s);
     }))))
-    .finally(connect);
+    .finally(() => { yerlesim(); connect(); }); // özelliklerin düğmeleri (Tuşlar, Pano) de yerine
 })();

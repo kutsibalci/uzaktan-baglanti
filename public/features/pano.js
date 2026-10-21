@@ -33,7 +33,7 @@
 
   // ---------- Menü satırı (salt izleme rolünde çekirdek gizler: ctl) ----------
   const item = RC.ui.menuItem({
-    id: 'panoBtn', icon: '📋', label: 'Pano (kopyala-yapıştır)', order: 10, pin: true, ctl: true,
+    id: 'panoBtn', icon: '📋', label: 'Pano (kopyala-yapıştır)', order: 10, pin: true, alt: 'Pano', ctl: true,
     onClick: () => (panel.hidden ? ac() : kapat()),
   });
   // Yeni metin/resim geldi işareti (menü satırında ve ⋯ düğmesinde nokta)

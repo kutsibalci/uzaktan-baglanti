@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#0f1115">
+<meta name="theme-color" content="#0a0d14">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
@@ -17,12 +17,13 @@
 <body>
   <!-- Bağlanıyor -->
   <section id="vConnecting" class="center">
-    <div class="card"><p class="muted">Bağlanılıyor…</p></div>
+    <div class="card"><div class="brand"><span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><path d="M10 7.3l4.8 2.3-2 .7-.9 2.1Z" fill="currentColor" stroke-width="1.1"/></svg></span><span>Uzaktan Bağlantı</span></div><div class="spinner"></div><p class="muted" style="text-align:center">Bağlanılıyor…</p></div>
   </section>
 
   <!-- İlk kurulum -->
   <section id="vSetup" class="center" hidden>
     <form id="setupForm" class="card">
+      <div class="brand"><span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><path d="M10 7.3l4.8 2.3-2 .7-.9 2.1Z" fill="currentColor" stroke-width="1.1"/></svg></span><span>Uzaktan Bağlantı</span></div>
       <h1>Hoş geldin 👋</h1>
       <p class="muted">İlk kurulum: bu bilgisayarın yönetici hesabını oluştur.</p>
       <input name="username" placeholder="Kullanıcı adı" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" required minlength="3">
@@ -37,7 +38,9 @@
   <!-- Giriş -->
   <section id="vLogin" class="center" hidden>
     <div class="card">
-      <h1>Uzaktan Bağlantı</h1>
+      <div class="brand"><span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><path d="M10 7.3l4.8 2.3-2 .7-.9 2.1Z" fill="currentColor" stroke-width="1.1"/></svg></span><span>Uzaktan Bağlantı</span></div>
+      <h1>Giriş yap</h1>
+      <p class="muted">Bilgisayarına bağlanmak için hesabınla ya da misafir koduyla gir.</p>
       <div class="tabs">
         <button class="tab active" data-tab="tAccount">Hesap</button>
         <button class="tab" data-tab="tGuest" id="guestTabBtn">Misafir kodu</button>
@@ -61,6 +64,7 @@
   <!-- Onay bekleniyor -->
   <section id="vPending" class="center" hidden>
     <div class="card">
+      <div class="brand"><span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><path d="M10 7.3l4.8 2.3-2 .7-.9 2.1Z" fill="currentColor" stroke-width="1.1"/></svg></span><span>Uzaktan Bağlantı</span></div>
       <h1>Onay bekleniyor</h1>
       <div class="spinner"></div>
       <p class="muted">Bu cihaz ilk kez bağlanıyor. Bilgisayarda açılan pencereden <b>Evet</b>'e basın (60 sn).</p>
@@ -69,22 +73,26 @@
 
   <!-- Ana menü -->
   <section id="vHome" class="center" hidden>
-    <div class="card wide">
-      <div class="row between">
+    <div class="card wide home">
+      <div class="home-bas">
+        <div class="brand"><span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><path d="M10 7.3l4.8 2.3-2 .7-.9 2.1Z" fill="currentColor" stroke-width="1.1"/></svg></span><span>Uzaktan Bağlantı</span></div>
+        <button id="logoutBtn" class="ghost small" title="Çıkış yap">Çıkış</button>
+      </div>
+      <div class="hello">
+        <span class="avatar" id="helloAvatar" aria-hidden="true"></span>
         <div>
           <h1 id="helloName">Merhaba</h1>
           <p class="muted" id="helloRole"></p>
         </div>
-        <button id="logoutBtn" class="ghost">Çıkış</button>
       </div>
       <div class="modes">
         <button class="mode" id="modeControl">
-          <span class="icon">🖥️</span>
+          <span class="icon" data-ik="monitor">🖥️</span>
           <b>Uzaktan kontrol</b>
           <small id="controlHint">Bilgisayarın ekranını gör ve kontrol et</small>
         </button>
         <button class="mode" id="modeExtend">
-          <span class="icon">➕</span>
+          <span class="icon" data-ik="monitorPlus">➕</span>
           <b>İkinci ekran</b>
           <small id="extendHint">Bu cihazı bilgisayarın ek monitörü yap</small>
         </button>
@@ -93,7 +101,9 @@
         <span class="muted">Ekran:</span>
         <select id="screenPick"></select>
       </label>
-      <button id="adminBtn" class="ghost" hidden>⚙ Yönetim</button>
+      <div class="tools" id="homeTools">
+        <button id="adminBtn" class="ghost" hidden>⚙ Yönetim</button>
+      </div>
       <p class="error" id="homeError"></p>
     </div>
   </section>
@@ -119,12 +129,14 @@
       <canvas id="screen" width="0" height="0"></canvas>
       <div id="overlay" hidden></div>
     </div>
+    <!-- Telefonda (dar ekran) alt çubuk: app.js yerlesim() Klavye, Tuşlar, dokunma modu, Sağ tık, Pano ve Diğer'i buraya taşır -->
+    <nav id="altCubuk" class="alt-cubuk" aria-label="Kontroller"></nav>
     <textarea id="kbInput" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"></textarea>
     <!-- Menü içeriği (app.js ortak panele taşır; özellikler RC.ui.menuItem ile satır ekler, data-order sırasıyla) -->
     <div id="menuItems" class="menu-list">
       <p id="menuInfo" class="menu-info" data-order="0"></p>
       <label id="qualityRow" class="menu-row" data-order="1">
-        <span class="mi">🎚</span><span class="ml">Görüntü kalitesi</span>
+        <span class="mi" data-ik="gauge">🎚</span><span class="ml">Görüntü kalitesi</span>
         <select id="quality" title="Görüntü kalitesi">
           <option value="tasarruf">Veri tasarrufu</option>
           <option value="low">Düşük</option>
@@ -133,7 +145,7 @@
         </select>
       </label>
       <label id="screenRow" class="menu-row" data-order="2" hidden>
-        <span class="mi">🖥</span><span class="ml">Ekran</span>
+        <span class="mi" data-ik="monitor">🖥</span><span class="ml">Ekran</span>
         <select id="screenSel" title="Ekran"></select>
       </label>
       <div class="menu-sep" data-order="9"></div>
@@ -145,15 +157,15 @@
   <section id="vAdmin" hidden>
     <div class="admin">
       <div class="row between sticky">
-        <h1>Yönetim</h1>
+        <div class="admin-bas"><span class="logo" aria-hidden="true" data-ik="sliders"></span><h1>Yönetim</h1></div>
         <button id="adminClose" class="ghost">Kapat ✕</button>
       </div>
       <p id="adminMsg" class="msg"></p>
 
-      <h2>Her yerden erişim (Tailscale)</h2>
+      <h2 data-ik="globe">Her yerden erişim (Tailscale)</h2>
       <div class="box" id="tsBox"></div>
 
-      <h2>Misafir erişimi</h2>
+      <h2 data-ik="ticket">Misafir erişimi</h2>
       <div class="box">
         <label class="check"><input type="checkbox" id="setGuestOtp"> Tek seferlik misafir kodu ile girişe izin ver</label>
         <div class="row gap wrap" id="guestRow">
@@ -165,7 +177,7 @@
         </div>
       </div>
 
-      <h2>Güvenlik</h2>
+      <h2 data-ik="shield">Güvenlik</h2>
       <div class="box">
         <label class="check"><input type="checkbox" id="setApproval"> Yeni bir cihaz şifreyle giriş yapınca bilgisayarda onay iste</label>
         <label class="check"><input type="checkbox" id="setTrustTs"> Tailscale üzerinden gelen bağlantılarda onay isteme</label>
@@ -175,7 +187,7 @@
         <p class="small" id="netList"></p>
       </div>
 
-      <h2>Kullanıcılar</h2>
+      <h2 data-ik="users">Kullanıcılar</h2>
       <div class="box">
         <table id="usersTable"></table>
         <form id="addUserForm" class="row gap wrap">
@@ -186,17 +198,18 @@
         </form>
       </div>
 
-      <h2>Hatırlanan cihazlar</h2>
+      <h2 data-ik="devices">Hatırlanan cihazlar</h2>
       <div class="box"><table id="devicesTable"></table></div>
 
-      <h2>Şu an bağlı</h2>
+      <h2 data-ik="wifi">Şu an bağlı</h2>
       <div class="box"><table id="onlineTable"></table></div>
 
-      <h2>Bağlantı günlüğü</h2>
+      <h2 data-ik="list">Bağlantı günlüğü</h2>
       <div class="box"><table id="logTable" class="small"></table></div>
     </div>
   </section>
 
+  <script src="ikon.js"></script>
   <script src="dokunmatik.js"></script>
   <script src="ekranlar.js"></script>
   <script src="app.js"></script>

@@ -138,7 +138,7 @@ function loadToNorm() {
   let man = null;
   try { man = JSON.parse(fs.readFileSync(path.join(PUB, 'manifest.webmanifest'), 'utf8')); } catch (e) { check('manifest geçerli JSON', false, e.message); }
   if (man) {
-    check('manifest alanları', man.name === 'Uzaktan Bağlantı' && man.display === 'standalone' && man.theme_color === '#0f1115' && !!man.start_url);
+    check('manifest alanları', man.name === 'Uzaktan Bağlantı' && man.display === 'standalone' && man.theme_color === '#0a0d14' && !!man.start_url);
     const want = { 'icon-192.png': 192, 'icon-512.png': 512, 'maskable-512.png': 512 };
     for (const ic of man.icons) {
       const file = path.join(PUB, ic.src);

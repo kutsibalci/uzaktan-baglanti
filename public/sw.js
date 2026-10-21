@@ -1,9 +1,9 @@
 // Service worker: yalnızca uygulama kabuğunu (sayfa, betik, stil, ikonlar) önbelleğe alır.
 // AĞ ÖNCELİKLİ: her istek önce sunucuya gider, önbellek yalnızca sunucuya ulaşılamazsa kullanılır;
 // böylece güncellemeler hemen gelir. /api/*, özellik betikleri ve diğer her şey hiç ele alınmaz (WebSocket zaten geçmez).
-const CACHE = 'uzak-kabuk-v1';
+const CACHE = 'uzak-kabuk-v2';
 const SHELL = [
-  './', 'index.html', 'app.js', 'dokunmatik.js', 'ekranlar.js','style.css', 'manifest.webmanifest',
+  './', 'index.html', 'app.js', 'ikon.js', 'dokunmatik.js', 'ekranlar.js', 'style.css', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png', 'icons/apple-touch-icon.png',
 ];
 const scopePath = new URL(self.registration.scope).pathname; // genelde "/"

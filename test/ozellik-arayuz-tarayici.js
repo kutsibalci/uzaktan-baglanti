@@ -119,10 +119,21 @@ const YAKALAYICI = `
     await sent();
 
     let b = await barInfo();
-    check('telefon: araç çubuğu tek satır ve taşmıyor', b.satir === 1 && b.sw <= b.cw && b.sagKenar <= b.gen && b.h <= 56, JSON.stringify(b));
-    check('telefon: çubukta geri, ⌨, Tuşlar, dokunmatik modu ve ⋯ var', ['backBtn', 'kbBtn', 'tusBtn', 'touchModeBtn', 'menuBtn'].every((x) => b.ids.includes(x)), b.ids.join(','));
-    check('telefon: özellik simgeleri ve fps çubukta değil (menüde)', !(await shown('#panoBtnPin')) && !(await shown('#fps')) && !(await shown('#sesBtnPin')));
-    const kucuk = await ev("[...document.querySelectorAll('#toolbar button')].filter((e) => e.getClientRects().length && getComputedStyle(e).display !== 'none').map((e) => { const r = e.getBoundingClientRect(); return [e.id, Math.round(r.width), Math.round(r.height)]; }).filter(([i, w, h]) => i !== 'olcumBtn' && (w < 44 || h < 44))");
+    check('telefon: üst çubuk tek satır ve taşmıyor', b.satir === 1 && b.sw <= b.cw && b.sagKenar <= b.gen && b.h <= 56, JSON.stringify(b));
+    check('telefon: üst çubukta geri, bağlantı ve görüntü bilgisi (fps)', b.ids.includes('backBtn') && (await shown('#fps')), b.ids.join(','));
+    // Alt çubuk: Klavye, Tuşlar, dokunma modu, Sağ tık, Pano, Diğer — yazılı, tek satır, ekrana sığar
+    const alt = await ev(`(() => {
+      const a = document.getElementById('altCubuk');
+      const kids = [...a.children].filter((e) => e.getClientRects().length && getComputedStyle(e).display !== 'none');
+      const r = a.getBoundingClientRect();
+      return { ids: kids.map((e) => e.id), yazilar: kids.map((e) => e.textContent.trim()), satir: new Set(kids.map((e) => Math.round(e.getBoundingClientRect().top))).size,
+        sag: Math.max(...kids.map((e) => e.getBoundingClientRect().right)), alt: r.bottom, ust: r.top };
+    })()`);
+    check('telefon: alt çubukta Klavye, Tuşlar, dokunma modu, Sağ tık, Pano, Diğer (bu sırayla)', JSON.stringify(alt.ids) === JSON.stringify(['kbBtn', 'tusBtn', 'touchModeBtn', 'rightBtn', 'panoBtnPin', 'menuBtn']), alt.ids.join(','));
+    check('telefon: alt çubuk düğmeleri yazılı', JSON.stringify(alt.yazilar) === JSON.stringify(['Klavye', 'Tuşlar', 'Doğrudan', 'Sağ tık', 'Pano', 'Diğer']), alt.yazilar.join(','));
+    check('telefon: alt çubuk tek satır, ekranın altında, taşmıyor', alt.satir === 1 && alt.sag <= 390.5 && alt.alt <= 844.5 && alt.ust > 700, JSON.stringify(alt));
+    check('telefon: diğer özellik simgeleri çubuklarda değil (Diğer menüsünde)', !(await shown('#sesBtnPin')) && !(await shown('#dosyaBtnPin')));
+    const kucuk = await ev("[...document.querySelectorAll('#toolbar button, #altCubuk button')].filter((e) => e.getClientRects().length && getComputedStyle(e).display !== 'none').map((e) => { const r = e.getBoundingClientRect(); return [e.id, Math.round(r.width), Math.round(r.height)]; }).filter(([i, w, h]) => i !== 'olcumBtn' && (w < 44 || h < 44))");
     check('telefon: çubuk düğmeleri en az 44px', kucuk.length === 0, JSON.stringify(kucuk));
     await shot('1-telefon-cubuk');
 
@@ -135,7 +146,9 @@ const YAKALAYICI = `
     check('menü satırı durum gösteriyor (Ses)', /kapalı|HTTPS|destek/.test(sesDurum), sesDurum);
     check('menü sırası: kalite önce, çubuğu gizle sonda', satirlar[0] === 'qualityRow' && satirlar.at(-1) === 'hideBtn', satirlar.join(','));
     const mp = await rect('#menuPanel');
-    check('menü ekrana sığıyor (çubuğun altında, alt kenar görünür)', mp.top >= b.h && mp.bottom <= 844 && mp.w <= 390, JSON.stringify(mp));
+    check('menü alttan açıldı: üst çubuğun altında, alt çubuğun hemen üstünde', mp.top >= b.h && mp.bottom <= alt.ust && alt.ust - mp.bottom < 20 && mp.w <= 390, JSON.stringify(mp));
+    const izgara = await ev("(() => { const r = [...document.querySelectorAll('#menuPanel button.menu-row')].filter((e) => e.getClientRects().length).map((e) => e.getBoundingClientRect()); return { n: r.length, satir: new Set(r.map((x) => Math.round(x.top))).size, kucuk: r.filter((x) => x.width < 60 || x.height < 60).length }; })()");
+    check('Diğer menüsü simgeli ızgara (satır başına 4 kutucuk)', izgara.n >= 8 && izgara.satir <= Math.ceil(izgara.n / 4) && izgara.kucuk === 0, JSON.stringify(izgara));
     await shot('2-telefon-menu');
     await tap('#menuPanel .rc-x');
     check('menü ✕ ile kapandı', !(await shown('#menuPanel')));
@@ -143,8 +156,8 @@ const YAKALAYICI = `
     await tap('#menuBtn');
     await sent();
     const st = await rect('#stage');
-    // Menünün altında kalan bir nokta (menüye satır eklendikçe menü uzar; ortaya dokunmak menünün içine düşebilir)
-    const disari = { x: st.x, y: Math.max(st.y + 100, mp.bottom + 30) };
+    // Menünün üstünde kalan bir nokta (menü alttan açılır; alt çubuğa dokunmak da "dışarı" olur ama bir düğmeye basar)
+    const disari = { x: st.x, y: Math.round((b.h + mp.top) / 2) };
     await tap(disari);
     check('menü dışarı dokununca kapandı', !(await shown('#menuPanel')));
     let s = await sent();
