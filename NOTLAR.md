@@ -261,6 +261,29 @@
       testinde — kalem etikete dokunursa kalem olayı da gider; JPEG tür 4'te ekranlar arası birkaç ms zaman farkının yırtılması gözle bakılmadı)**
       Veri sayacı tür 4 kareleri "Görüntü"ye sayar (bütünleştirmede eklendi). "Veri tasarrufu" tüm ekranlarda ~1280×720 piksel eşdeğeri.
 
+- [x] İnceleme düzeltmeleri (paket 3: 7 bulgu + sunucu günlüğünde görülen 2 hata):
+      (1) `arka-plan.ps1` bekçisi veri klasörü başına adlı Mutex alır (`Local\UzaktanBaglanti-arka-plan-<özet>`): aynı anda iki
+      "başlat" (çift tık, Run + elle) artık ikinci bekçi/sunucu açıp PID dosyasını silmiyor, sunucu `durdur` ile durdurulabilir kalıyor
+      (`test/ozellik-arka-plan.js` 7. bölüm; eski betikle PID dosyası siliniyor, `durdur` "dokunulmadı" diyip 3 dönüyordu). Testin
+      temizliği PID yeniden kullanımına karşı yalnızca test başladıktan sonra oluşmuş kendi bekçilerini ve onların node çocuklarını kapatır.
+      (2) Onay penceresi (RemoteHelper ask) 0/1 dışında bir kodla kapanınca (çökme, ilke kodu) yerel yöneticiye `pencere: false`
+      güncellemesi gider ve tepsi varken de (tür aralığına takılmadan) onay bildirimi gösterilir (`test/ozellik-baslatma-onay.js`).
+      (3) Tüm ekranlar etiketleri: yer varsa görüntünün dışında, üstteki boşlukta (dikey iPhone'da masaüstünün sol üstünü örtmüyor);
+      touchpad modunda (`body.rc-touchpad`) etiket dokunma olaylarını durdurmaz — dokunuş / kaydırma tık ve imleç olarak geçer, tek
+      ekrana geçiş ⋯ menüsündeki seçicide; fareyle etiket her modda tek ekran açar.
+      (4) Mobil veri şeridi ~250 MB/saat vaadini yalnızca H.264 varken yazar (şifresiz adreste: görüntü JPEG, bit hızı sınırı yok uyarısı);
+      README de koşullu. Veri bölümünde ondalık nokta (aynı paneldeki gecikme satırlarıyla aynı).
+      (5) `ozellik-tum-ekranlar` düzen değişimi kontrolündeki yarış (kareler düzen yazılmadan önce temizlenir, eski düzenin geç kareleri atlanır).
+      (6) `/api/sertifika/durum` sertifikada olmayan bir adla açılan sayfada (ör. `tailscale serve`'ün *.ts.net adı) 500 dönüyordu
+      (günlükte `[sertifika] HTTP hatası: Invalid name`): Node 24'te `X509Certificate.checkIP` IP olmayan metinde istisna atıyor.
+      Artık ad için yalnızca checkHost, IP için yalnızca checkIP; önerilen adres ev ağı IP'sine düşer (`test/ozellik-sertifika.js`).
+      (7) RemoteHelper.exe açılır açılmaz kapanırsa (ör. Windows kapanırken 0xC000026B STATUS_DLL_INIT_FAILED) sabit 0,5 sn arayla
+      sonsuz yeniden başlatma yerine bekleme iki katına çıkar (0,5 → 1 → 2 … en fazla 10 sn); 30 sn'den uzun çalıştıktan sonraki
+      kapanışta yine 0,5 sn (`test/ozellik-helper-yeniden.js`, sahte yardımcıyla).
+      **(henüz gerçek cihazda test edilmedi: iPhone'da etiketlerin üstteki yeri ve touchpad'de etiket üstünden dokunuş — başsız Edge
+      390×844 emülasyonunda sınandı; Android Chrome'da HTTP adresinde şeridin JPEG metni; gerçek Tailscale adından açılan sayfada
+      sertifika durumu — yalnızca Host başlığı taklidiyle; Windows kapanırken yardımcının bekleme davranışı — sahte yardımcıyla)**
+
 ## Sıradaki
 1. Yukarıdaki özelliklerin gerçek telefon/tablet/kalemle denenmesi (ikinci ekran dahil)
 2. H.264 için de masaüstü çoğaltma (ffmpeg ddagrab) — JPEG yolunda yapıldı; çıkış ↔ \\.\DISPLAYn eşlemesi DXGI_OUTPUT_DESC.DeviceName ile (`DxgiCapture.Open`).
@@ -276,3 +299,6 @@
 8. Tepsi menüsünde "kes" ile "kes ve cihazı unut" ayrımı: şimdilik tepsiden kesilen hatırlanan cihazın kaydı her zaman siliniyor (yeniden girişte şifre sorulur)
 9. Android Chrome'da kalemin ürettiği dokunma olaylarının ayıklanması (pointerdown 'pen' sonrası gelen dokunuş kimlikleri) gerçek S-Pen ile doğrulanmalı; salt izleme rolünde hatırlanan touchpad modunun yok sayılması için tarayıcı testi yok
 10. Çalışan sunucu yeniden başlatılmalı (tepsiden "Yeniden başlat"): eski RemoteHelper.exe hâlâ kullanımda (kumanda `cursor` ve kalem `pen` değişiklikleri de ancak yeniden derlenince gelir; ilk açılışta data/sertifika üretilir ve 3443 dinlenir); Durum.exe (konsol penceresi koruması) de yeniden derlenir; ikinci ekranın kırpılmaması (PerMonitorV2 DPI), DXGI yakalama ve iş parçacıklı girdi ancak açılışta exe yeniden derlenince devreye girer. Ardından iPhone'da ikinci ekran ve akıcılık yeniden denenmeli. Yatay iPhone + klavye + Tuşlar panelinde (tus-sikisik: araç çubuğu gizlenir) gerçek cihazda denenmeli.
+11. "Veri tasarrufu"nda JPEG yolu için sunucu tarafında bayt/sn bütçesi (kbps: 500'ü JPEG kalite/fps seçiminde sınır olarak kullanmak):
+    şimdi JPEG'de bit hızı sınırı yok — incelemede hareketli ekranda tasarrufta ~2,6 GB/saat (tek ekran), ~3 GB/saat (tüm ekranlar)
+    ölçüldü; şerit ve README şimdilik yalnızca uyarıyor
