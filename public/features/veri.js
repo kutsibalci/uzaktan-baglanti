@@ -85,7 +85,8 @@
   document.addEventListener('visibilitychange', () => { if (document.hidden) kaydet(); });
 
   // ---------- Biçim ----------
-  const sayi = (v, d) => v.toLocaleString('tr-TR', { minimumFractionDigits: d, maximumFractionDigits: d });
+  // Ondalık nokta: aynı paneldeki gecikme satırlarıyla (olcum.js, toFixed) tutarlı
+  const sayi = (v, d) => v.toFixed(d);
   function boyut(b) {
     if (b < 1e3) return `${Math.round(b)} B`;
     if (b < 1e6) return `${sayi(b / 1e3, 0)} KB`;
@@ -191,7 +192,13 @@
   serit.className = 'veri-serit';
   serit.id = 'veriSerit';
   serit.hidden = true;
-  serit.innerHTML = `<span>📶 Mobil veridesin — Veri tasarrufu açılsın mı? (saatte en fazla ~250 MB)</span>
+  // ~250 MB/saat sınırı yalnızca H.264'te (500 kbps). JPEG'de bit hızı sınırı yok (kalite 35, 1280 px, 15 fps): hareketli ekranda
+  // ölçüm ~2,6 GB/saat. Şifresiz adreste (HTTP) WebCodecs yok, görüntü JPEG olur.
+  const h264Var = window.isSecureContext && 'VideoDecoder' in window;
+  const tahmin = h264Var
+    ? '(H.264 ile saatte en fazla ~250 MB)'
+    : '(bu adreste görüntü JPEG: hareketli ekranda saatte 2 GB\'ı aşabilir; HTTPS adresinde ~250 MB)';
+  serit.innerHTML = `<span>📶 Mobil veridesin — Veri tasarrufu açılsın mı? ${tahmin}</span>
     <button type="button" data-v="evet">Aç</button><button type="button" class="ghost" data-v="hayir">Hayır</button>`;
   const modlar = document.querySelector('#vHome .modes');
   if (modlar) modlar.before(serit); else RC.ui.home(serit);

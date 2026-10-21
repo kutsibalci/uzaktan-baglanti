@@ -123,6 +123,8 @@ const wsFrame = (n, out) => n + (n < 126 ? 2 : n < 65536 ? 4 : 10) + (out ? 4 : 
     check('mobil veride ana ekranda öneri şeridi var', await shown('#veriSerit'));
     await shot('1-ana-ekran-oneri');
     const sr = await rect('#veriSerit');
+    const seritYazi = await ev("document.getElementById('veriSerit').textContent");
+    check('şerit: ~250 MB tahmini H.264 koşuluyla (localhost güvenli bağlam, WebCodecs var)', /H\.264 ile saatte en fazla ~250 MB/.test(seritYazi), seritYazi.trim().slice(0, 120));
     check('şerit ekrana sığıyor (390 px)', sr && sr.left >= 0 && sr.right <= 390, JSON.stringify(sr));
     await tap('#veriSerit [data-v="evet"]');
     check('"Aç": kalite Veri tasarrufu oldu, şerit kapandı', (await ev("document.getElementById('quality').value")) === 'tasarruf' && !(await shown('#veriSerit')));
@@ -166,6 +168,7 @@ const wsFrame = (n, out) => n + (n < 126 ? 2 : n < 65536 ? 4 : 10) + (out ? 4 : 
     const yazi = await ev("[...document.querySelectorAll('#veriBolum td')].map((e) => e.textContent).join(' | ')");
     console.log(`     bölüm: ${yazi}`);
     check('bölümde hız ve saatlik tahmin var', /saatte/.test(yazi) && /(kbps|Mbps)/.test(yazi) && /≈ [\d,.]+ (KB|MB|GB)/.test(yazi));
+    check('ondalık ayırıcı gecikme satırlarıyla aynı (nokta)', !/\d,\d/.test(yazi), yazi);
     check('TLS/Tailscale ek yükü notu var', /TLS/.test(await ev("document.querySelector('#veriBolum .not').textContent")));
     await shot('3-olcum-paneli-veri');
     await ev("document.querySelector('#veriBolum').scrollIntoView({ block: 'end' })");

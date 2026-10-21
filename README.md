@@ -29,7 +29,8 @@ Windows bilgisayarı telefondan, tabletten ya da başka bir bilgisayardan **tara
 - Tablet kalemi: basınç, eğim, silgi
 - Gecikme sayacı: ağ, çözme ve tahmini toplam gecikme, kare aralığı / takılma; deneme sonuçlarını kopyalanabilir özet olarak verir
 - **Veri kullanımı sayacı** (⏱ paneli, ⋯ menü: oturum / bugün / bu ay, saatlik tahmin) ve **"Veri tasarrufu"** kalitesi
-  (mobil veri için: H.264 en fazla 500 kbps / 15 fps / 1280, ses 32 kbps; sürekli hareketli ekranda bile saatte ~220 MB)
+  (mobil veri için: H.264 en fazla 500 kbps / 15 fps / 1280, ses 32 kbps; H.264 ile sürekli hareketli ekranda bile saatte ~220 MB.
+  JPEG'de (HTTP adresi ya da H.264 açılamadığında) bit hızı sınırı yok: hareketli ekranda saatte ~2,6 GB ölçüldü)
 - Tepsi simgesi, Windows açılınca başlatma, bağlantı bildirimleri; yöneticiye güç menüsü (kilitle/uyku/yeniden başlat/kapat)
 - **Tepsisiz arka plan başlatma** (`arka-plan-baslat.bat`, yalnızca imzalı powershell.exe) ve Akıllı Uygulama Denetimi
   dayanıklılığı: bir yardımcı exe engellenirse sunucu çökmez, yönetim paneli hangi özelliğin çalışmadığını ve seçenekleri gösterir
