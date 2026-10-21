@@ -303,4 +303,4 @@ body.rc-alt #fps.tb-wide { display: block !important; flex: 0 1 auto; min-width:
 /* Telefonda paneller alttan açılır (app.js placeDrop); ⋯ menü ekranın en fazla ~yarısı */
 .rc-panel.drop.alttan { animation-name: panelAlttan; }
 @keyframes panelAlttan { from { opacity: 0; transform: translateY(6px); } }
-#menuPanel.alttan:not(.genis) { max-height: min(60vh, 520px) !important; }
+#menuPanel.alttan:not(.genis) { max-height: min(68vh, 580px) !important; }

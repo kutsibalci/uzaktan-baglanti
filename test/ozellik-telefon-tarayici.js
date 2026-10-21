@@ -285,6 +285,23 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
     const last2 = s.filter((m) => m.t === 'move').at(-1);
     check('touchpad: hızlı kaydırma daha uzağa (ivme)', last2 && last2.x - last.x > slowDx * 1.3, `yavaş ${slowDx.toFixed(3)}, hızlı ${(last2.x - last.x).toFixed(3)}`);
     last = last2;
+    // Fare hızı (⋯ menü, hatırlanır): aynı sürükleme "Çok hızlı"da "Çok yavaş"tan çok daha uzağa taşır
+    const hizSec = async (v) => { await ev(`(() => { const s = document.getElementById('fareHiz'); s.value = '${v}'; s.dispatchEvent(new Event('change')); })()`); };
+    const olc = async () => {
+      await drag([[{ x: c0.x - 25, y: c0.y + 100 }], [{ x: c0.x + 25, y: c0.y + 100 }]], 10, 40);
+      await sleep(50);
+      const m = (await sent()).filter((x) => x.t === 'move').at(-1);
+      const d = m ? m.x - last.x : 0;
+      if (m) last = m;
+      return d;
+    };
+    await hizSec('1.3'); const hizli = await olc();
+    await drag([[{ x: c0.x + 25, y: c0.y + 100 }], [{ x: c0.x - 25, y: c0.y + 100 }]], 10, 40); await sleep(50);
+    last = (await sent()).filter((x) => x.t === 'move').at(-1) || last;
+    await hizSec('0.5'); const yavas = await olc();
+    check('Fare hızı: "Çok hızlı" aynı sürüklemede "Çok yavaş"tan belirgin uzağa, seçim hatırlanır', hizli > yavas * 2 && yavas > 0 && (await ev("localStorage.getItem('fareHizi')")) === '0.5', `hızlı ${hizli.toFixed(3)}, yavaş ${yavas.toFixed(3)}`);
+    check('Fare hızı varsayılanı Normal (0.8)', (await ev("document.querySelector('#fareHiz option[selected]').value")) === '0.8');
+    await hizSec('0.8');
     // dokunuş -> (beklemeden sonra) imleç yerinde sol tık
     await tap({ x: st.l + 30, y: st.t + 30 });
     s = await sent();
@@ -495,7 +512,6 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
     const T_ = (vk) => `document.querySelector('#tusPanel button[data-vk="${vk}"]')`;
     await ev("document.getElementById('tusBtn').click()");
     check('tuşlar paneli açıldı', await ev("!document.getElementById('tusPanel').hidden"));
-    await ev("document.querySelector('#tusPanel [data-sekme=\"gezinme\"]').click()");
     const bodyScroll = await ev('document.documentElement.scrollWidth <= window.innerWidth');
     check('sayfa yatay taşmıyor', bodyScroll);
     await sent();
@@ -515,11 +531,9 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
     s = await sent();
     check('değiştiricisiz yazı çekirdekten metin olarak gider', JSON.stringify(s) === '[{"t":"text","s":"ş"}]', JSON.stringify(s));
     await ev(`${T_(18)}.click()`);
-    await ev("document.querySelector('#tusPanel [data-sekme=\"f\"]').click()");
     await ev(`${T_(115)}.click()`);
     s = await sent();
-    check('Alt (yapışkan) + F4 düğmeleri (sekme değişse de)', JSON.stringify(s.map((m) => `${m.vk}${m.down ? 'v' : '^'}`)) === '["18v","115v","115^","18^"]', JSON.stringify(s));
-    await ev("document.querySelector('#tusPanel [data-sekme=\"gezinme\"]').click()");
+    check('Alt (yapışkan) + F4 düğmeleri (farklı bölümlerden)', JSON.stringify(s.map((m) => `${m.vk}${m.down ? 'v' : '^'}`)) === '["18v","115v","115^","18^"]', JSON.stringify(s));
     await ev(`${T_(91)}.click()`);
     await ev(`${T_(91)}.click()`);
     s = await sent();

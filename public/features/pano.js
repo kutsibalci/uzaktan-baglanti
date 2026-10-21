@@ -28,6 +28,7 @@
       border: 1px solid var(--line); object-fit: contain;
       background: repeating-conic-gradient(rgba(128,128,128,.25) 0 25%, transparent 0 50%) 0 0 / 16px 16px; }
     #panoPanel .pano-resim img:not([src]) { visibility: hidden; }
+    #panoPanel textarea[data-k="giden"] { min-height: 64px; font-family: inherit; font-size: 14px; }
   `;
   document.head.appendChild(stil);
 
@@ -57,18 +58,23 @@
       <button class="small" data-k="kopyala">Kopyala</button>
       <button class="small ghost" data-k="yenile">Yenile</button>
     </div>
-    <h3>Bu cihazdan gönder</h3>
-    <div class="row gap wrap">
-      <button class="small" data-k="oku">Bu cihazın panosunu gönder</button>
-      <button class="small" data-k="resimGonder">Telefondan resim gönder</button>
+    <h3>Bilgisayara gönder</h3>
+    <textarea data-k="giden" placeholder="Göndermek istediğin metni buraya yaz ya da yapıştır (basılı tut → Yapıştır)"></textarea>
+    <div class="row gap wrap" data-k="gonderSatir">
+      <button class="small" data-k="gonder">Gönder</button>
+      <button class="small ghost" data-k="oku">Panodaki metni gönder</button>
+      <button class="small ghost" data-k="resimGonder">Resim gönder</button>
       <button class="small ghost" data-k="resimSec" hidden>Resim seç…</button>
     </div>
+    <p class="muted small" data-k="iosIpucu" hidden>iPhone "Panodaki metni gönder" ya da "Resim gönder"e basınca düğmenin üstünde küçük bir <b>Yapıştır</b> balonu gösterir — gönderdiği için ona dokun.</p>
     <input type="file" accept="image/*" data-k="dosya" hidden>
-    <textarea data-k="giden" placeholder="Göndermek istediğiniz metni buraya yapıştırın" hidden></textarea>
-    <div class="row gap wrap" data-k="gonderSatir" hidden><button class="small" data-k="gonder">Gönder</button></div>
     <p class="msg small" data-k="durum"></p>
+    <button class="small ghost" data-k="resimGoster" hidden>Bilgisayarda göster</button>
   `;
   const el = (k) => panel.querySelector(`[data-k="${k}"]`);
+  // iOS panoyu okurken kendi "Yapıştır" balonunu gösterir; kullanıcı bunu kutu sanıp şaşırdı.
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+  el('iosIpucu').hidden = !(ios && guvenli && navigator.clipboard?.readText);
   const pcKutu = el('pc');
   const gidenKutu = el('giden');
   const resimEl = el('resim');
@@ -76,6 +82,7 @@
   function durum(metin, hata = false) {
     el('durum').textContent = metin || '';
     el('durum').className = `msg small ${hata ? 'err' : 'ok'}`;
+    el('resimGoster').hidden = true;
   }
 
   const izinVar = () => RC.state().me?.role && RC.state().me.role !== 'view';
@@ -109,8 +116,6 @@
   });
 
   function elleGonderGoster(mesaj) {
-    gidenKutu.hidden = false;
-    el('gonderSatir').hidden = false;
     gidenKutu.focus();
     durum(mesaj);
   }
@@ -305,6 +310,16 @@
     return png;
   }
 
+  let sonDosya = null;
+  el('resimGoster').addEventListener('click', async () => {
+    if (!sonDosya) return;
+    try {
+      const r = await RC.fetch(`/api/pano/goster?ad=${encodeURIComponent(sonDosya)}`, { method: 'POST' });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) { el('durum').textContent = j.msg || 'Gösterilemedi.'; el('durum').className = 'msg small err'; }
+    } catch { /* bağlantı yok */ }
+  });
+
   async function resimYolla(blob) {
     let veri = blob;
     if (!DOGRUDAN.has(blob.type)) {
@@ -316,8 +331,11 @@
     try {
       const r = await RC.fetch('/api/pano/resim', { method: 'POST', headers: { 'Content-Type': veri.type || 'application/octet-stream' }, body: veri });
       const j = await r.json().catch(() => ({}));
-      if (r.ok && j.ok) durum(`Resim bilgisayarın panosuna kondu (${j.w}×${j.h}).`);
-      else durum(j.msg || (r.status === 413 ? 'Resim çok büyük (en fazla 20 MB).' : 'Resim gönderilemedi.'), true);
+      if (r.ok && j.ok) {
+        const panoYazi = j.pano ? `Resim bilgisayarın panosuna kondu (${j.w}×${j.h}); Ctrl+V ile yapıştırılabilir.` : `Panoya konamadı (${j.msg}).`;
+        durum(j.dosya ? `${panoYazi} Ayrıca kaydedildi: ${j.dosya.yer} › ${j.dosya.ad}` : panoYazi, !j.pano);
+        if (j.dosya) { sonDosya = j.dosya.ad; el('resimGoster').hidden = false; }
+      } else durum(j.msg || (r.status === 413 ? 'Resim çok büyük (en fazla 20 MB).' : 'Resim gönderilemedi.'), true);
     } catch {
       durum('Gönderilemedi (bağlantı hatası).', true);
     }

@@ -147,7 +147,9 @@ const YAKALAYICI = `
     check('menü satırı durum gösteriyor (Ses)', /kapalı|HTTPS|destek/.test(sesDurum), sesDurum);
     check('menü sırası: kalite önce, Daha fazla sonda', satirlar[0] === 'qualityRow' && satirlar.at(-1) === 'dahaFazla', satirlar.join(','));
     const kisaMenu = await rect('#menuPanel');
-    check('menü ekranın yarısından biraz fazlasını geçmiyor', kisaMenu.h <= 844 * 0.62, JSON.stringify(kisaMenu));
+    check('menü ekranın üçte ikisini geçmiyor', kisaMenu.h <= 844 * 0.68, JSON.stringify(kisaMenu));
+    const dfGorunur = await ev("(() => { const d = document.getElementById('dahaFazla').getBoundingClientRect(), b = document.querySelector('#menuPanel .rc-panel-ic').getBoundingClientRect(); return d.bottom <= b.bottom + 0.5; })()");
+    check('Daha fazla satırı kaydırmadan görünür', dfGorunur);
     await tap('#dahaFazla');
     const acikSira = await ev("[...document.querySelectorAll('#menuPanel .menu-row')].filter((e) => e.getClientRects().length).sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top).map((e) => e.id)");
     check('Daha fazla: gecikme, veri, HTTPS, tanıtım, çubuğu gizle açıldı (Daha az\'ın altında)', ['olcumMenu', 'veriMenu', 'sertifikaBtn', 'tanitimBtn', 'hideBtn'].every((x) => acikSira.indexOf(x) > acikSira.indexOf('dahaFazla')) && /Daha az/.test(await ev("document.getElementById('dahaFazla').textContent")), acikSira.join(','));
@@ -201,72 +203,78 @@ const YAKALAYICI = `
     await tap('#tusBtn');
     check('Tuşlar paneli açıldı', await shown('#tusPanel'));
     const gruplar = await ev("[...document.querySelectorAll('#tusPanel .tus-grup')].map((g) => g.dataset.grup)");
-    check('Tuşlar paneli üç grup: kısayol, gezinme, F', JSON.stringify(gruplar) === '["kisayol","gezinme","f"]', JSON.stringify(gruplar));
-    const sekmeOlc = async (ad) => {
-      await tap(`#tusPanel [data-sekme="${ad}"]`);
+    check('Tuşlar paneli tek sayfa (sekme yok), dört bölüm: sık kullanılanlar, tuşlar ve oklar, F, diğer kısayollar',
+      JSON.stringify(gruplar) === '["sik","gezinme","f","kisayol"]' && !(await ev("!!document.querySelector('#tusPanel [data-sekme]')")), JSON.stringify(gruplar));
+    const basliklar = await ev("[...document.querySelectorAll('#tusPanel .tus-baslik')].map((h) => h.textContent)");
+    check('her bölümün başlığı var', basliklar.length === 4 && /Sık kullanılanlar/.test(basliklar[0]) && /Tuşlar ve oklar/.test(basliklar[1]), basliklar.join(' | '));
+    // Bölümü panelin içinde görünür alana kaydırıp ölçer (gorunur: bölüm panel gövdesinin görünen kısmında)
+    const bolumOlc = async (ad, kaydir = true) => {
+      if (kaydir) await ev(`document.querySelector('#tusPanel .tus-grup[data-grup="${ad}"]').scrollIntoView({ block: 'nearest' })`);
+      await sleep(80);
       return ev(`(() => {
         const p = document.getElementById('tusPanel'), g = p.querySelector('.tus-grup[data-grup="${ad}"]');
         const bs = [...g.querySelectorAll('button')].filter((e) => e.getClientRects().length);
         const k = bs.map((e) => e.getBoundingClientRect()).filter((r) => r.width < 44 || r.height < 44).length;
         const pr = p.getBoundingClientRect(), sr = document.getElementById('stage').getBoundingClientRect();
-        return { n: bs.length, kucuk: k, gorunur: !g.hidden, tasma: p.scrollWidth > p.clientWidth || pr.right > innerWidth + 0.5,
+        const gr = g.getBoundingClientRect(), br = p.querySelector('.rc-panel-ic').getBoundingClientRect();
+        return { n: bs.length, kucuk: k, gorunur: gr.top >= br.top - 0.5 && gr.bottom <= br.bottom + 0.5, tasma: p.scrollWidth > p.clientWidth || pr.right > innerWidth + 0.5,
           ustuste: sr.bottom > pr.top + 0.5, altKenar: pr.bottom, sahne: Math.round(sr.height) };
       })()`);
     };
-    let g = await sekmeOlc('kisayol');
-    check('Kısayollar: 16 düğme (yönetici Kilitle dahil), en az 44px, taşma yok', g.n === 16 && g.kucuk === 0 && !g.tasma && g.gorunur, JSON.stringify(g));
-    check('Tuşlar paneli görüntünün altında (ekranı örtmüyor)', !g.ustuste && g.altKenar <= 844.5 && g.sahne > 300, JSON.stringify(g));
-    await shot('4-telefon-tuslar-kisayol');
-    g = await sekmeOlc('gezinme');
-    check('Ctrl·Oklar: 17 düğme, en az 44px, taşma yok', g.n === 17 && g.kucuk === 0 && !g.tasma, JSON.stringify(g));
+    let g = await bolumOlc('sik', false);
+    check('Sık kullanılanlar: 8 düğme, panel açılınca kaydırmadan görünür, en az 44px, taşma yok', g.n === 8 && g.kucuk === 0 && !g.tasma && g.gorunur, JSON.stringify(g));
+    check('Tuşlar paneli görüntünün altında (ekranı örtmüyor)', !g.ustuste && g.altKenar <= 844.5 && g.sahne > 260, JSON.stringify(g));
+    await shot('4-telefon-tuslar-ust');
+    g = await bolumOlc('gezinme');
+    check('Tuşlar ve oklar: 17 düğme, en az 44px, taşma yok', g.n === 17 && g.kucuk === 0 && !g.tasma && g.gorunur, JSON.stringify(g));
     const oklar = await ev("(() => { const r = (vk) => document.querySelector('#tusPanel button[data-vk=\"' + vk + '\"]').getBoundingClientRect(); const u = r(38), l = r(37), d = r(40), ri = r(39); return Math.abs(u.left - d.left) < 1 && u.bottom <= d.top && l.right <= d.left && d.right <= ri.left && Math.abs(l.top - d.top) < 1; })()");
     check('oklar yön tuşu düzeninde (↑ ↓ üstünde, ← ↓ → yan yana)', oklar);
     await shot('5-telefon-tuslar-gezinme');
-    g = await sekmeOlc('f');
-    check('F1–F12: 12 düğme, en az 44px, taşma yok', g.n === 12 && g.kucuk === 0 && !g.tasma, JSON.stringify(g));
-    await shot('6-telefon-tuslar-f');
+    g = await bolumOlc('f');
+    check('F1–F12: 12 düğme, en az 44px, taşma yok', g.n === 12 && g.kucuk === 0 && !g.tasma && g.gorunur, JSON.stringify(g));
+    g = await bolumOlc('kisayol');
+    check('Diğer kısayollar: 8 düğme (yönetici Kilitle dahil), en az 44px', g.n === 8 && g.kucuk === 0 && !g.tasma && g.gorunur, JSON.stringify(g));
+    await shot('6-telefon-tuslar-alt');
 
     const TV = (vk) => `#tusPanel button[data-vk="${vk}"]`;
     const kod = (list) => list.map((m) => (m.t === 'key' ? `${m.vk}${m.down ? 'v' : '^'}` : `${m.t}:${m.s ?? m.islem}`)).join(' ');
+    // Düğmeyi panelde görünür alana kaydırıp dokunur
+    const tapTus = async (sel) => { await ev(`document.querySelector('${sel}').scrollIntoView({ block: 'nearest' })`); await sleep(60); await tap(sel); };
     await sent();
     // yapışkan Ctrl + ekran klavyesiyle "c"
-    await tap('#tusPanel [data-sekme="gezinme"]');
-    await tap(TV(17));
-    check('Ctrl yapışkan vurgulu, sekmede işaret', (await ev(`document.querySelector('${TV(17)}').classList.contains('on')`)) && (await ev("document.querySelector('#tusPanel [data-sekme=\"gezinme\"]').classList.contains('yapiskan')")));
+    await tapTus(TV(17));
+    check('Ctrl yapışkan vurgulu, panel başlığında "Ctrl basılı"', (await ev(`document.querySelector('${TV(17)}').classList.contains('on')`)) && /Ctrl basılı/.test(await ev("document.querySelector('#tusPanel h3').textContent")));
     await ev("document.getElementById('kbInput').focus()");
     await call('Input.insertText', { text: 'c' });
     await sleep(60);
     s = await sent();
     check('yapışkan Ctrl + "c" -> Ctrl+C', kod(s) === '17v 67v 67^ 17^', kod(s));
-    check('Ctrl bırakıldı', !(await ev(`document.querySelector('${TV(17)}').classList.contains('on')`)));
+    check('Ctrl bırakıldı, başlık eski haline döndü', !(await ev(`document.querySelector('${TV(17)}').classList.contains('on')`)) && (await ev("document.querySelector('#tusPanel h3').textContent")) === 'Özel tuşlar');
     // Kısayol düğmesi: Kopyala
-    await tap('#tusPanel [data-sekme="kisayol"]');
-    await tap('#tusPanel [data-kisayol="kopyala"]');
+    await tapTus('#tusPanel [data-kisayol="kopyala"]');
     s = await sent();
     check('Kısayol "Kopyala" -> Ctrl+C', kod(s) === '17v 67v 67^ 17^', kod(s));
-    await tap('#tusPanel [data-kisayol="gorev"]');
+    await tapTus('#tusPanel [data-kisayol="gorev"]');
     s = await sent();
     check('Görev Yöneticisi -> Ctrl+Shift+Esc', kod(s) === '17v 16v 27v 27^ 16^ 17^', kod(s));
-    await tap('#tusPanel [data-kisayol="ekran"]');
+    await tapTus('#tusPanel [data-kisayol="ekran"]');
     s = await sent();
     check('Ekran alıntısı -> Win+Shift+S', kod(s) === '91v 16v 83v 83^ 16^ 91^', kod(s));
     // Yapışkan Shift + Alt+Tab -> Shift+Alt+Tab (değiştiriciler birleşir)
-    await tap('#tusPanel [data-sekme="gezinme"]');
-    await tap(TV(16));
-    await tap('#tusPanel [data-sekme="kisayol"]');
-    await tap('#tusPanel [data-kisayol="alttab"]');
+    await tapTus(TV(16));
+    await tapTus('#tusPanel [data-kisayol="alttab"]');
     s = await sent();
     check('yapışkan Shift + Alt+Tab -> Shift+Alt+Tab', kod(s) === '16v 18v 9v 9^ 18^ 16^', kod(s));
     // Onaylı kısayollar: Alt+F4 (iptal / onay), Kilitle (güç özelliğinin komutu; burada yakalanır)
     await ev('window.confirm = () => false');
-    await tap('#tusPanel [data-kisayol="altf4"]');
+    await tapTus('#tusPanel [data-kisayol="altf4"]');
     s = await sent();
     check('Alt+F4 onay iptal edilince gönderilmez', s.length === 0, kod(s));
     await ev('window.confirm = () => true');
-    await tap('#tusPanel [data-kisayol="altf4"]');
+    await tapTus('#tusPanel [data-kisayol="altf4"]');
     s = await sent();
     check('Alt+F4 onaylanınca gönderilir', kod(s) === '18v 115v 115^ 18^', kod(s));
-    await tap('#tusPanel [data-kisayol="kilitle"]');
+    await tapTus('#tusPanel [data-kisayol="kilitle"]');
     s = await sent();
     check('Kilitle -> güç özelliğinin kilitle komutu (yakalandı, gönderilmedi)', JSON.stringify(s) === '[{"t":"guc","islem":"kilitle"}]', JSON.stringify(s));
     // Tuşlar paneli açıkken görüntüye dokunmak tıklar (kenetli panel dışarı dokunuşla kapanmaz)

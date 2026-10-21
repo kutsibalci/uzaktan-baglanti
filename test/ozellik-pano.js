@@ -294,6 +294,16 @@ const resimMesaji = (pred = () => true) => (m) => m.t === 'pano' && m.resim && p
     check('istemciden PNG gönderildi', pr.status === 200 && jsonu(pr).ok && jsonu(pr).w === 321 && jsonu(pr).h === 123, `(${pr.status} ${pr.body.toString().slice(0, 100)})`);
     let pd = panoResim();
     check('bilgisayar panosunda aynı boyutta resim (321×123)', pd.resim && pd.w === 321 && pd.h === 123, JSON.stringify(pd));
+    // Resim ayrıca dosya aktarımı klasörüne kaydedilir (REMOTE_UPLOAD_DIR), Dosya Gezgini'nde gösterilebilir (kuru)
+    const kd = jsonu(pr).dosya;
+    const kdYol = kd && path.join(process.env.REMOTE_UPLOAD_DIR || '', kd.ad);
+    check('resim dosya olarak da kaydedildi (pano-<tarih>.png, aynı baytlar)', !!kd && /^pano-\d{8}-\d{6}(-\d+)?\.png$/.test(kd.ad) && !!process.env.REMOTE_UPLOAD_DIR
+      && fs.existsSync(kdYol) && fs.readFileSync(kdYol).equals(kirmizi), JSON.stringify(kd));
+    check('cevapta kaydedildiği yer (klasörün son iki parçası)', kd && / › /.test(kd.yer), kd && kd.yer);
+    const gs = await istekAt({ method: 'POST', yol: `/api/pano/goster?ad=${encodeURIComponent(kd ? kd.ad : 'x')}`, token: ar.http });
+    check('"Bilgisayarda göster" (kuru: Gezgin açılmadı)', gs.status === 200 && jsonu(gs).ok && jsonu(gs).kuru === true, `(${gs.status}) ${gs.body.toString().slice(0, 100)}`);
+    const gy = await istekAt({ method: 'POST', yol: `/api/pano/goster?ad=${encodeURIComponent('..\\..\\Windows\\win.ini')}`, token: ar.http });
+    check('yalnızca bu oturumda kaydedilen ad gösterilebilir (yol verilemez)', gy.status === 404, String(gy.status));
     check('panoda hem "PNG" akışı hem CF_DIB var (her uygulamada yapıştırılır)', pd.png && pd.dib, JSON.stringify(pd));
     check('piksel rengi korunmuş (kırmızı)', pd.renk === '220,20,30', pd.renk);
     check('panoda eski metin kalmadı', !pd.metin);

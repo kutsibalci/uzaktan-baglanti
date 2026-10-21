@@ -8,12 +8,42 @@
 //   İstemci -> sunucu: { t:'pano-yaz', text } (control+), { t:'pano-al' } (control+), { t:'pano-ayar', otomatik } (admin)
 //   HTTP (control+):  POST /api/pano/yaz   (gövde: UTF-8 metin) — WebSocket mesaj sınırını (64 KB) aşan metinler için.
 //                     GET  /api/pano/resim (image/png) — bilgisayar panosundaki son resim; resim JSON'a gömülmez.
-//                     POST /api/pano/resim (gövde: PNG/JPEG/GIF/BMP, en fazla 20 MB) -> bilgisayar panosuna resim olarak konur.
+//                     POST /api/pano/resim (gövde: PNG/JPEG/GIF/BMP, en fazla 20 MB) -> bilgisayar panosuna resim olarak konur VE
+//                          dosya aktarımının klasörüne (REMOTE_UPLOAD_DIR ya da İndirilenler › Uzaktan Bağlantı) pano-<tarih>.<uzantı>
+//                          olarak kaydedilir -> { ok, pano, w, h, dosya: { ad, yer } } (kullanıcı: "nereye kaydolduğunu bulamadım").
+//                     POST /api/pano/goster?ad=<dosya adı> — bu oturumda kaydedilen resmi Dosya Gezgini'nde seçili açar
+//                          (REMOTE_DOSYA_KURU=1: açmaz; testler).
 // Ayar: dataDir/pano.json { otomatik } — kapalıyken bilgisayar panosu kendiliğinden gönderilmez (pano-al ile alınır).
 // Geri yankı: panoya kendi yazdığımız içerik "bilinen" anahtarıyla tanınır (metin: 't:'+metin, resim: 'r:'+piksel özeti).
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
+const { execFile } = require('child_process');
 const { spawnHelper } = require('../lib/helper');
+const olaylar = require('../lib/olaylar');
+
+const EXPLORER = path.join(process.env.SystemRoot || 'C:\\Windows', 'explorer.exe');
+const VARSAYILAN_KLASOR = path.join(os.homedir(), 'Downloads', 'Uzaktan Bağlantı');
+const kayitKlasoru = () => process.env.REMOTE_UPLOAD_DIR || VARSAYILAN_KLASOR; // dosya aktarımıyla aynı klasör
+const yerAdi = (k) => (k === VARSAYILAN_KLASOR ? 'İndirilenler › Uzaktan Bağlantı' : k.split(/[\\/]+/).filter(Boolean).slice(-2).join(' › '));
+
+// Gelen resmi pano-YYYYAAGG-SSDDss.<uzantı> adıyla kaydeder (aynı saniyede ikincisi -2, -3...). { ad, klasor, tam } döner.
+async function resmiKaydet(govde, tur) {
+  const klasor = kayitKlasoru();
+  await fs.promises.mkdir(klasor, { recursive: true });
+  const d = new Date();
+  const p = (x) => String(x).padStart(2, '0');
+  const kok = `pano-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+  const uzanti = tur === 'jpeg' ? 'jpg' : tur;
+  for (let i = 1; i <= 100; i++) {
+    const ad = `${kok}${i > 1 ? `-${i}` : ''}.${uzanti}`;
+    try {
+      await fs.promises.writeFile(path.join(klasor, ad), govde, { flag: 'wx' });
+      return { ad, klasor, tam: path.join(klasor, ad) };
+    } catch (e) { if (e.code !== 'EEXIST') throw e; }
+  }
+  throw new Error('boş dosya adı bulunamadı');
+}
 
 const MAX_BAYT = 1024 * 1024;
 const MAX_RESIM = 20 * 1024 * 1024;
@@ -266,10 +296,37 @@ module.exports.init = (api) => {
     const govde = await govdeOku(req, MAX_RESIM);
     if (!govde) { if (!res.headersSent && !res.destroyed) json(res, 413, cokBuyuk); return; }
     if (!resimTuru(govde)) return json(res, 415, { ok: false, msg: 'Desteklenmeyen resim biçimi (PNG, JPEG, GIF ya da BMP olmalı).' });
+    // Önce dosya (pano kilitli olsa da resim kaybolmasın), sonra pano.
+    let dosya = null;
+    try {
+      const k = await resmiKaydet(govde, resimTuru(govde));
+      kaydedilenler.set(k.ad, k.tam);
+      if (kaydedilenler.size > 50) kaydedilenler.delete(kaydedilenler.keys().next().value);
+      dosya = { ad: k.ad, yer: yerAdi(k.klasor) };
+      olaylar.emit('dosya-geldi', { ad: k.ad, yer: yerAdi(k.klasor).split(' › ').join('\\'), klasor: k.klasor, boyut: govde.length, kullanici: ws.session.username, via: ws.via });
+    } catch (e) {
+      api.log(`Pano resmi dosyaya kaydedilemedi: ${e.message}`);
+    }
     yukleyen = ws;
     const r = await istek(`setimg ${govde.toString('base64')}`);
-    if (!r?.ok) return json(res, r ? 400 : 500, { ok: false, msg: r?.msg || 'Panoya resim konamadı.' });
-    json(res, 200, { ok: true, w: r.w, h: r.h });
+    if (!r?.ok && !dosya) return json(res, r ? 400 : 500, { ok: false, msg: r?.msg || 'Panoya resim konamadı.' });
+    json(res, 200, { ok: true, pano: !!r?.ok, msg: r?.ok ? undefined : (r?.msg || 'Panoya konamadı.'), w: r?.w, h: r?.h, dosya });
+  }, { role: 'control' });
+
+  // Kaydedilen resmi bilgisayarda Dosya Gezgini'nde seçili açar (yalnızca bu oturumda kaydedilenler; ad listeden, yol kullanıcıdan gelmez).
+  const kaydedilenler = new Map(); // ad -> tam yol (son 50)
+  let sonGoster = 0;
+  api.route('POST', '/api/pano/goster', async (req, res, ws, url) => {
+    const tam = kaydedilenler.get(String(url.searchParams.get('ad') || ''));
+    if (!tam) return json(res, 404, { ok: false, msg: 'Bu resim artık bilinmiyor (sunucu yeniden başlamış olabilir).' });
+    try { await fs.promises.access(tam); } catch { return json(res, 404, { ok: false, msg: 'Dosya artık yerinde değil (taşınmış ya da silinmiş olabilir).' }); }
+    if (!/^[A-Za-z]:\\/.test(tam) || /["\u0000-\u001f]/.test(tam)) return json(res, 400, { ok: false, msg: 'Bu dosya gösterilemiyor.' });
+    if (Date.now() - sonGoster < 1500) return json(res, 429, { ok: false, msg: 'Biraz bekleyip tekrar deneyin.' });
+    sonGoster = Date.now();
+    const kuru = process.env.REMOTE_DOSYA_KURU === '1';
+    // windowsVerbatimArguments: explorer /select,"..." biçimini bekler; çıkış kodu önemsenmez (işi var olan explorer'a verir).
+    if (!kuru) execFile(EXPLORER, [`/select,"${tam}"`], { windowsVerbatimArguments: true, timeout: 15000 }, () => {}).on('error', (e) => api.log(`Gezgin açılamadı: ${e.message}`));
+    json(res, 200, { ok: true, kuru });
   }, { role: 'control' });
 
   api.adminData(async () => ({ pano: { otomatik: ayar.otomatik, calisiyor: !!proc } }));

@@ -1,4 +1,5 @@
-// Telefon deneyimi: "Tuşlar" paneli (kısayollar, yapışkan Ctrl/Alt/Shift/Win + gezinme tuşları, F1–F12) ve PWA (service worker).
+// Telefon deneyimi: "Tuşlar" paneli (tek sayfa, başlıklı bölümler: sık kullanılanlar, yapışkan Ctrl/Alt/Shift/Win + gezinme
+// tuşları ve oklar, F1–F12, diğer kısayollar) ve PWA (service worker).
 // Panel görüntünün altına kenetlenir (ekranı örtmez); masaüstü tarayıcıda da kullanılır.
 // Dokunmatik fare modu ve yakınlaştırma çekirdekte (public/app.js "Dokunmatik" bölümü + public/dokunmatik.js).
 (() => {
@@ -26,7 +27,7 @@
   // Yapışkan değiştiriciler + kısayolun kendi değiştiricileri (tekrarsız, önce yapışkanlar): Shift yapışkanken Alt+Tab → Shift+Alt+Tab.
   const mergeMods = (sticky, own = []) => [...sticky, ...own.filter((vk) => !sticky.includes(vk))];
 
-  // Kısayollar. Kilitle: Windows, programın gönderdiği Win+L'yi yok sayar; bu yüzden güç özelliğinin kilitle komutu
+  // Kısayollar (SIK: panelin en üstündeki "Sık kullanılanlar", sırasıyla; diğerleri en altta). Kilitle: Windows, programın gönderdiği Win+L'yi yok sayar;
   // (LockWorkStation, yalnızca yönetici) kullanılır.
   const KISAYOLLAR = [
     { k: 'kopyala', ad: 'Kopyala', ipucu: 'Ctrl+C', mods: [17], vk: 67 },
@@ -57,10 +58,11 @@
     ['←', 37, { c: 5, r: 3, title: 'Sol' }], ['↓', 40, { c: 6, r: 3, title: 'Aşağı' }], ['→', 39, { c: 7, r: 3, title: 'Sağ' }],
   ];
   const F_TUSLARI = Array.from({ length: 12 }, (_, i) => [`F${i + 1}`, 112 + i]);
+  const SIK = ['kopyala', 'yapistir', 'geri', 'alttab', 'kes', 'tumu', 'win', 'masaustu'];
 
   // Node testleri için saf fonksiyonlar (tarayıcıda module yok).
   if (typeof module === 'object' && module.exports) {
-    module.exports = { charToVk, comboMessages, mergeMods, MOD_VKS, KISAYOLLAR, GEZINME, F_TUSLARI };
+    module.exports = { charToVk, comboMessages, mergeMods, MOD_VKS, KISAYOLLAR, GEZINME, F_TUSLARI, SIK };
     return;
   }
 
@@ -75,40 +77,36 @@
 
   // ---------- Tuşlar paneli ----------
 
+  // Sekmeler yerine tek kaydırılabilir sayfa (kullanıcı: "tuşları bulmakta zorlanabilir"): en sık kullanılanlar üstte.
   const style = document.createElement('style');
   style.textContent = `
-    #tusPanel .rc-panel-bas { padding-left: 6px; }
-    #tusPanel .rc-panel-bas h3 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-    #tusPanel .tus-sekmeler { display: flex; gap: 4px; flex: 1 1 auto; min-width: 0; }
-    #tusPanel .tus-sekmeler button { flex: 1 1 0; min-width: 0; height: 40px; padding: 0 6px; border-radius: 10px; font-size: 14px;
-      background: transparent; border: 1px solid transparent; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; }
-    #tusPanel .tus-sekmeler button.active { background: var(--panel2); border-color: var(--line); color: var(--text); }
-    #tusPanel .tus-sekmeler button.yapiskan::after { content: ''; position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
-    #tusPanel .rc-panel-ic { padding: 8px; height: var(--tus-yukseklik, 210px); } /* sabit: sekme değişince görüntü zıplamasın */
+    #tusPanel .rc-panel-ic { padding: 4px 10px 10px; height: var(--tus-yukseklik, 260px); display: block; }
     /* Yatay + klavye (boyutla): görüntüye yer kalsın diye çubuk gizlenir, panel başlığı küçülür; ✕ ile kapanınca geri gelir */
     #vViewer.tus-sikisik #toolbar { display: none; }
-    #vViewer.tus-sikisik #tusPanel .rc-panel-bas { padding-top: 2px; padding-bottom: 2px; }
-    #vViewer.tus-sikisik #tusPanel .rc-x { height: 36px; }
-    #vViewer.tus-sikisik #tusPanel .tus-sekmeler button { height: 34px; }
-    #vViewer.tus-sikisik #tusPanel .rc-panel-ic { padding: 4px 8px; }
+    #vViewer.tus-sikisik #tusPanel .rc-panel-bas { padding-top: 0; padding-bottom: 0; }
+    #vViewer.tus-sikisik #tusPanel .rc-x { height: 34px; }
+    #vViewer.tus-sikisik #tusPanel .rc-panel-ic { padding: 2px 8px 6px; }
+    #tusPanel .tus-baslik { max-width: 760px; margin: 12px auto 6px; padding: 0 2px; font-size: 12px; font-weight: 500; color: var(--muted); }
+    #tusPanel .tus-baslik:first-child { margin-top: 6px; }
+    #tusPanel .tus-baslik small { font-weight: 400; }
     #tusPanel .tus-grup { display: grid; gap: 6px; width: 100%; max-width: 760px; margin: 0 auto; }
-    #tusPanel .tus-grup[data-grup="kisayol"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    #tusPanel .tus-grup[data-grup="sik"], #tusPanel .tus-grup[data-grup="kisayol"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     #tusPanel .tus-grup[data-grup="gezinme"] { grid-template-columns: repeat(7, minmax(0, 1fr)); grid-template-rows: repeat(3, 44px); }
     #tusPanel .tus-grup[data-grup="f"] { grid-template-columns: repeat(6, minmax(0, 1fr)); }
     @media (min-width: 720px) {
-      #tusPanel .tus-grup[data-grup="kisayol"] { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+      #tusPanel .tus-grup[data-grup="sik"], #tusPanel .tus-grup[data-grup="kisayol"] { grid-template-columns: repeat(8, minmax(0, 1fr)); }
       #tusPanel .tus-grup[data-grup="f"] { grid-template-columns: repeat(12, minmax(0, 1fr)); }
     }
-    #tusPanel .tus-grup button { min-width: 0; min-height: 44px; padding: 2px 4px; border-radius: 10px; font-size: 15px;
+    #tusPanel .tus-grup button { min-width: 0; min-height: 44px; padding: 2px 4px; border-radius: 8px; font-size: 15px; font-weight: 500; color: var(--text);
       background: var(--panel2); border: 1px solid var(--line); line-height: 1.15; overflow: hidden; }
-    #tusPanel .tus-grup button:active { background: var(--line); }
-    #tusPanel .tus-grup button.mod { border-color: #4b5568; color: #c7d2fe; }
+    #tusPanel .tus-grup button:active { background: var(--panel3); }
+    #tusPanel .tus-grup button.mod { color: #9ab8ff; border-color: var(--line2); }
     #tusPanel .tus-grup button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
     #tusPanel .tus-grup button.ok { font-size: 20px; }
-    #tusPanel .tus-grup[data-grup="kisayol"] button { display: grid; align-content: center; gap: 1px; padding: 4px 2px; }
-    #tusPanel .tus-grup[data-grup="kisayol"] b { font-weight: 500; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    #tusPanel .tus-grup[data-grup="kisayol"] small { color: var(--muted); font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    #tusPanel .tus-grup[data-grup="kisayol"] button.dikkat b { color: #fca5a5; }
+    #tusPanel .tus-grup[data-grup="sik"] button, #tusPanel .tus-grup[data-grup="kisayol"] button { display: grid; align-content: center; gap: 1px; padding: 4px 2px; }
+    #tusPanel .tus-grup b { font-weight: 500; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #tusPanel .tus-grup small { color: var(--muted); font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #tusPanel .tus-grup button.dikkat b { color: var(--error); }
   `;
   document.head.appendChild(style);
 
@@ -123,26 +121,21 @@
   toggle.innerHTML = `${window.RCIkon ? RCIkon.svg('command') : ''}<span class="al">Tuşlar</span>`;
   document.getElementById('kbBtn').after(toggle);
 
-  const SEKMELER = [['kisayol', 'Kısayollar'], ['gezinme', 'Ctrl · Oklar'], ['f', 'F1–F12']];
-  let sekme = 'kisayol';
-  try { if (SEKMELER.some(([k]) => k === localStorage.getItem('tusSekme'))) sekme = localStorage.getItem('tusSekme'); } catch { /* gizli sekme */ }
-
   const panel = RC.ui.panel('Özel tuşlar', {
     id: 'tusPanel', dock: 'bottom', className: 'ctl', anchor: toggle,
     onOpen() { toggle.classList.add('on'); boyutla(); },
     onClose() { toggle.classList.remove('on'); clearSticky(); boyutSifirla(); },
   });
-  const sekmeler = document.createElement('div');
-  sekmeler.className = 'tus-sekmeler';
-  sekmeler.setAttribute('role', 'tablist');
-  sekmeler.innerHTML = SEKMELER.map(([k, ad]) => `<button type="button" role="tab" data-sekme="${k}">${ad}</button>`).join('');
-  panel.head.insertBefore(sekmeler, panel.head.querySelector('.rc-x'));
 
-  const grup = (ad) => {
+  // Bölüm: başlık + düğme ızgarası (data-grup: sik | gezinme | f | kisayol)
+  const grup = (ad, baslik) => {
+    const h = document.createElement('h4');
+    h.className = 'tus-baslik';
+    h.innerHTML = baslik;
+    panel.body.appendChild(h);
     const g = document.createElement('div');
     g.className = 'tus-grup';
     g.dataset.grup = ad;
-    g.setAttribute('role', 'tabpanel');
     panel.body.appendChild(g);
     return g;
   };
@@ -157,10 +150,7 @@
     if (/^[←↑↓→]$/.test(etiket)) b.classList.add('ok');
     return b;
   };
-
-  // (a) Kısayollar
-  const gKisayol = grup('kisayol');
-  for (const k of KISAYOLLAR) {
+  const kisayolDugmesi = (k) => {
     const b = document.createElement('button');
     b.type = 'button';
     b.dataset.kisayol = k.k;
@@ -168,10 +158,14 @@
     b.innerHTML = `<b>${RC.esc(k.ad)}</b><small>${RC.esc(k.ipucu)}</small>`;
     if (k.onay) b.classList.add('dikkat');
     if (k.yonetici) b.dataset.yonetici = '1';
-    gKisayol.appendChild(b);
-  }
-  // (b) Değiştiriciler + gezinme
-  const gGezinme = grup('gezinme');
+    return b;
+  };
+
+  // (a) Sık kullanılanlar
+  const gSik = grup('sik', 'Sık kullanılanlar');
+  for (const ad of SIK) gSik.appendChild(kisayolDugmesi(KISAYOLLAR.find((k) => k.k === ad)));
+  // (b) Değiştiriciler + gezinme + oklar
+  const gGezinme = grup('gezinme', 'Tuşlar ve oklar <small>· Ctrl, Alt, Shift, Win: dokun, sonra diğer tuşa bas</small>');
   const modButtons = new Map(); // vk -> düğme
   for (const [etiket, vk, o] of GEZINME) {
     const b = tusDugmesi(etiket, vk, o);
@@ -184,23 +178,11 @@
     gGezinme.appendChild(b);
   }
   // (c) F1–F12
-  const gF = grup('f');
+  const gF = grup('f', 'F tuşları');
   for (const [etiket, vk] of F_TUSLARI) gF.appendChild(tusDugmesi(etiket, vk));
-
-  function sekmeSec(ad) {
-    sekme = ad;
-    try { localStorage.setItem('tusSekme', ad); } catch { /* gizli sekme */ }
-    sekmeler.querySelectorAll('button').forEach((b) => {
-      b.classList.toggle('active', b.dataset.sekme === ad);
-      b.setAttribute('aria-selected', String(b.dataset.sekme === ad));
-    });
-    panel.body.querySelectorAll('.tus-grup').forEach((g) => { g.hidden = g.dataset.grup !== ad; });
-  }
-  sekmeler.addEventListener('click', (e) => {
-    const b = e.target.closest('button[data-sekme]');
-    if (b) sekmeSec(b.dataset.sekme);
-  });
-  sekmeSec(sekme);
+  // (d) Diğer kısayollar
+  const gKisayol = grup('kisayol', 'Diğer kısayollar');
+  for (const k of KISAYOLLAR) if (!SIK.includes(k.k)) gKisayol.appendChild(kisayolDugmesi(k));
 
   // Ekran klavyesi açıkken (iPhone'da görünür alan küçülür) panel görüntüyü tamamen kapatmasın: görüntüye en az
   // SAHNE_MIN px bırakılır, panel gövdesi gerekirse tek sıraya (kaydırılabilir) iner. Yatay iPhone'da klavye açıkken
@@ -216,7 +198,7 @@
     const vh = a ? a.height : layoutH;
     panel.el.style.paddingBottom = a && a.covered > 80 ? '0px' : '';
     vViewerEl.classList.remove('tus-sikisik');
-    const ideal = Math.max(104, Math.min(210, Math.round(vh * 0.42) - 50));
+    const ideal = Math.max(104, Math.min(260, Math.round(vh * 0.42) - 50));
     // Panel başlığı + alt boşluk + üst kenarlık
     const disi = () => panel.head.offsetHeight + (parseFloat(getComputedStyle(panel.el).paddingBottom) || 0) + 1;
     const alt = document.getElementById('altCubuk')?.offsetHeight || 0; // telefonda alt çubuk (Klavye, Tuşlar, …)
@@ -236,9 +218,11 @@
 
   const sticky = new Set(); // basılı tutulacak değiştiriciler (vk), seçilme sırasıyla
 
+  // Basılı (yapışkan) değiştiriciler düğmede ve panel başlığında görünür (sayfa kaydırılınca da belli olsun).
   function stickyGoster() {
     for (const [vk, b] of modButtons) b.classList.toggle('on', sticky.has(vk));
-    sekmeler.querySelector('[data-sekme="gezinme"]').classList.toggle('yapiskan', sticky.size > 0);
+    const adlar = [...sticky].map((vk) => GEZINME.find((t) => t[1] === vk)?.[0]).filter(Boolean);
+    panel.setTitle(adlar.length ? `Özel tuşlar · ${adlar.join(' + ')} basılı` : 'Özel tuşlar');
   }
   function clearSticky() {
     sticky.clear();
@@ -250,7 +234,7 @@
     const st = RC.state();
     const usable = !!st.stream && st.me?.role !== 'view';
     if (!usable) panel.close();
-    gKisayol.querySelectorAll('[data-yonetici]').forEach((b) => { b.hidden = !isAdmin(); });
+    panel.body.querySelectorAll('[data-yonetici]').forEach((b) => { b.hidden = !isAdmin(); });
   }
 
   toggle.addEventListener('click', () => {

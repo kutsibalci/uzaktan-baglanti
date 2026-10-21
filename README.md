@@ -24,7 +24,7 @@ Windows bilgisayarı telefondan, tabletten ya da başka bir bilgisayardan **tara
 - **Bilgisayar durumu** paneli: CPU, sıcaklık, RAM, NVIDIA GPU, ağ, pil, diskler (60 sn grafik), en çok kaynak kullanan programlar ve
   yöneticiye "Kapat / Zorla kapat" (sistem süreçleri korunur); bildirimler: program kapanınca, CPU düşünce, pil azalınca, indirme bitince
 - **Ev ağında HTTPS** (Tailscale olmadan; kendi yerel sertifikası, aşağıya bakın)
-- Pano eşitleme (metin ve resim, iki yönde) ve dosya aktarımı (yükleme / klasör gezinme / indirme); gönderirken kaydedilecek klasör görünür ve seçilebilir
+- Pano eşitleme (metin ve resim, iki yönde; telefondan gelen resim ayrıca İndirilenler › Uzaktan Bağlantı'ya kaydedilir), Fare hızı ayarı, ve dosya aktarımı (yükleme / klasör gezinme / indirme); gönderirken kaydedilecek klasör görünür ve seçilebilir
   (varsayılan İndirilenler › Uzaktan Bağlantı), "Bilgisayarda göster", son gönderilenler listesi, tepside "Dosya geldi" bildirimi
 - Bilgisayar sesini uzaktan dinleme (Opus; HTTPS ve güncel tarayıcı gerekir)
 - Gizlilik perdesi: kontrol sırasında bilgisayar ekranı karartılır, uzaktaki görüntü etkilenmez

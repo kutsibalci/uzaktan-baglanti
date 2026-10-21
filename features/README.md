@@ -57,7 +57,7 @@ alttan açılır (alt çubuğun üstüne yaslanır). İlk bağlantı tanıtımı
 - `cizim.js` — `{ t:'cizim-tus', vk, down }` (control; basılı tuşlar bağlantı kopunca / izleme bitince bırakılır, en fazla 8).
 - `eslestir.js` — QR eşleştirme: `onPreAuth('eslestir')` + yönetici ekranında `eslestir-*` mesajları; telefona `eslestir-kod` (onay isteğindeki doğrulama koduyla aynı), `eslestir-olustur` `http: true` ile şifresiz adres. Testte `REMOTE_ESLESTIR_SURE_MS`, `REMOTE_ESLESTIR_ONAY_MS`, `REMOTE_ESLESTIR_TAILSCALE=0`.
 - `durum.js` — `durum-abone`, `durum`, `durum-ilk`, `durum-kapat` (admin) / `durum-kapat-sonuc`, `durum-izle` / `durum-izle-sil` / `durum-izleyiciler`, `durum-bildirim`. `REMOTE_DURUM_KURU=1`: program kapatılmaz; `REMOTE_INDIRME_DIR`: izlenen İndirilenler.
-- `pano.js` — `pano` mesajında `resim: { id, w, h, bytes }` ya da `{ tooBig, w, h }`; resim `GET/POST /api/pano/resim` (control, en fazla 20 MB).
+- `pano.js` — `pano` mesajında `resim: { id, w, h, bytes }` ya da `{ tooBig, w, h }`; resim `GET/POST /api/pano/resim` (control, en fazla 20 MB; POST resmi ayrıca yükleme klasörüne `pano-<tarih>` olarak kaydeder, cevapta `dosya: { ad, yer }`), `POST /api/pano/goster?ad=` (kaydedileni Gezgin'de gösterir; `REMOTE_DOSYA_KURU=1` açmaz).
 - `baslatma.js` — engel uyarıları (`baslatma-engel`), "Windows açılınca başlat" (`baslatma-otomatik` admin), `baslatma-yenile`, yeni cihaz onayı
   tarayıcıdan (`onay-istegi` / `onay-bitti` → yalnızca bu bilgisayardaki yöneticiye; `onay-cevap`). Yardımcı exe başlatan özellikler
   `require('../lib/helper').spawnHelper(ad, exe, args, opts)` kullanır (engelliyse null döner, yeniden denemeyin). Testte `REMOTE_EXE_<AD>`

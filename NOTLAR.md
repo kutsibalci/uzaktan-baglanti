@@ -320,6 +320,16 @@
   ayar listesi; yönetimde düz başlıklar. Testler: `ozellik-telefon-tarayici` (yeni hareketler), `ozellik-arayuz-tarayici` (liste, Daha fazla),
   `ozellik-tanitim-tarayici`, `-sertifika-`, `-veri-`, `-tum-ekranlar-`, `-cizim-tarayici` güncellendi.
   **(henüz gerçek cihazda test edilmedi: iPhone'da yeni sağ tık ve basılı tutma, Fare modunun his/ivmesi, yeni görünüm)**
+- **iPhone geri bildirimi 2** (2026-10-21/22; kullanıcı: "tuşları bulmakta zorlanabilir", "bu cihazın panosunu gönder'e basınca kutu
+  çıkıyor", "resim nereye kaydoldu bulamadım", "mouse biraz hızlı, ayarlanabilir olsun"): (1) **Tuşlar** paneli sekmesiz tek sayfa, başlıklı
+  bölümler: Sık kullanılanlar (Kopyala, Yapıştır, Geri al, Alt+Tab, Kes, Tümünü seç, Başlat, Masaüstü) → Tuşlar ve oklar → F tuşları →
+  Diğer kısayollar; basılı değiştiriciler panel başlığında ("Ctrl basılı"). (2) **Pano**: gönderilecek metin kutusu hep görünür (basılı tut →
+  Yapıştır), iPhone'da "Yapıştır balonuna dokun" açıklaması (iOS panoyu okurken kendi balonunu gösterir — kullanıcının "kutu"su buydu).
+  Telefondan gönderilen **resim** panoya konur VE dosya aktarımı klasörüne (`REMOTE_UPLOAD_DIR` / İndirilenler › Uzaktan Bağlantı)
+  `pano-<tarih>.<uzantı>` olarak kaydedilir (pano kilitliyse bile dosya kalır), mesajda yer + **Bilgisayarda göster** (`POST /api/pano/goster`,
+  yalnızca bu oturumda kaydedilen adlar). (3) **Fare hızı** (⋯ menü, dokunmatik cihazlarda): Çok yavaş 0.5 … Çok hızlı 1.3, varsayılan Normal 0.8
+  (eski hız = Hızlı), hatırlanır. Diğer menüsünün sınırı %68 (Fare hızı satırıyla "Daha fazla" görünür kalsın).
+  **(henüz gerçek cihazda test edilmedi: yeni Tuşlar düzeni, iPhone'da "Panodaki metni gönder" balonu ve resmin klasöre kaydı, Fare hızı)**
 
 ## Sıradaki
 1. Yukarıdaki özelliklerin gerçek telefon/tablet/kalemle denenmesi (ikinci ekran dahil)

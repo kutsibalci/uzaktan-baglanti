@@ -1009,6 +1009,15 @@
   const DOUBLE_TAP_MS = 300;
   // Anahtar adı değişti (eski 'touchMode'): herkes yeni varsayılan olan Fare modundan başlasın.
   let touchMode = storage.get('dokunmaModu') === 'direct' ? 'direct' : 'touchpad';
+  // Fare modunda imleç hızı çarpanı: ⋯ menüde "Fare hızı" (hatırlanır). Kullanıcı "biraz hızlı" dedi: eski hız artık "Hızlı" (1),
+  // varsayılan "Normal" 0.8.
+  let fareHizi = 0.8;
+  {
+    const sec = $('fareHiz');
+    if ([...sec.options].some((o) => o.value === storage.get('fareHizi'))) sec.value = storage.get('fareHizi');
+    fareHizi = Number(sec.value) || 0.8;
+    sec.addEventListener('change', () => { fareHizi = Number(sec.value) || 0.8; storage.set('fareHizi', sec.value); });
+  }
   let gesture = null;              // o anki dokunma hareketi
   let view = { z: 1, tx: 0, ty: 0 };  // yakınlaştırma: translate(tx, ty) scale(z)
   let cursor = { x: 0.5, y: 0.5 };    // touchpad sanal imleci (0..1)
@@ -1329,7 +1338,7 @@
     g.x = t.clientX; g.y = t.clientY; g.time = now;
     if (!canInput()) return;
     const b = viewBox();
-    cursor = T.moveCursor(cursor, dx, dy, dt, b.cw, b.ch, view.z);
+    cursor = T.moveCursor(cursor, dx * fareHizi, dy * fareHizi, dt, b.cw, b.ch, view.z);
     if (view.z > 1) {
       view = T.followCursor(view, { x: b.ox + cursor.x * b.cw, y: b.oy + cursor.y * b.ch }, b);
       applyView();
