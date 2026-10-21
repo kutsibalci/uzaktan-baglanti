@@ -295,7 +295,7 @@
   }
 
   const menu = RC.ui.menuItem({
-    id: 'cizimBtn', icon: '🎨', label: 'Çizim paneli', state: 'kapalı', order: 45, ctl: true,
+    id: 'cizimBtn', icon: '🎨', label: 'Çizim paneli', state: 'kapalı', order: 45, ctl: true, ikincil: true,
     title: 'Kalemle çizim için kenar kısayol paneli (Geri al, Ctrl/Shift/Alt/Boşluk, fırça…)',
     // Telefonda (kısa kenar < 600 px; iPhone'da kalem yok) menüyü uzatmasın; ana menüdeki kart yine açar.
     hidden: Math.min(screen.width, screen.height) < 600,

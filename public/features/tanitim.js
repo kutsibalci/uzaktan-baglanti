@@ -131,5 +131,5 @@
   RC.on('viewer:stop', kapat);
   RC.on('disconnect', kapat);
 
-  RC.ui.menuItem({ id: 'tanitimBtn', icon: '❓', label: 'Nasıl kullanılır?', order: 85, extend: false, onClick: () => baslat(true) });
+  RC.ui.menuItem({ id: 'tanitimBtn', icon: '❓', label: 'Nasıl kullanılır?', order: 85, extend: false, ikincil: true, onClick: () => baslat(true) });
 })();

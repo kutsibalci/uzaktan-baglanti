@@ -301,12 +301,25 @@
   Başsız Edge'de iPhone (390×844) ve masaüstü (1366×820) boyutunda ekran görüntüleriyle kontrol edildi.
   **(henüz gerçek cihazda test edilmedi: iPhone Safari'de görünüm — `color-mix`, `backdrop-filter`, anahtar görünümlü onay kutuları)**
 - **Telefonda alt çubuk + ilk bağlantı tanıtımı** (2026-10-21; kullanıcı: "3 noktaya basmayan bu özellikleri göremeyecek"): TeamViewer/RustDesk
-  tarzı — telefonda (< 720 px) Klavye, Tuşlar, Doğrudan/Touchpad, Sağ tık, Pano ve **Diğer** altta, yazılı; Diğer (⋯) alttan açılan simgeli
-  ızgara (4 sütun); açılır paneller alttan açılır; üst çubukta yalnızca geri, bağlantı/fps ve gecikme. Geniş ekran ve yatay telefon eskisi gibi
+  tarzı — telefonda (< 720 px) Klavye, Tuşlar, Fare/Dokunmatik, Sağ tık, Pano ve **Diğer** altta, yazılı; Diğer (⋯) alttan açılan
+  (sonradan sade liste oldu, aşağıda); açılır paneller alttan açılır; üst çubukta yalnızca geri, bağlantı/fps ve gecikme. Geniş ekran ve yatay telefon eskisi gibi
   (üst çubuk). İlk görüntü açılışında (cihaz başına bir kez) 3 adımlık tanıtım: alt çubuk → Diğer → hareketler (masaüstünde 2 adım, üst çubuk);
   katman dokunuşları bilgisayara gitmez, Geç / Başla / Esc kapatır, Diğer → "Nasıl kullanılır?" yeniden açar. Testler: güncellenen
   `ozellik-arayuz-tarayici`, yeni `ozellik-tanitim-tarayici` (24 kontrol).
   **(henüz gerçek cihazda test edilmedi: iPhone'da alt çubuk + ekran klavyesi birlikteyken yer, ana ekran çizgisi (safe-area) boşluğu)**
+- **Gerçek iPhone geri bildirimi düzeltmeleri** (2026-10-21; kullanıcı: "sağ tık için basılı tutup tekrar ekrana dokunmak gerekiyor",
+  "dokunmatik mod hiç hoşuma gitmedi" (parmak tam yere basmıyor, kaydırma/sürükleme karışıyor, hareketler anlaşılmıyor), "Diğer büyük,
+  ekranı kaplıyor", "çok AI slop duruyor, profesyonel olsun"):
+  (1) **Sağ tık** düğmesi dokununca imlecin olduğu yerde hemen sağ tık (sıradaki dokunuşu beklemiyor). (2) **Basılı tut = hemen sağ tık**
+  (bırakmayı beklemeden) iki modda da. (3) Varsayılan mod **Fare** (touchpad; hassas), yeni anahtar `dokunmaModu` herkesi Fare'den başlatır;
+  **Dokunmatik** modda tek parmakla sürükleme = sürükleme, iki parmak = kaydırma (iki modda aynı). Çizim tableti açıkken parmak dokunduğu
+  yeri tıklar. (4) **Diğer** menüsü sade liste (simge + ad + durum), telefonda ekranın en fazla ~%60'ı; az kullanılanlar (gecikme, veri, HTTPS,
+  tanıtım, çubuğu gizle, çizim paneli, parmak) **Daha fazla** altında katlı (`menuItem({ ikincil: true })`; açılınca menü uzar).
+  (5) **Sade koyu tasarım** (Linear / Vercel / Tailscale tarzı): gri tonlar + tek mavi vurgu; gradyan, parıltı, renkli simge kutucuğu yok;
+  giriş / kurulum ekranları ortalı logo + başlık + etiketli alanlar + gizlilik notu (telefonda çerçevesiz); ana menüde kartlar + "Araçlar"
+  ayar listesi; yönetimde düz başlıklar. Testler: `ozellik-telefon-tarayici` (yeni hareketler), `ozellik-arayuz-tarayici` (liste, Daha fazla),
+  `ozellik-tanitim-tarayici`, `-sertifika-`, `-veri-`, `-tum-ekranlar-`, `-cizim-tarayici` güncellendi.
+  **(henüz gerçek cihazda test edilmedi: iPhone'da yeni sağ tık ve basılı tutma, Fare modunun his/ivmesi, yeni görünüm)**
 
 ## Sıradaki
 1. Yukarıdaki özelliklerin gerçek telefon/tablet/kalemle denenmesi (ikinci ekran dahil)

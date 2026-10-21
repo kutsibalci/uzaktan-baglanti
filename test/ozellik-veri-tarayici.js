@@ -156,6 +156,7 @@ const wsFrame = (n, out) => n + (n < 126 ? 2 : n < 65536 ? 4 : 10) + (out ? 4 : 
 
     // ---- ⋯ menü satırı ve ⏱ paneldeki bölüm ----
     await tap('#menuBtn');
+    if (await shown('#dahaFazla')) await tap('#dahaFazla'); // telefonda az kullanılanlar katlı
     check('menüde "Veri" satırı ve durumu (MB)', await shown('#veriMenu') && /MB|KB/.test(await ev("document.querySelector('#veriMenu .ms').textContent")), await ev("document.querySelector('#veriMenu').textContent"));
     await shot('2-menu-veri-satiri');
     await tap('#veriMenu');

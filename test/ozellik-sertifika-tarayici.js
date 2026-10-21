@@ -156,6 +156,7 @@ function hazirlik() {
     await bekle("!document.getElementById('vViewer').hidden");
     await sleep(800);
     await tap('#menuBtn');
+    if (await shown('#dahaFazla')) await tap('#dahaFazla'); // telefonda az kullanılanlar katlı
     check('⋯ menüde "🔒 Ev ağında HTTPS" var', (await shown('#sertifikaBtn')) && /Ev ağında HTTPS/.test(await text('#sertifikaBtn')));
     check('menü satırı durumu "kurulum"', (await text('#sertifikaBtn .ms')) === 'kurulum', await text('#sertifikaBtn .ms'));
     await shot('4-iphone-menu');

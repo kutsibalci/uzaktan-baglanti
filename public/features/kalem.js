@@ -51,7 +51,7 @@
 
   // ---------- Parmak ayarı (menü) ----------
   const parmakItem = RC.ui.menuItem({
-    id: 'parmakBtn', icon: '✋', label: 'Parmak', order: 46, ctl: true, keepOpen: true, hidden: true,
+    id: 'parmakBtn', icon: '✋', label: 'Parmak', order: 46, ctl: true, keepOpen: true, hidden: true, ikincil: true,
     title: 'Kalem kullanırken parmak dokunuşları', onClick() { parmakAyarla(SIRA[(SIRA.indexOf(parmak) + 1) % SIRA.length]); },
   });
   function parmakGuncelle() {

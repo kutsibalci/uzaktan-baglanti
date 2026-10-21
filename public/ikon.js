@@ -27,6 +27,7 @@
     lock: '<rect x="4.5" y="10.5" width="15" height="10.5" rx="2.2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>',
     maximize: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
     chevronUp: '<path d="M6 15l6-6 6 6"/>',
+    chevronDown: '<path d="M6 9l6 6 6-6"/>',
     hand: '<path d="M9 12V5.5a1.5 1.5 0 0 1 3 0V11"/><path d="M12 10.5v-1a1.5 1.5 0 0 1 3 0V11"/><path d="M15 10.8a1.5 1.5 0 0 1 3 0v3.7a6.5 6.5 0 0 1-6.5 6.5h-.7a6 6 0 0 1-4.6-2.2l-2.6-3.3a1.6 1.6 0 0 1 2.4-2.1L9 15.3"/>',
     mouse: '<rect x="6" y="3" width="12" height="18" rx="6"/><path d="M12 7v3.5"/>',
     keyboard: '<rect x="2.5" y="6" width="19" height="12" rx="2.2"/><path d="M6.5 10h.01M10 10h.01M14 10h.01M17.5 10h.01M7.5 14h9" stroke-width="2"/>',
@@ -61,7 +62,7 @@
   const EMOJI = {
     '🖥': 'monitor', '➕': 'monitorPlus', '🎨': 'pen', '🎮': 'gamepad', '📁': 'folder', '⏻': 'power', '📱': 'qr', '📲': 'smartphone',
     '📊': 'activity', '⚙': 'sliders', '🎚': 'gauge', '📋': 'clipboard', '🔊': 'volume', '🔇': 'volumeOff', '🕶': 'eyeOff',
-    '⏱': 'timer', '📶': 'signal', '🔒': 'lock', '⛶': 'maximize', '▴': 'chevronUp', '✋': 'hand', '👆': 'hand', '🖱': 'mouse',
+    '⏱': 'timer', '📶': 'signal', '🔒': 'lock', '⛶': 'maximize', '▴': 'chevronUp', '▾': 'chevronDown', '✋': 'hand', '👆': 'hand', '🖱': 'mouse',
     '⌨': 'keyboard', '←': 'arrowLeft', '⋯': 'more', '✕': 'x', '❓': 'help', '⌘': 'command',
   };
   // Değişken seçicileri (U+FE0F) ve boşlukları at.

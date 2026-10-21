@@ -141,14 +141,22 @@ const YAKALAYICI = `
     await tap('#menuBtn');
     check('menü dokununca açıldı', await shown('#menuPanel'));
     const satirlar = await ev("[...document.querySelectorAll('#menuPanel .menu-row')].filter((e) => e.getClientRects().length).map((e) => e.id)");
-    check('menüde kalite, pano, dosya, ses, perde, gecikme, tam ekran, çubuğu gizle', ['qualityRow', 'panoBtn', 'dosyaBtn', 'sesBtn', 'perdeBtn', 'olcumMenu', 'fsBtn', 'hideBtn'].every((x) => satirlar.includes(x)), satirlar.join(','));
+    check('menüde kalite, pano, dosya, ses, perde, durum, tam ekran ve Daha fazla', ['qualityRow', 'panoBtn', 'dosyaBtn', 'sesBtn', 'perdeBtn', 'durumBtn', 'fsBtn', 'dahaFazla'].every((x) => satirlar.includes(x)), satirlar.join(','));
+    check('az kullanılanlar katlı (gecikme, veri, HTTPS, tanıtım, çubuğu gizle)', !['olcumMenu', 'veriMenu', 'sertifikaBtn', 'tanitimBtn', 'hideBtn'].some((x) => satirlar.includes(x)), satirlar.join(','));
     const sesDurum = await ev("document.querySelector('#sesBtn .ms').textContent");
     check('menü satırı durum gösteriyor (Ses)', /kapalı|HTTPS|destek/.test(sesDurum), sesDurum);
-    check('menü sırası: kalite önce, çubuğu gizle sonda', satirlar[0] === 'qualityRow' && satirlar.at(-1) === 'hideBtn', satirlar.join(','));
+    check('menü sırası: kalite önce, Daha fazla sonda', satirlar[0] === 'qualityRow' && satirlar.at(-1) === 'dahaFazla', satirlar.join(','));
+    const kisaMenu = await rect('#menuPanel');
+    check('menü ekranın yarısından biraz fazlasını geçmiyor', kisaMenu.h <= 844 * 0.62, JSON.stringify(kisaMenu));
+    await tap('#dahaFazla');
+    const acikSira = await ev("[...document.querySelectorAll('#menuPanel .menu-row')].filter((e) => e.getClientRects().length).sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top).map((e) => e.id)");
+    check('Daha fazla: gecikme, veri, HTTPS, tanıtım, çubuğu gizle açıldı (Daha az\'ın altında)', ['olcumMenu', 'veriMenu', 'sertifikaBtn', 'tanitimBtn', 'hideBtn'].every((x) => acikSira.indexOf(x) > acikSira.indexOf('dahaFazla')) && /Daha az/.test(await ev("document.getElementById('dahaFazla').textContent")), acikSira.join(','));
+    await tap('#dahaFazla');
+    check('Daha az ile yeniden katlandı', !(await shown('#hideBtn')));
     const mp = await rect('#menuPanel');
     check('menü alttan açıldı: üst çubuğun altında, alt çubuğun hemen üstünde', mp.top >= b.h && mp.bottom <= alt.ust && alt.ust - mp.bottom < 20 && mp.w <= 390, JSON.stringify(mp));
-    const izgara = await ev("(() => { const r = [...document.querySelectorAll('#menuPanel button.menu-row')].filter((e) => e.getClientRects().length).map((e) => e.getBoundingClientRect()); return { n: r.length, satir: new Set(r.map((x) => Math.round(x.top))).size, kucuk: r.filter((x) => x.width < 60 || x.height < 60).length }; })()");
-    check('Diğer menüsü simgeli ızgara (satır başına 4 kutucuk)', izgara.n >= 8 && izgara.satir <= Math.ceil(izgara.n / 4) && izgara.kucuk === 0, JSON.stringify(izgara));
+    const liste = await ev("(() => { const r = [...document.querySelectorAll('#menuPanel button.menu-row')].filter((e) => e.getClientRects().length).map((e) => e.getBoundingClientRect()); return { n: r.length, satir: new Set(r.map((x) => Math.round(x.top))).size, kucuk: r.filter((x) => x.height < 40).length }; })()");
+    check('Diğer menüsü sade liste (her satır ayrı, en az 40 px)', liste.n >= 7 && liste.satir === liste.n && liste.kucuk === 0, JSON.stringify(liste));
     await shot('2-telefon-menu');
     await tap('#menuPanel .rc-x');
     check('menü ✕ ile kapandı', !(await shown('#menuPanel')));
@@ -297,6 +305,7 @@ const YAKALAYICI = `
 
     // ---- Çubuğu gizle / göster ----
     await tap('#menuBtn');
+    await tap('#dahaFazla');
     await tap('#hideBtn');
     check('menüden çubuk gizlendi, ▾ göründü', !(await shown('#toolbar')) && (await shown('#showBtn')));
     await tap('#showBtn');

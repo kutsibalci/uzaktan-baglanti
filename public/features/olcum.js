@@ -33,7 +33,7 @@
   const kabuk = RC.ui.panel('Gecikme ayrıntısı', { id: 'olcumPanel', anchor: btn });
   const panel = kabuk.el;
   const menuSatiri = RC.ui.menuItem({
-    id: 'olcumMenu', icon: '⏱', label: 'Gecikme ayrıntısı', order: 60, hidden: true,
+    id: 'olcumMenu', icon: '⏱', label: 'Gecikme ayrıntısı', order: 60, hidden: true, ikincil: true,
     onClick: () => { kabuk.open(); ciz(); },
   });
   kabuk.body.innerHTML = `

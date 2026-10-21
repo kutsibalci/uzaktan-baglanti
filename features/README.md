@@ -35,12 +35,12 @@ Her özellik iki parçadan oluşur ve çekirdek dosyalara (server.js, public/app
 
 ### Görüntüleyici arayüzü (araç çubuğu, menü, paneller)
 Telefonda (< 720 px) üstte yalnızca geri, bağlantı/görüntü bilgisi ve gecikme sayacı; **alt çubukta** (yazılı) Klavye, Tuşlar, dokunma modu, Sağ tık,
-`alt` seçenekli menü satırları (Pano) ve **Diğer** (⋯ menü; telefonda alttan açılan simgeli ızgara). Düğmeler `app.js yerlesim()` ile ekran
+`alt` seçenekli menü satırları (Pano) ve **Diğer** (⋯ menü; telefonda alttan açılan sade liste, `ikincil` satırlar "Daha fazla"da). Düğmeler `app.js yerlesim()` ile ekran
 genişliğine göre üst/alt çubuk arasında TAŞINIR (kimlikler aynı). Geniş ekranda hepsi üst çubukta, simge olarak. Telefonda açılır paneller
 alttan açılır (alt çubuğun üstüne yaslanır). İlk bağlantı tanıtımı: `public/features/tanitim.js` (sunucu `REMOTE_TANITIM=0` ile kapatır).
-- `RC.ui.menuItem({ id, icon, label, state, title, order, onClick, pin, alt, ctl, extend, keepOpen, hidden, disabled })` → `{ el, pinEl, set({...}) }`
+- `RC.ui.menuItem({ id, icon, label, state, title, order, onClick, pin, alt, ikincil, ctl, extend, keepOpen, hidden, disabled })` → `{ el, pinEl, set({...}) }`
   - Menüde etiketli satır (simge + ad + sağda durum, ör. "Ses · kapalı"). `order` küçükten büyüğe (çekirdek: 1–2 kalite/ekran, 80 tam ekran, 90 çubuğu gizle; özellikler 10–60).
-  - `pin: true` → geniş ekranda (≥ 720 px) çubukta simge olarak da görünür (`pinEl`, kimliği `<id>Pin`). `alt: 'Pano'` → telefonda alt çubukta bu kısa adla (aynı `pinEl`; yer dar, yalnızca çok sık kullanılanlar). `ctl: true` → salt izleme rolünde gizli; `extend: false` → ikinci ekranda gizli.
+  - `pin: true` → geniş ekranda (≥ 720 px) çubukta simge olarak da görünür (`pinEl`, kimliği `<id>Pin`). `alt: 'Pano'` → telefonda alt çubukta bu kısa adla (aynı `pinEl`; yer dar, yalnızca çok sık kullanılanlar). `ikincil: true` → telefonda menünün "Daha fazla" bölümünde katlı (az kullanılanlar). `ctl: true` → salt izleme rolünde gizli; `extend: false` → ikinci ekranda gizli.
   - `keepOpen: true` → tıklayınca menü kapanmaz (aç/kapa satırları). Durum değişince `set({ icon, label, state, title, hidden, disabled, active, badge })`; `badge` satırda ve ⋯ düğmesinde nokta gösterir.
 - `RC.ui.panel(başlık, { id, anchor, dock, dismiss, className, onOpen, onClose })` → `{ el, head, body, open(), close(), toggle(), isOpen(), addAnchor(el), setTitle(t) }`
   - Köşesinde ✕ olan ortak panel; içerik `body`'ye konur. Esc en son açılan paneli kapatır (bilgisayara Esc gitmez).

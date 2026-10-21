@@ -134,7 +134,7 @@
   const bolumAcik = () => !!bolum.offsetParent;
 
   const menuSatiri = RC.ui.menuItem({
-    id: 'veriMenu', icon: '📶', label: 'Veri', order: 61, hidden: true, title: 'Bu oturumda kullanılan veri',
+    id: 'veriMenu', icon: '📶', label: 'Veri', order: 61, hidden: true, ikincil: true, title: 'Bu oturumda kullanılan veri',
     onClick: () => {
       const olcumMenu = document.getElementById('olcumMenu');
       if (olcumMenu && olcumIc) olcumMenu.click(); else kendi.open();

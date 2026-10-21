@@ -17,18 +17,26 @@
 <body>
   <!-- Bağlanıyor -->
   <section id="vConnecting" class="center">
-    <div class="card"><div class="brand"><span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><path d="M10 7.3l4.8 2.3-2 .7-.9 2.1Z" fill="currentColor" stroke-width="1.1"/></svg></span><span>Uzaktan Bağlantı</span></div><div class="spinner"></div><p class="muted" style="text-align:center">Bağlanılıyor…</p></div>
+    <div class="card auth">
+      <div class="auth-bas">
+        <span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><path d="M10 7.3l4.8 2.3-2 .7-.9 2.1Z" fill="currentColor" stroke-width="1.1"/></svg></span>
+        <p class="muted">Bağlanılıyor…</p>
+      </div>
+      <div class="spinner"></div>
+    </div>
   </section>
 
   <!-- İlk kurulum -->
   <section id="vSetup" class="center" hidden>
-    <form id="setupForm" class="card">
-      <div class="brand"><span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><path d="M10 7.3l4.8 2.3-2 .7-.9 2.1Z" fill="currentColor" stroke-width="1.1"/></svg></span><span>Uzaktan Bağlantı</span></div>
-      <h1>Hoş geldin 👋</h1>
-      <p class="muted">İlk kurulum: bu bilgisayarın yönetici hesabını oluştur.</p>
-      <input name="username" placeholder="Kullanıcı adı" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" required minlength="3">
-      <input name="password" type="password" placeholder="Şifre (en az 6 karakter)" autocomplete="new-password" required minlength="6">
-      <input name="password2" type="password" placeholder="Şifre (tekrar)" autocomplete="new-password" required minlength="6">
+    <form id="setupForm" class="card auth">
+      <div class="auth-bas">
+        <span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><path d="M10 7.3l4.8 2.3-2 .7-.9 2.1Z" fill="currentColor" stroke-width="1.1"/></svg></span>
+        <h1>Uzaktan Bağlantı'yı kur</h1>
+        <p class="muted">Bu bilgisayarın yönetici hesabını oluştur. Hesap yalnızca bu bilgisayarda saklanır.</p>
+      </div>
+      <label class="alan">Kullanıcı adı<input name="username" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" required minlength="3"></label>
+      <label class="alan">Şifre<input name="password" type="password" placeholder="En az 6 karakter" autocomplete="new-password" required minlength="6"></label>
+      <label class="alan">Şifre (tekrar)<input name="password2" type="password" autocomplete="new-password" required minlength="6"></label>
       <label class="check"><input name="remember" type="checkbox" checked> Bu cihazı hatırla</label>
       <button type="submit">Hesabı oluştur</button>
       <p class="error"></p>
@@ -37,37 +45,42 @@
 
   <!-- Giriş -->
   <section id="vLogin" class="center" hidden>
-    <div class="card">
-      <div class="brand"><span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><path d="M10 7.3l4.8 2.3-2 .7-.9 2.1Z" fill="currentColor" stroke-width="1.1"/></svg></span><span>Uzaktan Bağlantı</span></div>
-      <h1>Giriş yap</h1>
-      <p class="muted">Bilgisayarına bağlanmak için hesabınla ya da misafir koduyla gir.</p>
+    <div class="card auth">
+      <div class="auth-bas">
+        <span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><path d="M10 7.3l4.8 2.3-2 .7-.9 2.1Z" fill="currentColor" stroke-width="1.1"/></svg></span>
+        <h1>Giriş yap</h1>
+        <p class="muted">Bilgisayarına bağlanmak için giriş yap.</p>
+      </div>
       <div class="tabs">
         <button class="tab active" data-tab="tAccount">Hesap</button>
         <button class="tab" data-tab="tGuest" id="guestTabBtn">Misafir kodu</button>
       </div>
       <p id="noSetupMsg" class="warn" hidden>Henüz hesap yok. Önce bilgisayarda <b>http://localhost:3080</b> adresini açıp yönetici hesabını oluşturun. Bu arada misafir koduyla bağlanabilirsiniz.</p>
       <form id="tAccount" class="tabpane">
-        <input name="username" placeholder="Kullanıcı adı" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" required>
-        <input name="password" type="password" placeholder="Şifre" autocomplete="current-password" required>
-        <label class="check"><input name="remember" type="checkbox" checked> Bu cihazı hatırla (bir daha şifre sorma)</label>
+        <label class="alan">Kullanıcı adı<input name="username" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" required></label>
+        <label class="alan">Şifre<input name="password" type="password" autocomplete="current-password" required></label>
+        <label class="check"><input name="remember" type="checkbox" checked> Bu cihazı hatırla</label>
         <button type="submit">Giriş yap</button>
       </form>
       <form id="tGuest" class="tabpane" hidden>
-        <p class="muted">Bilgisayardaki sunucu penceresinde yazan 6 haneli kodu girin. Kod her kullanımdan sonra değişir.</p>
+        <p class="muted">Bilgisayardaki sunucu penceresinde yazan 6 haneli kodu gir. Kod her kullanımdan sonra değişir.</p>
         <input name="code" class="code" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" maxlength="6" required>
         <button type="submit">Bağlan</button>
       </form>
       <p class="error" id="loginError"></p>
+      <p class="auth-not">Bağlantı doğrudan bu bilgisayara kurulur; görüntü ve dosyalar hiçbir sunucuya gitmez.</p>
     </div>
   </section>
 
   <!-- Onay bekleniyor -->
   <section id="vPending" class="center" hidden>
-    <div class="card">
-      <div class="brand"><span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><path d="M10 7.3l4.8 2.3-2 .7-.9 2.1Z" fill="currentColor" stroke-width="1.1"/></svg></span><span>Uzaktan Bağlantı</span></div>
-      <h1>Onay bekleniyor</h1>
+    <div class="card auth">
+      <div class="auth-bas">
+        <span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><path d="M10 7.3l4.8 2.3-2 .7-.9 2.1Z" fill="currentColor" stroke-width="1.1"/></svg></span>
+        <h1>Onay bekleniyor</h1>
+        <p class="muted">Bu cihaz ilk kez bağlanıyor. Bilgisayarda açılan pencereden <b>Evet</b>'e basın (60 sn).</p>
+      </div>
       <div class="spinner"></div>
-      <p class="muted">Bu cihaz ilk kez bağlanıyor. Bilgisayarda açılan pencereden <b>Evet</b>'e basın (60 sn).</p>
     </div>
   </section>
 
@@ -79,11 +92,8 @@
         <button id="logoutBtn" class="ghost small" title="Çıkış yap">Çıkış</button>
       </div>
       <div class="hello">
-        <span class="avatar" id="helloAvatar" aria-hidden="true"></span>
-        <div>
-          <h1 id="helloName">Merhaba</h1>
-          <p class="muted" id="helloRole"></p>
-        </div>
+        <h1 id="helloName">Merhaba</h1>
+        <p class="rol" id="helloRole"></p>
       </div>
       <div class="modes">
         <button class="mode" id="modeControl">
@@ -101,6 +111,7 @@
         <span class="muted">Ekran:</span>
         <select id="screenPick"></select>
       </label>
+      <p class="home-h">Araçlar</p>
       <div class="tools" id="homeTools">
         <button id="adminBtn" class="ghost" hidden>⚙ Yönetim</button>
       </div>
@@ -157,15 +168,15 @@
   <section id="vAdmin" hidden>
     <div class="admin">
       <div class="row between sticky">
-        <div class="admin-bas"><span class="logo" aria-hidden="true" data-ik="sliders"></span><h1>Yönetim</h1></div>
+        <h1>Yönetim</h1>
         <button id="adminClose" class="ghost">Kapat ✕</button>
       </div>
       <p id="adminMsg" class="msg"></p>
 
-      <h2 data-ik="globe">Her yerden erişim (Tailscale)</h2>
+      <h2>Her yerden erişim (Tailscale)</h2>
       <div class="box" id="tsBox"></div>
 
-      <h2 data-ik="ticket">Misafir erişimi</h2>
+      <h2>Misafir erişimi</h2>
       <div class="box">
         <label class="check"><input type="checkbox" id="setGuestOtp"> Tek seferlik misafir kodu ile girişe izin ver</label>
         <div class="row gap wrap" id="guestRow">
@@ -177,7 +188,7 @@
         </div>
       </div>
 
-      <h2 data-ik="shield">Güvenlik</h2>
+      <h2>Güvenlik</h2>
       <div class="box">
         <label class="check"><input type="checkbox" id="setApproval"> Yeni bir cihaz şifreyle giriş yapınca bilgisayarda onay iste</label>
         <label class="check"><input type="checkbox" id="setTrustTs"> Tailscale üzerinden gelen bağlantılarda onay isteme</label>
@@ -187,7 +198,7 @@
         <p class="small" id="netList"></p>
       </div>
 
-      <h2 data-ik="users">Kullanıcılar</h2>
+      <h2>Kullanıcılar</h2>
       <div class="box">
         <table id="usersTable"></table>
         <form id="addUserForm" class="row gap wrap">
@@ -198,13 +209,13 @@
         </form>
       </div>
 
-      <h2 data-ik="devices">Hatırlanan cihazlar</h2>
+      <h2>Hatırlanan cihazlar</h2>
       <div class="box"><table id="devicesTable"></table></div>
 
-      <h2 data-ik="wifi">Şu an bağlı</h2>
+      <h2>Şu an bağlı</h2>
       <div class="box"><table id="onlineTable"></table></div>
 
-      <h2 data-ik="list">Bağlantı günlüğü</h2>
+      <h2>Bağlantı günlüğü</h2>
       <div class="box"><table id="logTable" class="small"></table></div>
     </div>
   </section>

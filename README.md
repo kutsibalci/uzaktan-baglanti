@@ -11,10 +11,11 @@ Windows bilgisayarı telefondan, tabletten ya da başka bir bilgisayardan **tara
 - Cihaz hatırlama, yeni cihaz için bilgisayarda onay penceresi, tek seferlik misafir kodu
 - Okul / kafe / otel ağında (Windows'ta "Ortak" ağ) ev ağından giriş kapalı; Tailscale çalışmaya devam eder (yönetim paneli > Güvenlik)
 - Her yerden erişim: Tailscale (HTTPS)
-- Telefon: doğrudan dokunma (dokun = tık, hızlı sürükle = kaydırma, basılı tut + sürükle = sürükleme, basılı tut + bırak = sağ tık) ya da touchpad modu, sıkıştırarak yakınlaştırma,
+- Telefon: **Fare** modu (varsayılan; parmak imleci touchpad gibi sürer) ya da **Dokunmatik** mod (dokunulan yer tıklanır, sürükle = sürükleme); iki modda da basılı tut = sağ tık, iki parmak = kaydırma, sıkıştırarak yakınlaştırma,
   ekran klavyesi açılınca görüntü klavyenin üstüne sığar, sade araç çubuğu + ⋯ menü (paneller ✕ / Esc / dışarı dokununca kapanır),
   "Tuşlar" paneli (kısayollar: Kopyala, Alt+Tab, Win+D, Ctrl+Shift+Esc…; yapışkan Ctrl/Alt/Shift/Win, oklar, F1–F12), ana ekrana eklenebilir (PWA), USB ile bağlantı (`usb-baglan.bat`)
-- Touchpad modunda sağ tık: iki parmakla dokun, basılı tut-bırak ya da çubuktaki **Sağ tık** düğmesi (tek seferlik / uzun basınca kilitli)
+- Sağ tık: basılı tut, iki parmakla dokun (Fare modu) ya da alt çubuktaki **Sağ tık** düğmesi (imlecin olduğu yerde hemen)
+- Telefonda alt çubuk (Klavye, Tuşlar, Fare/Dokunmatik, Sağ tık, Pano, Diğer), ilk bağlantıda kısa tanıtım
 - **Kumanda modu** (ana menü): görüntü akışı olmadan telefon = touchpad + medya tuşları + sunum kumandası (← → F5 B Esc) + klavye
 - **Çizim tableti** (ana menü, iPad için): kenar kısayol paneli (Photoshop / Krita / Clip Studio Paint / Paint.NET / Paint profilleri;
   basılı tutulan Ctrl/Shift/Alt/Boşluk), avuç içi reddi ve "Parmak" ayarı, kalemin ara noktaları ve Apple Pencil hover

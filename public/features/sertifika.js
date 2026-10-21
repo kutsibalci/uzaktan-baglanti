@@ -44,7 +44,7 @@
 
   // ---------- Menü satırı + panel ----------
   const item = RC.ui.menuItem({
-    id: 'sertifikaBtn', icon: '🔒', label: 'Ev ağında HTTPS', order: 70, title: 'Ev ağında şifreli bağlantı (H.264 ve ses için)',
+    id: 'sertifikaBtn', icon: '🔒', label: 'Ev ağında HTTPS', order: 70, ikincil: true, title: 'Ev ağında şifreli bağlantı (H.264 ve ses için)',
     onClick: () => kabuk.toggle(),
   });
   const kabuk = RC.ui.panel('🔒 Ev ağında HTTPS', {

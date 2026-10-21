@@ -138,12 +138,15 @@ const YAKALAYICI = `
     check('ikinci açılışta tanıtım gelmedi', !(await ev("!!document.getElementById('tanitim')")));
     // Menüden "Nasıl kullanılır?" yeniden açar; Geç ve Esc kapatır
     await tap('#menuBtn');
-    check('Diğer menüsünde "Nasıl kullanılır?" var', await shown('#tanitimBtn'));
+    check('"Nasıl kullanılır?" telefonda Daha fazla altında katlı', !(await shown('#tanitimBtn')) && (await shown('#dahaFazla')));
+    await tap('#dahaFazla');
+    check('Diğer > Daha fazla menüsünde "Nasıl kullanılır?" var', await shown('#tanitimBtn'));
     await tap('#tanitimBtn');
     check('"Nasıl kullanılır?" tanıtımı açtı (menü kapandı)', (await until("!!document.getElementById('tanitim')", 2000)) && !(await shown('#menuPanel')));
     await tap('#tanitim [data-k="gec"]');
     check('Geç kapattı', !(await ev("!!document.getElementById('tanitim')")));
     await tap('#menuBtn');
+    await tap('#dahaFazla');
     await tap('#tanitimBtn');
     await until("!!document.getElementById('tanitim')", 2000);
     await sent();

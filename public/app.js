@@ -309,9 +309,7 @@
     overlay('');
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     $('helloName').textContent = `Merhaba, ${me.username}`;
-    $('helloAvatar').textContent = (me.username || '?').slice(0, 1).toLocaleUpperCase('tr-TR');
-    $('helloRole').innerHTML = '<span class="rol"></span>';
-    $('helloRole').firstChild.textContent = `${ROLE_NAMES[me.role] || me.role}${me.guest ? ' (misafir)' : ''}`;
+    $('helloRole').textContent = `${ROLE_NAMES[me.role] || me.role}${me.guest ? ' (misafir)' : ''}`;
     $('adminBtn').hidden = me.role !== 'admin';
     $('modeExtend').disabled = me.role === 'view';
     $('extendHint').textContent = me.role === 'view' ? 'Kontrol yetkisi gerekiyor'
@@ -763,11 +761,12 @@
   const menuBtn = $('menuBtn');
   const menuList = $('menuItems');
   let menuTimer = null;
+  let daralt = null; // "Daha fazla" açıksa menü kapanınca yine katlanır (aşağıda)
   const menu = panel('Menü', {
     id: 'menuPanel',
     anchor: menuBtn,
     onOpen() { menuBtn.classList.add('on'); menuInfo(); menuTimer = setInterval(menuInfo, 1000); },
-    onClose() { menuBtn.classList.remove('on'); clearInterval(menuTimer); },
+    onClose() { menuBtn.classList.remove('on'); clearInterval(menuTimer); daralt?.(); },
   });
   menu.body.appendChild(menuList);
   menuBtn.addEventListener('click', () => menu.toggle());
@@ -819,6 +818,7 @@
     for (const e of [row, pin]) {
       if (!e) continue;
       if (o.ctl) e.classList.add('ctl');
+      if (o.ikincil && e === row) e.classList.add('ikincil');
       if (o.extend === false) e.classList.add('no-extend');
     }
     const st = { icon: '', label: '', state: '', title: '', hidden: false, disabled: false, active: false, badge: false };
@@ -884,9 +884,21 @@
     addOrdered(menuList, hint, 81);
   }
   menuItem({
-    id: 'hideBtn', icon: '▴', label: 'Çubuğu gizle', state: 'üstteki ▾ ile geri gelir', order: 90, pin: true,
+    id: 'hideBtn', icon: '▴', label: 'Çubuğu gizle', state: 'üstteki ▾ ile geri gelir', order: 90, pin: true, ikincil: true,
     title: 'Çubuğu gizle', onClick() { toolbarEl.hidden = true; $('showBtn').hidden = false; },
   });
+  // Telefonda menü kısa kalsın: az kullanılanlar (menuItem({ ikincil: true })) "Daha fazla"nın altında katlı (style.css).
+  // Geniş ekranda bu satır görünmez, hepsi açık.
+  const dahaFazla = menuItem({
+    id: 'dahaFazla', icon: '▾', label: 'Daha fazla', order: 99, keepOpen: true,
+    onClick() {
+      const acik = menuList.classList.toggle('tum');
+      menu.el.classList.toggle('genis', acik); // açıkken menü boyu sınırlanmaz (style.css)
+      dahaFazla.set({ label: acik ? 'Daha az' : 'Daha fazla', icon: acik ? '▴' : '▾' });
+      if (acik) dahaFazla.el.scrollIntoView({ block: 'start' }); // açılan satırlar görünsün
+    },
+  });
+  daralt = () => { menuList.classList.remove('tum'); menu.el.classList.remove('genis'); dahaFazla.set({ label: 'Daha fazla', icon: '▾' }); };
 
   const canInput = () => stream?.started && me?.role !== 'view' && visible('vViewer');
 
@@ -1689,9 +1701,6 @@
       adminSection(title, el) {                          // yönetim paneline bölüm ekle
         const h = document.createElement('h2');
         h.textContent = title;
-        const ik = [[/başlat/i, 'rocket'], [/pano/i, 'clipboard'], [/https|sertifika/i, 'lock'], [/dosya/i, 'folder'], [/güç/i, 'power'],
-          [/durum/i, 'activity'], [/eşleştir|qr/i, 'qr']].find(([r]) => r.test(title));
-        h.insertAdjacentHTML('afterbegin', ikon.svg(ik ? ik[1] : 'sliders'));
         const box = document.createElement('div');
         box.className = 'box';
         box.appendChild(el);
