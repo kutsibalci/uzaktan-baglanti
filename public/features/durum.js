@@ -28,15 +28,28 @@
     .dr-sira { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
     .dr-sira button { background: transparent; border: 0; border-radius: 0; padding: 6px 12px; font-size: 13px; color: var(--muted); }
     .dr-sira button.on { background: var(--panel2); color: var(--text); }
+    .dr-bas h4 small { margin-left: 4px; color: var(--muted); font-size: 12px; font-weight: 400; text-transform: none; letter-spacing: 0; font-variant-numeric: tabular-nums; }
     .dr-liste { display: grid; gap: 2px; }
-    .dr-s { display: flex; align-items: center; gap: 6px; min-height: 44px; padding: 2px 4px 2px 8px; border-radius: 8px; background: var(--panel2); }
+    .dr-bol { display: flex; align-items: center; gap: 6px; width: 100%; margin: 4px 0 0; padding: 4px 2px; font-size: 13px; font-weight: 500;
+      color: var(--muted); background: transparent; border: 0; border-radius: 6px; text-align: left; }
+    .dr-bol small { font-weight: 400; font-variant-numeric: tabular-nums; }
+    button.dr-bol { min-height: 40px; cursor: pointer; }
+    button.dr-bol:hover:not(:disabled) { background: var(--panel2); }
+    .dr-bol svg { margin-left: auto; width: 16px; height: 16px; transition: transform .15s; }
+    .dr-bol[aria-expanded=true] svg { transform: rotate(90deg); }
+    .dr-s { display: flex; align-items: center; gap: 6px; min-height: 44px; padding: 3px 4px 3px 10px; border-radius: 8px; background: var(--panel2); }
     .dr-s .dr-ad { flex: 1 1 auto; min-width: 0; display: grid; }
-    .dr-s .dr-ad b, .dr-s .dr-ad small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .dr-s .dr-ad b { font-weight: 500; font-size: 14px; }
+    .dr-s .dr-ad b { display: flex; gap: 4px; min-width: 0; font-weight: 500; font-size: 14px; }
+    .dr-s .dr-adm, .dr-s .dr-ad small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+    .dr-s .dr-adet { flex: none; color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; }
     .dr-s .dr-ad small { color: var(--muted); font-size: 12px; }
-    .dr-s .dr-n { flex: none; width: 46px; text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; }
-    .dr-s .dr-n.r { width: 64px; color: var(--muted); }
+    /* Telefonda CPU ile bellek alt alta (ada yer kalsın), genişte yan yana sütun; sıralanan değer belirgin. */
+    .dr-nlar { flex: none; display: grid; justify-items: end; width: 66px; font-size: 13px; line-height: 1.35; font-variant-numeric: tabular-nums; }
+    .dr-nlar span { color: var(--muted); white-space: nowrap; }
+    .dr-nlar span.on { color: var(--text); }
+    @media (min-width: 600px) { .dr-nlar { grid-template-columns: 56px 72px; width: 136px; } }
     .dr-s button { flex: none; min-width: 40px; height: 36px; padding: 0 8px; font-size: 13px; border-radius: 8px; background: var(--panel); border: 1px solid var(--line); }
+    .dr-s button:hover:not(:disabled) { background: var(--panel3); }
     .dr-s button.on { border-color: var(--warn); }
     .dr-s button[data-act=kapat] { min-width: 62px; }
     .dr-s button.kilit { opacity: .45; }
@@ -89,7 +102,7 @@
   const abone = (acik) => RC.send({ t: 'durum-abone', acik });
   const panel = RC.ui.panel('Bilgisayar durumu', {
     id: 'durumPanel', className: 'durum-panel', anchor: homeBtn,
-    onOpen() { gecmis = []; son = null; ciz(null); surecleriCiz([]); rolGuncelle(); abone(true); },
+    onOpen() { gecmis = []; son = null; ciz(null); surecleriCiz(null); rolGuncelle(); abone(true); },
     onClose() { abone(false); },
   });
   homeBtn.addEventListener('click', () => panel.toggle());
@@ -107,10 +120,16 @@
       <div class="dr-k" data-k="sure"><div class="dr-ust"><span>Açık süre</span><b>–</b></div><small></small></div>
     </div>
     <div class="dr-liste" data-r="diskler"></div>
-    <div class="dr-bas"><h4>Çalışan programlar</h4>
+    <div class="dr-bas"><h4>Çalışan programlar <small data-r="surecSayi"></small></h4>
       <div class="dr-sira" role="group" aria-label="Sıralama"><button type="button" data-sira="cpu" class="on">CPU</button><button type="button" data-sira="ram">RAM</button></div></div>
     <p class="dr-msg" data-r="kmsg"></p>
-    <div class="dr-liste" data-r="surecler"><p class="dr-bos">Ölçülüyor…</p></div>
+    <div data-r="programlar">
+      <div class="dr-bol">Uygulamalar <small data-r="uygSayi"></small></div>
+      <div class="dr-liste" data-r="uyg"><p class="dr-bos">Ölçülüyor…</p></div>
+      <button type="button" class="dr-bol" data-r="arkaAc" aria-expanded="false" aria-controls="durumArka">Arka plan işlemleri <small data-r="arkaSayi"></small>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <div class="dr-liste" data-r="arka" id="durumArka" hidden></div>
+    </div>
     <div class="dr-bas"><h4>Bildirimler</h4></div>
     <div class="dr-liste" data-r="izleyiciler"></div>
     <div class="dr-ekle" data-r="ekle">
@@ -186,56 +205,92 @@
       return e;
     }));
 
-    if (!duraklat) surecleriCiz(m.surecler || []);
+    if (!duraklat) surecleriCiz(m.gruplar, m.sayilar);
   }
 
-  // ---------- Süreç listesi ----------
-  const satirlar = new Map(); // pid -> eleman
+  // ---------- Süreç listesi (Görev Yöneticisi gibi: gruplar, Uygulamalar + Arka plan işlemleri) ----------
+  // Grup: aynı programın süreçleri tek satır ("Google Chrome (40)"), CPU ve bellek toplamı. Kapat / 🔔 gruptaki TÜM süreçlere
+  // (PID + başlama zamanıyla) uygulanır; biri korumalıysa grup 🔒.
+  const satirlar = new Map(); // "pid:ct" (kök) -> eleman
   let duraklat = false, duraklatTimer = null;
-  const liste = q('surecler');
+  let arkaAcik = false; // arka plan işlemleri varsayılan katlı
+  const programlar = q('programlar');
+  const uygListe = q('uyg'), arkaListe = q('arka'), arkaAc = q('arkaAc');
+  const uyeleri = (g) => g.uyeler || [[g.pid, g.ct]];
   // Parmak listedeyken sıra değişmesin (yoksa dokunulan satır kayar ve yanlış düğmeye basılır).
-  liste.addEventListener('pointerdown', () => { duraklat = true; clearTimeout(duraklatTimer); });
+  programlar.addEventListener('pointerdown', (e) => { if (e.target.closest('.dr-s')) { duraklat = true; clearTimeout(duraklatTimer); } });
   const birak = () => { clearTimeout(duraklatTimer); duraklatTimer = setTimeout(() => { duraklat = false; }, 1500); };
-  liste.addEventListener('pointerup', birak);
-  liste.addEventListener('pointercancel', birak);
+  programlar.addEventListener('pointerup', birak);
+  programlar.addEventListener('pointercancel', birak);
 
-  function surecleriCiz(s) {
-    if (!s.length) { liste.innerHTML = '<p class="dr-bos">Ölçülüyor…</p>'; satirlar.clear(); return; }
-    const secili = [...s].sort((a, c) => (sira === 'cpu' ? c.cpu - a.cpu || c.ram - a.ram : c.ram - a.ram)).slice(0, 15);
-    const izlenen = new Set(izleyiciler.filter((i) => i.tur === 'surec').map((i) => i.pid));
-    const yeni = new Map();
-    for (const p of secili) {
-      let e = satirlar.get(p.pid);
-      if (!e || e.dataset.ct !== p.ct) {
-        e = document.createElement('div');
-        e.className = 'dr-s';
-        e.dataset.pid = p.pid;
-        e.dataset.ct = p.ct;
-        e.innerHTML = `<div class="dr-ad"><b></b><small></small></div><span class="dr-n"></span><span class="dr-n r"></span>
-          <button type="button" data-act="izle" title="Kapanınca haber ver" aria-label="Kapanınca haber ver">🔔</button>
-          <button type="button" data-act="kapat">Kapat</button>`;
-      }
-      e._p = p;
-      e.querySelector('b').textContent = p.ad;
-      e.querySelector('small').textContent = p.baslik || '';
-      e.querySelector('small').hidden = !p.baslik;
-      e.querySelector('.dr-n').textContent = `%${ondalik(p.cpu)}`;
-      e.querySelector('.dr-n.r').textContent = mb(p.ram);
-      const iz = e.querySelector('[data-act="izle"]');
-      iz.hidden = !kontrol();
-      iz.classList.toggle('on', izlenen.has(p.pid));
-      const k = e.querySelector('[data-act="kapat"]');
-      k.hidden = !yonetici();
-      k.classList.toggle('kilit', !!p.koruma);
-      k.classList.toggle('kapat', !p.koruma);
-      k.textContent = p.koruma ? '🔒' : 'Kapat';
-      k.title = p.koruma || `${p.ad} programını kapat`;
-      k.setAttribute('aria-label', k.title);
-      yeni.set(p.pid, e);
+  arkaAc.addEventListener('click', () => {
+    arkaAcik = !arkaAcik;
+    arkaAc.setAttribute('aria-expanded', String(arkaAcik));
+    arkaListe.hidden = !arkaAcik;
+    if (son) surecleriCiz(son.gruplar, son.sayilar);
+  });
+
+  function satir(g, izlenen) {
+    const anahtar = `${g.pid}:${g.ct}`;
+    let e = satirlar.get(anahtar);
+    if (!e) {
+      e = document.createElement('div');
+      e.className = 'dr-s';
+      e.dataset.pid = g.pid;
+      e.dataset.ct = g.ct;
+      e.innerHTML = `<div class="dr-ad"><b><span class="dr-adm"></span><span class="dr-adet"></span></b><small></small></div>
+        <div class="dr-nlar"><span data-n="cpu" title="İşlemci"></span><span data-n="ram" title="Bellek (özel çalışma kümesi)"></span></div>
+        <button type="button" data-act="izle" title="Kapanınca haber ver" aria-label="Kapanınca haber ver">🔔</button>
+        <button type="button" data-act="kapat">Kapat</button>`;
     }
+    e._p = g;
+    e.querySelector('.dr-adm').textContent = g.ad;
+    e.querySelector('.dr-adet').textContent = g.n > 1 ? `(${g.n})` : '';
+    const alt = [g.ad !== g.exe && g.exe, g.baslik !== g.ad && g.baslik].filter(Boolean).join(' · ');
+    const small = e.querySelector('small');
+    small.textContent = alt;
+    small.hidden = !alt;
+    const cpu = e.querySelector('[data-n=cpu]'), ram = e.querySelector('[data-n=ram]');
+    cpu.textContent = `%${ondalik(g.cpu)}`;
+    ram.textContent = mb(g.ram);
+    cpu.classList.toggle('on', sira === 'cpu');
+    ram.classList.toggle('on', sira === 'ram');
+    const iz = e.querySelector('[data-act="izle"]');
+    iz.hidden = !kontrol();
+    iz.classList.toggle('on', uyeleri(g).some(([pid]) => izlenen.has(pid)));
+    const k = e.querySelector('[data-act="kapat"]');
+    k.hidden = !yonetici();
+    k.classList.toggle('kilit', !!g.koruma);
+    k.classList.toggle('kapat', !g.koruma);
+    k.textContent = g.koruma ? '🔒' : 'Kapat';
+    k.title = g.koruma || `${g.ad} programını kapat${g.n > 1 ? ` (${g.n} işlem)` : ''}`;
+    k.setAttribute('aria-label', k.title);
+    return [anahtar, e];
+  }
+
+  function surecleriCiz(gruplar, sayilar) {
+    q('surecSayi').textContent = sayilar ? `${sayilar.surec} işlem` : '';
+    q('uygSayi').textContent = sayilar ? `(${sayilar.uyg})` : '';
+    q('arkaSayi').textContent = sayilar ? `(${sayilar.arka})` : '';
+    if (!gruplar) {
+      uygListe.innerHTML = '<p class="dr-bos">Ölçülüyor…</p>';
+      arkaListe.replaceChildren();
+      satirlar.clear();
+      return;
+    }
+    const sirala = (l) => l.sort((a, c) => (sira === 'cpu' ? c.cpu - a.cpu || c.ram - a.ram : c.ram - a.ram)).slice(0, 15);
+    const izlenen = new Set(izleyiciler.filter((i) => i.tur === 'surec').flatMap((i) => (i.surecler || [[i.pid]]).map(([pid]) => pid)));
+    const yeni = new Map();
+    const ciz1 = (el, l, bos) => {
+      const ogeler = l.map((g) => { const [a, e] = satir(g, izlenen); yeni.set(a, e); return e; });
+      if (ogeler.length) el.replaceChildren(...ogeler);
+      else el.innerHTML = `<p class="dr-bos">${bos}</p>`;
+    };
+    ciz1(uygListe, sirala(gruplar.filter((g) => g.uyg)), 'Açık pencereli program yok.');
+    if (arkaAcik) ciz1(arkaListe, sirala(gruplar.filter((g) => !g.uyg)), 'Arka plan işlemi yok.');
+    else arkaListe.replaceChildren();
     satirlar.clear();
-    for (const [pid, e] of yeni) satirlar.set(pid, e);
-    liste.replaceChildren(...yeni.values());
+    for (const [a, e] of yeni) satirlar.set(a, e);
   }
 
   b.querySelector('.dr-sira').addEventListener('click', (e) => {
@@ -243,10 +298,11 @@
     if (!x) return;
     sira = x.dataset.sira;
     for (const y of b.querySelectorAll('[data-sira]')) y.classList.toggle('on', y === x);
-    if (son) surecleriCiz(son.surecler || []);
+    if (son) surecleriCiz(son.gruplar, son.sayilar);
   });
 
   const kmsg = q('kmsg');
+  const islem = (n) => (n > 1 ? ` (${n} işlem)` : '');
   function mesaj(metin, tur = '', zorla = null) {
     kmsg.className = `dr-msg ${tur}`;
     kmsg.textContent = metin;
@@ -255,43 +311,46 @@
       z.type = 'button';
       z.textContent = 'Zorla kapat';
       z.addEventListener('click', () => {
-        if (!confirm(`"${zorla.ad}" zorla kapatılsın mı?\n\nKaydedilmemiş işler KAYBOLUR.`)) return;
+        if (!confirm(`"${zorla.ad}" zorla kapatılsın mı?${islem(zorla.surecler.length)}\n\nKaydedilmemiş işler KAYBOLUR.`)) return;
         mesaj(`"${zorla.ad}" zorla kapatılıyor…`);
-        RC.send({ t: 'durum-kapat', pid: zorla.pid, ct: zorla.ct, zorla: true });
+        RC.send({ t: 'durum-kapat', pid: zorla.pid, ct: zorla.ct, surecler: zorla.surecler, ad: zorla.ad, zorla: true });
       });
       kmsg.appendChild(z);
     }
   }
 
-  liste.addEventListener('click', (e) => {
+  programlar.addEventListener('click', (e) => {
     const x = e.target.closest('button[data-act]');
-    const p = x?.closest('.dr-s')?._p;
-    if (!p) return;
+    const g = x?.closest('.dr-s')?._p;
+    if (!g) return;
     if (x.dataset.act === 'izle') {
       if (x.classList.contains('on')) {
-        const i = izleyiciler.find((y) => y.tur === 'surec' && y.pid === p.pid);
+        const pidler = new Set(uyeleri(g).map(([pid]) => pid));
+        const i = izleyiciler.find((y) => y.tur === 'surec' && (y.surecler || [[y.pid]]).some(([pid]) => pidler.has(pid)));
         if (i) RC.send({ t: 'durum-izle-sil', id: i.id });
         return;
       }
-      RC.send({ t: 'durum-izle', tur: 'surec', pid: p.pid, ct: p.ct, ad: p.baslik ? `${p.ad} (${p.baslik.slice(0, 40)})` : p.ad });
+      RC.send({ t: 'durum-izle', tur: 'surec', pid: g.pid, ct: g.ct, surecler: uyeleri(g), ad: g.baslik && g.baslik !== g.ad ? `${g.ad} (${g.baslik.slice(0, 40)})` : g.ad });
       return;
     }
-    if (p.koruma) { alert(`${p.ad}\n\n${p.koruma}`); return; }
-    if (!confirm(`"${p.ad}" kapatılsın mı?${p.baslik ? `\n${p.baslik}` : ''}\n\nÖnce nazikçe kapatılır; kaydedilmemiş iş varsa program bilgisayarda sorabilir.`)) return;
-    mesaj(`"${p.ad}" kapatılıyor…`);
-    RC.send({ t: 'durum-kapat', pid: p.pid, ct: p.ct });
+    if (g.koruma) { alert(`${g.ad}\n\n${g.koruma}`); return; }
+    const hepsi = g.n > 1 ? ` (${g.n} işlemin hepsi)` : '';
+    if (!confirm(`"${g.ad}" kapatılsın mı?${hepsi}${g.baslik ? `\n${g.baslik}` : ''}\n\nÖnce nazikçe kapatılır; kaydedilmemiş iş varsa program bilgisayarda sorabilir.`)) return;
+    mesaj(`"${g.ad}" kapatılıyor…`);
+    RC.send({ t: 'durum-kapat', pid: g.pid, ct: g.ct, surecler: uyeleri(g), ad: g.ad });
   });
 
   RC.on('durum-kapat-sonuc', (m) => {
     const ad = m.ad || `PID ${m.pid}`;
     const deneme = m.kuru ? ' (deneme modu — kapatılmadı)' : '';
     if (!m.ok) return mesaj(m.msg || 'Kapatılamadı.', 'err');
-    if (m.asama === 'nazik') return mesaj(m.pencere ? `"${ad}" kapatılması istendi${deneme}; 5 sn bekleniyor…` : `${m.msg || 'Penceresi yok.'}`, m.pencere ? '' : 'warn');
+    if (m.asama === 'nazik') return mesaj(m.pencere ? `"${ad}" kapatılması istendi${islem(m.adet)}${deneme}; 5 sn bekleniyor…` : `${m.msg || 'Penceresi yok.'}`, m.pencere ? '' : 'warn');
     if (m.asama === 'kontrol') {
       if (!m.hala) return mesaj(`"${ad}" kapandı.`, 'ok');
-      return mesaj(`"${ad}" hâlâ açık${deneme}.`, 'warn', { pid: m.pid, ct: m.ct, ad });
+      const kalan = Array.isArray(m.kalan) && m.kalan.length ? m.kalan : [[m.pid, m.ct]];
+      return mesaj(`"${ad}" hâlâ açık${islem(kalan.length)}${deneme}.`, 'warn', { pid: m.pid, ct: m.ct, ad, surecler: kalan });
     }
-    if (m.asama === 'zorla') mesaj(`"${ad}" zorla kapatıldı${deneme}.`, 'ok');
+    if (m.asama === 'zorla') mesaj(`"${ad}" zorla kapatıldı${islem(m.adet)}${deneme}.`, 'ok');
   });
 
   // ---------- İzleyiciler ----------
@@ -328,14 +387,14 @@
   RC.on('durum-izleyiciler', (m) => {
     izleyiciler = m.liste || [];
     izleyicileriCiz();
-    if (son && panel.isOpen()) surecleriCiz(son.surecler || []);
+    if (son && panel.isOpen()) surecleriCiz(son.gruplar, son.sayilar);
   });
 
   function rolGuncelle() {
     ekle.hidden = !kontrol();
     q('ipucu').hidden = !kontrol();
     izleyicileriCiz();
-    if (son) surecleriCiz(son.surecler || []);
+    if (son) surecleriCiz(son.gruplar, son.sayilar);
   }
 
   // ---------- Sunucu mesajları ----------

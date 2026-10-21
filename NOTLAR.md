@@ -175,6 +175,22 @@
       iOS seçicide disabled pil seçeneği; pil izleyicisinin gerçekten tetiklenmesi; pencereli gerçek programın nazik kapatılması ve
       "kaydetmek ister misiniz"; yönetici olarak çalışan programı kapatma; gerçek tarayıcı indirmesi (.crdownload/.part) ve taşınmış
       İndirilenler; Optimus'ta NVML'nin pile etkisi; sunucu yeniden başlayınca PID yeniden kullanılmışsa "program kapanınca")**
+- **Durum paneli: çalışan programlar Görev Yöneticisi gibi** (2026-10-22; kullanıcı gerçek iPhone'da: "çalışan uygulamalar yanlış gösteriliyor"):
+  (1) **Gruplar**: aynı adlı ebeveyn → çocuk zinciri tek satır ("Google Chrome (15)", toplam CPU + bellek); ayrı başlatılmış iki kopya ayrı satır
+  (Kapat ilgisiz kopyayı kapatmasın); kritik sistem süreçleri ada göre tek kilitli satır (svchost 94 süreç → 1). (2) **Program adı** = dosyanın
+  FileDescription'ı, alt satırda exe adı · pencere başlığı; yol `SystemProcessIdInformation` ile (QueryFullProcessImageName yönetici olmadan
+  360 sürecin 139'unda — tüm svchost, MsMpEng, csrss — erişim reddi veriyor), açıklama yol başına önbellekte, yalnızca listelenen gruplar için.
+  (3) **Uygulamalar** (Alt+Tab gibi: görünür, sahipsiz, başlıklı, araç penceresi olmayan pencereli gruplar) ve katlı **Arka plan işlemleri**
+  (her biri en çok 15; CPU/RAM sıralaması ikisine de). (4) **Değerler**: CPU = grubun CPU zamanı / (geçen süre × 16 mantıksal çekirdek) — eski
+  hesap da buydu, geçen süre artık iki anlık görüntü arasından; bellek = özel çalışma kümesi (SPI WorkingSetPrivateSize; PROCESS_MEMORY_COUNTERS_EX2
+  art arda okununca 189 sürecin 186'sında aynı ama yalnızca açılabilen süreçlerde çalışıyor). Get-Counter ile aynı 10 sn (bizim / Get-Counter ÷ 16):
+  tek çekirdek yük %6,23 / %6,24 (Get-Process %6,27); MsMpEng %6,34 / %6,43; svchost (94) %0,20 / %0,21; bellek Chrome 371,6 / 371,6 MB,
+  Discord 804,6 / 804,2 MB (Get-Process WorkingSet 1157 / 1309 MB — paylaşılanı da sayar). Kapat ve 🔔 grubun TÜM süreçlerine PID + ct ile
+  (biri korumalıysa hiçbiri; izleyici hepsi kapanınca), "Zorla kapat" yalnızca hâlâ açık olanlara. Durum.exe kendi CPU'su ort. %0,05.
+  Testler: `ozellik-durum` (109), `-durum-kapat` (kendi 3 süreçlik grubu gerçekten kapatılır, 14), `-durum-tarayici` (39; iPhone/iPad ekran görüntüsü).
+  **(henüz gerçek cihazda test edilmedi: iPhone'da yeni liste (dar ekranda ad kısalması, katlı arka plan, dokunma), gerçek pencereli bir
+  grubun (Chrome) nazik kapatılması ve "kaydetmek ister misiniz", UWP uygulamaları (pencere ApplicationFrameHost'ta görünür), başka sanal
+  masaüstündeki pencereler (gizli sayılır → arka plan))**
 - [x] Pano: resim iki yönde. Bilgisayar → telefon: Pano.exe "PNG" akışı / CF_DIB okur, istemciye yalnızca boyut bildirilir, PNG
       `GET /api/pano/resim`; "Telefona kopyala" (ClipboardItem + Promise, iOS deseni) ve "Kaydet / Paylaş" (HTTP'de "Kaydet (indir)").
       Telefon → bilgisayar: "Telefondan resim gönder" (clipboard.read, yoksa "Resim seç…"; HEIC/WebP tuvalle PNG'ye), `POST /api/pano/resim`
