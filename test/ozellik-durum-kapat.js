@@ -79,7 +79,8 @@ setTimeout(() => tut.length, Number(ms));`;
     check('yönetici oluşturuldu', (await a.next(t('auth'))).ok);
     // Panel açık: listedeki başlama zamanını (ct) kullanmak için abone ol
     a.send({ t: 'durum-abone', acik: true });
-    await a.next(t('durum-ilk'));
+    // Durum.exe yeni derlendiyse ilk ölçüm (ve dosya açıklamalarının ilk okunuşu) birkaç saniye sürebilir
+    await a.next(t('durum-ilk'), 15000);
 
     a.send({ t: 'durum-kapat', pid: cocuk.pid, ct: '1', zorla: true });
     let r = await a.next(t('durum-kapat-sonuc'));
