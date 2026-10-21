@@ -9,6 +9,7 @@ const store = require('./lib/store');
 const { Helper, askHost, buildExe } = require('./lib/helper');
 const { VirtualDisplays } = require('./lib/vdd');
 const { clientInfo, isPrivate, tailscaleInfo } = require('./lib/network');
+const agProfili = require('./lib/agprofili');
 const { VideoManager, detectEncoders } = require('./lib/video');
 const ext = require('./lib/extensions');
 const Ekranlar = require('./public/ekranlar'); // "Tüm ekranlar" görünümünün hesapları (tarayıcıyla ortak)
@@ -66,7 +67,13 @@ const MIME = {
 
 // İnternetten doğrudan gelen bağlantıları reddet (modemde yanlışlıkla port açılsa bile).
 // Yalnızca ev ağı, Tailscale ve bu bilgisayar kabul edilir.
-const allowed = (req) => isPrivate(req.socket.remoteAddress);
+// "Ortak ağdan ev ağı girişini kapat" (varsayılan açık): Windows'ta Ortak olarak işaretli ağdan (okul, kafe, otel) gelen
+// ev ağı bağlantıları da reddedilir. Tailscale ve bu bilgisayar etkilenmez (lib/agprofili.js).
+const ortakAgdan = (req) => store.settings.blockPublicLan && clientInfo(req).via === 'lan' && agProfili.ortakMi(req.socket.localAddress);
+const allowed = (req) => isPrivate(req.socket.remoteAddress) && !ortakAgdan(req);
+const ORTAK_AG_SAYFA = '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Bağlantı kapalı</title>'
+  + '<p style="font:16px system-ui;margin:24px">Bu bilgisayar, Windows\'ta <b>Ortak</b> olarak işaretli ağlardan (okul, kafe, otel) gelen bağlantıları kabul etmiyor.<br><br>'
+  + 'Bilgisayarın sahibiysen: Tailscale adresini kullan. Bu ağ güvendiğin bir ağsa Windows\'ta Özel ağ yap ya da yönetim panelindeki ayarı kapat.</p>';
 
 // Yavaş istek koruması (slowloris): gövdesi bu süre içinde tamamlanmayan istek kesilir. Node'un sunucu genelindeki
 // requestTimeout'u yerine istek başına uygulanır; böylece büyük dosya yüklemesi (req.uzunIstek = true, yalnızca
@@ -78,7 +85,11 @@ const server = http.createServer(async (req, res) => {
   reqTimer.unref();
   // Cevap erken yazılsa da (ör. 401) gövdesi yarım kalan istek süresi dolunca yine kesilir.
   res.on('close', () => { if (req.complete) clearTimeout(reqTimer); });
-  if (!allowed(req)) { res.writeHead(403).end(); return; }
+  if (!allowed(req)) {
+    if (isPrivate(req.socket.remoteAddress)) res.writeHead(403, { 'Content-Type': 'text/html; charset=utf-8' }).end(ORTAK_AG_SAYFA);
+    else res.writeHead(403).end();
+    return;
+  }
   const url = new URL(req.url, 'http://x');
   if (url.pathname === '/api/hata' && req.method === 'POST') return istemciHatasi(req, res);
   if (url.pathname === '/api/features') {
@@ -585,6 +596,7 @@ async function adminData() {
     guestCode: store.settings.guestOtp ? guestCode : null,
     online: [...clients].map((c) => ({ username: c.session.username, role: c.session.role, ip: c.ip, via: c.via, deviceId: c.session.deviceId || null })),
     tailscale: await tailscaleInfo(),
+    networks: agProfili.ozet(),
     port: PORT,
     features: await ext.adminData(), // özellik modüllerinin yönetim verisi, özellik adına göre
   };
@@ -838,11 +850,14 @@ console.log(encs.length
 vdd.reset().then((ok) => console.log(ok ? '  Sanal ekran sürücüsü: hazır' : '  Sanal ekran sürücüsü: kurulu değil (surucu-kur.bat)'));
 
 server.listen(PORT, '0.0.0.0', async () => {
-  const tsi = await tailscaleInfo();
+  const [tsi] = await Promise.all([tailscaleInfo(), agProfili.izle()]);
   console.log('\n=== Uzaktan Bağlantı sunucusu çalışıyor ===');
-  for (const ip of lanAddresses()) if (ip !== tsi.ip) console.log(`  Ev ağı       : http://${ip}:${PORT}`);
+  // Ortak ağdaki adresler (ayar açıkken) ayrı yazılır: oradan bağlanılamaz.
+  const ortak = (ip) => store.settings.blockPublicLan && agProfili.ortakMi(ip);
+  for (const ip of lanAddresses()) if (ip !== tsi.ip && !ortak(ip)) console.log(`  Ev ağı       : http://${ip}:${PORT}`);
   const hp = httpsYonet.port();
-  if (hp) for (const ip of lanAddresses()) if (ip !== tsi.ip) console.log(`  Ev ağı HTTPS : https://${ip}:${hp}   (önce telefona sertifika: menü > 🔒 Ev ağında HTTPS)`);
+  if (hp) for (const ip of lanAddresses()) if (ip !== tsi.ip && !ortak(ip)) console.log(`  Ev ağı HTTPS : https://${ip}:${hp}   (önce telefona sertifika: menü > 🔒 Ev ağında HTTPS)`);
+  for (const ip of lanAddresses()) if (ip !== tsi.ip && ortak(ip)) console.log(`  Ortak ağ     : ${ip} — Windows'ta Ortak olarak işaretli, buradan giriş kapalı (yönetim paneli > Güvenlik)`);
   console.log(`  Bu bilgisayar: http://localhost:${PORT}`);
   if (tsi.running) {
     if (tsi.httpsUrl) console.log(`  Her yerden   : ${tsi.httpsUrl}   (Tailscale, önerilen)`);

@@ -170,6 +170,9 @@
         <label class="check"><input type="checkbox" id="setApproval"> Yeni bir cihaz şifreyle giriş yapınca bilgisayarda onay iste</label>
         <label class="check"><input type="checkbox" id="setTrustTs"> Tailscale üzerinden gelen bağlantılarda onay isteme</label>
         <p class="muted small">Hatırlanan cihazlar ve bu bilgisayarın kendisi onay gerektirmez. Tailscale ağına yalnızca senin Tailscale hesabına bağlı cihazlar girebildiği için, evde değilken giriş yapabilmen için ikinci seçenek açık bırakılabilir. Şifre her durumda gerekir.</p>
+        <label class="check"><input type="checkbox" id="setBlockPublic"> Windows'ta "Ortak" olarak işaretli ağlardan (okul, kafe, otel) ev ağı girişini kapat</label>
+        <p class="muted small">Aynı ağdaki yabancılar giriş sayfasını bile göremez. Tailscale ve bu bilgisayar etkilenmez. Ev Wi-Fi'ın Ortak görünüyorsa: Ayarlar &gt; Ağ ve İnternet &gt; Wi-Fi &gt; ağın adı &gt; Ağ profili türü: <b>Özel</b>.</p>
+        <p class="small" id="netList"></p>
       </div>
 
       <h2>Kullanıcılar</h2>

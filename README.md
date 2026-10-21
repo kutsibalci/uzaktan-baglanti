@@ -9,6 +9,7 @@ Windows bilgisayarı telefondan, tabletten ya da başka bir bilgisayardan **tara
 - "Tüm ekranlar": bütün monitörler gerçek dizilimiyle tek görüntüde, fare/dokunuş ekranlar arasında geçer (etikete dokununca tek ekran)
 - Yerel hesaplar: Yönetici / Kontrol / Salt izleme
 - Cihaz hatırlama, yeni cihaz için bilgisayarda onay penceresi, tek seferlik misafir kodu
+- Okul / kafe / otel ağında (Windows'ta "Ortak" ağ) ev ağından giriş kapalı; Tailscale çalışmaya devam eder (yönetim paneli > Güvenlik)
 - Her yerden erişim: Tailscale (HTTPS)
 - Telefon: doğrudan dokunma (dokun = tık, hızlı sürükle = kaydırma, basılı tut + sürükle = sürükleme, basılı tut + bırak = sağ tık) ya da touchpad modu, sıkıştırarak yakınlaştırma,
   ekran klavyesi açılınca görüntü klavyenin üstüne sığar, sade araç çubuğu + ⋯ menü (paneller ✕ / Esc / dışarı dokununca kapanır),

@@ -283,6 +283,17 @@
       **(henüz gerçek cihazda test edilmedi: iPhone'da etiketlerin üstteki yeri ve touchpad'de etiket üstünden dokunuş — başsız Edge
       390×844 emülasyonunda sınandı; Android Chrome'da HTTP adresinde şeridin JPEG metni; gerçek Tailscale adından açılan sayfada
       sertifika durumu — yalnızca Host başlığı taklidiyle; Windows kapanırken yardımcının bekleme davranışı — sahte yardımcıyla)**
+- **Ortak ağdan ev ağı girişini kapat** (2026-10-21; yönetim paneli > Güvenlik, varsayılan açık): okul Wi-Fi'ı Windows'ta "Ortak"
+  görünüyordu ama güvenlik duvarında node.exe'ye Ortak ağlarda da izin verilmişti — aynı ağdaki herkes giriş sayfasını açabiliyordu
+  (misafir kodu da onaysız giriyor). Artık bağlantının geldiği yerel adresin Windows ağ profili Ortak ise ev ağı bağlantısı (HTTP,
+  WebSocket, 3443 HTTPS) reddedilir; bu bilgisayar ve Tailscale (`tailscale serve` dahil) etkilenmez. Profil `Get-NetConnectionProfile`
+  ile (yönetici gerektirmez; PowerShell'in açılışı bu bilgisayarda 3-5 sn) adres değişince, reddetmeden önce bilgi eskiyse ve 5 dk'da
+  bir okunur (`lib/agprofili.js`); ilk okuma bitene kadar ev ağı kapalı, profili olmayan adres (WSL) açık. Panelde ağlar ve
+  profilleri görünür, sunucu açılışında Ortak adresler ayrı satırda. Test: `test/ozellik-ortak-ag.js` (sahte profille bu bilgisayarın
+  ev ağı adresinden 403 / WebSocket reddi, localhost ve Tailscale başlığıyla giriş, ayar kapalı/açık; gerçek profil okuma).
+  Güvenlik duvarı kuralı yine kullanıcının elinde (Ortak kutusunu kaldırmak ilk katman).
+  **(henüz gerçek cihazda test edilmedi: başka bir cihazdan okul ağında erişim denemesi; evde ağ Özel yapılınca telefonun ev ağı
+  adresinden girebilmesi)**
 
 ## Sıradaki
 1. Yukarıdaki özelliklerin gerçek telefon/tablet/kalemle denenmesi (ikinci ekran dahil)

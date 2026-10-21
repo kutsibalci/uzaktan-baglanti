@@ -1513,6 +1513,7 @@
   $('setGuestRole').addEventListener('change', (e) => admin('setSetting', { key: 'guestRole', value: e.target.value }));
   $('setApproval').addEventListener('change', (e) => admin('setSetting', { key: 'requireApproval', value: e.target.checked }));
   $('setTrustTs').addEventListener('change', (e) => admin('setSetting', { key: 'trustTailscale', value: e.target.checked }));
+  $('setBlockPublic').addEventListener('change', (e) => admin('setSetting', { key: 'blockPublicLan', value: e.target.checked }));
   $('tsBox').addEventListener('click', (e) => {
     const b = e.target.closest('button[data-copy]');
     if (!b) return;
@@ -1548,6 +1549,10 @@
     $('setApproval').checked = m.settings.requireApproval;
     $('setTrustTs').checked = m.settings.trustTailscale;
     $('setTrustTs').disabled = !m.settings.requireApproval;
+    $('setBlockPublic').checked = m.settings.blockPublicLan;
+    const NET_NAMES = { Public: 'Ortak', Private: 'Özel', DomainAuthenticated: 'Etki alanı' };
+    $('netList').innerHTML = (m.networks || []).map((n) => `${esc(n.ad || n.arayuz)} (${esc(n.ip)}): <b>${NET_NAMES[n.k]}</b>${
+      n.k === 'Public' ? (m.settings.blockPublicLan ? ' — buradan giriş kapalı' : ' — <b style="color:var(--error)">buradan giriş açık</b>') : ''}`).join('<br>');
     renderTailscale(m.tailscale, m.port);
 
     $('usersTable').innerHTML = '<tr><th>Kullanıcı</th><th>Yetki</th><th></th></tr>' + m.users.map((u) => `

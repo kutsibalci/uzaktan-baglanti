@@ -84,8 +84,10 @@ async function runSuite(file) {
   // PORT_HTTPS=0: ev ağı HTTPS'i (features/sertifika.js) boş rastgele portta; gerçek 3443 ile ve paralel testlerle çakışmaz.
   // REMOTE_INDIRME_DIR: durum izleyicisinin 'İndirilenler' klasörü; REMOTE_DURUM_KURU=1: durum panelinden program kapatılmaz
   // (gerçek kapatmayı yalnızca kendi alt sürecini kapatan test '// @ortam REMOTE_DURUM_KURU=0' ile açar).
+  // REMOTE_AG_PROFILI_SAHTE='{}': Windows ağ profili okunmaz, hiçbir adres Ortak sayılmaz (bilgisayar okul/kafe ağındayken
+  // ev ağı adresine bağlanan testler düşmesin; lib/agprofili.js).
   const ortam = { TEST_TMP: tmpDir, REMOTE_UPLOAD_DIR: path.join(tmpDir, 'yuklenen'), REMOTE_BROWSE_ROOT: path.join(tmpDir, 'kok'), PORT_HTTPS: '0',
-    REMOTE_INDIRME_DIR: path.join(tmpDir, 'indirilenler'), REMOTE_DURUM_KURU: '1', ...opts.env };
+    REMOTE_INDIRME_DIR: path.join(tmpDir, 'indirilenler'), REMOTE_DURUM_KURU: '1', REMOTE_AG_PROFILI_SAHTE: '{}', ...opts.env };
   fs.mkdirSync(path.join(tmpDir, 'kok'));
   fs.mkdirSync(path.join(tmpDir, 'indirilenler'));
   let server;
