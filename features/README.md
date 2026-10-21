@@ -43,6 +43,7 @@ Telefonda çubukta yalnızca geri, ⌨, Tuşlar, dokunmatik modu, küçük gecik
 - `RC.ui.closable(el, kapat, { dismiss, anchor })` — kendi kabuğu olan öğeyi (ör. tam ekran dosya paneli) Esc ile kapanacak şekilde kaydeder.
 - `RC.ui.toolbar(el)` — eski yol, geriye uyumlu: öğeyi çubuğun sağ ucuna (her genişlikte) ekler. Telefonda yer dar; yalnızca küçük göstergeler için (ör. gecikme sayacı), düğmeler için `menuItem` kullanın.
 - Salt izleme rolünde `<body>`'de `rc-salt`, ikinci ekranda `rc-genislet` sınıfı vardır (`.ctl` / `.no-extend` öğeler CSS ile gizlenir).
+  Dokunmatik touchpad modunda `rc-touchpad` (sahnedeki öğeler dokunma olaylarını durdurmamalı: bütün sahne dokunmatik yüzey; ör. ekran etiketleri touch olaylarını çekirdeğe bırakır, fareyle yine tıklanır).
 - Özel tuşlar (kısayollar, yapışkan Ctrl/Alt/Shift/Win, oklar, F1–F12) `public/features/telefon.js`'teki "Tuşlar" panelindedir.
 
 ## Özellik mesajları (JSON, özet; ayrıntı her dosyanın başında)

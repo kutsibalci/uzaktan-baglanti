@@ -1,7 +1,11 @@
-// "Tüm ekranlar" görünümünde her ekranın sol üst köşesinde küçük, yarı saydam ad etiketi ("1", "2"). Etikete dokunmak
-// (ya da tıklamak) o ekranı tek başına açar; "Tüm ekranlar"a dönüş ⋯ menüsündeki ekran seçicide.
+// "Tüm ekranlar" görünümünde her ekranın küçük, yarı saydam ad etiketi ("1", "2"). Etikete dokunmak (ya da tıklamak) o ekranı
+// tek başına açar; "Tüm ekranlar"a dönüş ⋯ menüsündeki ekran seçicide.
 // Neden etiket: tek parmak çift dokunuş tık/çift tık, iki parmak çift dokunuş yakınlaştırmayı 1x'e döndürme olarak zaten
 // kullanılıyor; etikete dokunuş görüntüye (bilgisayara) gitmez, başka hareketle çakışmaz.
+// Yer: yer varsa görüntünün DIŞINDA, ekranın sol kenarı hizasında üstteki boşlukta (dikey telefonda birleşik görüntü çok
+// basık: içeride 34 px'lik etiket masaüstünün sol üstündeki simgeleri / menüleri örterdi). Yer yoksa ekranın sol üst köşesinde.
+// Touchpad modunda (body.rc-touchpad) etiketler dokunuş için yalnızca gösterge: dokunuşun yeri anlamsız, bütün sahne dokunmatik
+// yüzey — dokunuş çekirdeğe geçer (tık / imleç), tek ekrana geçiş ⋯ menüsündeki ekran seçicide. Fare her modda etiketi kullanır.
 // Görüntü/eşleme hesapları public/ekranlar.js'te (window.Ekranlar); girdi eşlemesi çekirdekte (app.js send()).
 (() => {
   const RC = window.RC;
@@ -33,7 +37,10 @@
   }
 
   // Etikete dokunuş görüntüye gitmesin (çekirdeğin dokunma/fare işleyicileri sahnede, etiket onun içinde).
-  const yut = (e) => e.stopPropagation();
+  // Touchpad modunda (salt izlemede doğrudan mod geçerli) dokunma olayları durdurulmaz: çekirdek tık / imleç olarak işler ve
+  // preventDefault eder, böylece etiketin click'i de gelmez.
+  const touchpad = () => document.body.classList.contains('rc-touchpad') && !document.body.classList.contains('rc-salt');
+  const yut = (e) => { if (!(e.type.startsWith('touch') && touchpad())) e.stopPropagation(); };
 
   function tekEkran(name) {
     const sel = document.getElementById('screenSel');
@@ -64,7 +71,8 @@
     yerlestir();
   }
 
-  // Etiketler görüntünün (yakınlaştırma dahil) üstünde, ekranın sol üst köşesinde.
+  // Etiketler görüntünün (yakınlaştırma dahil) üstündeki boşlukta ya da ekranın sol üst köşesinde.
+  const BOSLUK = 6;
   function yerlestir() {
     if (katman.hidden) return;
     const nw = canvas.width, nh = canvas.height;
@@ -78,8 +86,10 @@
     const ox = r.left + (r.width - w) / 2 - st.left, oy = r.top + (r.height - h) / 2 - st.top;
     [...katman.children].forEach((b, i) => {
       const box = E.ekranKutusu(U, ekranlar[i]);
-      b.style.left = `${Math.round(ox + box.x * w + 6)}px`;
-      b.style.top = `${Math.round(oy + box.y * h + 6)}px`;
+      // Üst kenarı birleşimin üst kenarında olan ekranın etiketi, üstte yer varsa görüntünün dışına
+      const disari = box.y < 1e-6 && oy >= b.offsetHeight + 2 * BOSLUK;
+      b.style.left = `${Math.round(ox + box.x * w + BOSLUK)}px`;
+      b.style.top = `${Math.round(disari ? oy - b.offsetHeight - BOSLUK : oy + box.y * h + BOSLUK)}px`;
     });
   }
 

@@ -1056,6 +1056,7 @@
     cancelGesture();
     touchMode = mode;
     storage.set('touchMode', mode);
+    document.body.classList.toggle('rc-touchpad', mode === 'touchpad'); // özellikler (ör. ekran etiketleri) dokunuşu bıraksın
     $('touchModeBtn').innerHTML = mode === 'touchpad' ? '🖱<span class="tb-label"> Touchpad</span>' : '👆<span class="tb-label"> Doğrudan</span>';
     const [name, text] = TOUCH_TIPS[mode];
     $('touchModeBtn').title = `Dokunmatik: ${name} modu — ${text} (değiştir)`;

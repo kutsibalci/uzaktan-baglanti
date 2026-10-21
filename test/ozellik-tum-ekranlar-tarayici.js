@@ -2,6 +2,8 @@
 // seçicide seçenek, birleşik görüntü (en-boy), ekran etiketleri ("1", "2"), doğrudan dokunmada ikinci ekrana giden move
 // (ekran 2 + doğru nx, ny), ekranlar arası sürükleme (düğme basılı kalır), fare, touchpad'de imlecin sağ kenardan ikinci
 // ekrana geçmesi, yakınlaştırılmış görüntüde eşleme ve etiketler, etikete dokununca tek ekran, seçiciyle geri dönüş.
+// Dikeyde etiketler görüntünün dışında (üstteki boşlukta); touchpad'de etikete denk gelen dokunuş / kaydırma çekirdeğe geçer
+// (tık, imleç), fareyle etiket yine tek ekran açar.
 // Dizilim kullanıcınınki gibi taklit edilir (REMOTE_EKRANLAR_SAHTE: 1920×1080 + sağında 1920×1080); bu bilgisayarda şu an
 // tek monitör olduğundan ikinci "ekranın" karesi yardımcıdan ana ekran olarak gelir (içerik değil, boyut ve eşleme sınanır).
 // Akış JPEG'e zorlanır (sahte ikinci ekran gerçek masaüstünün dışında: gdigrab onu yakalayamaz).
@@ -122,8 +124,11 @@ const kisa = (list) => JSON.stringify(list.map((m) => (m.t === 'move' ? `move ${
     check('menüdeki seçici "Tüm ekranlar"da', sel[0] === '*' && sel[1].includes(D1) && sel[1].includes(D2), JSON.stringify(sel));
     let et = await etiketler();
     check('iki ekran etiketi: "1" ve "2"', et.length === 2 && et[0].t === '1' && et[1].t === '2', JSON.stringify(et));
-    check('etiketler ekranların sol üst köşesinde', et.length === 2 && Math.abs(et[0].left - (b.left + 6)) < 2 && Math.abs(et[1].left - (b.left + b.w / 2 + 6)) < 2 && Math.abs(et[1].top - (b.top + 6)) < 2,
+    check('etiketler ekranların sol kenarı hizasında', et.length === 2 && Math.abs(et[0].left - (b.left + 6)) < 2 && Math.abs(et[1].left - (b.left + b.w / 2 + 6)) < 2,
       JSON.stringify({ et: et.map((e) => [e.left, e.top]), b }));
+    // Dikey telefonda birleşik görüntü basık (390×110): etiket içeride ekranın sol üstünü (simgeler, menüler) örterdi
+    check('dikeyde etiketler görüntünün dışında, hemen üstündeki boşlukta', et.length === 2 && et.every((e) => e.top + e.h <= b.top + 0.5 && e.top >= b.top - e.h - 12),
+      JSON.stringify({ et: et.map((e) => [e.top, e.h]), top: b.top }));
     check('etiketler küçük ve yarı saydam', et.every((e) => e.w <= 48 && e.h <= 40 && /rgba\(.*, 0\.\d+\)/.test(e.op)), JSON.stringify(et.map((e) => [e.w, e.h, e.op])));
     await shot('2-tum-ekranlar');
 
@@ -189,6 +194,18 @@ const kisa = (list) => JSON.stringify(list.map((m) => (m.t === 'move' ? `move ${
     check('touchpad: imleç ekran 1\'de başladı', s.length && s[0].s === D1, kisa(s.slice(0, 3)));
     check('touchpad: imleç ekran 1\'in sağ kenarından ekran 2\'ye geçti', gecis > 0 && s[gecis - 1].x > 0.9 && s[gecis].x < 0.1, kisa(s.slice(Math.max(0, gecis - 2), gecis + 2)));
     await shot('3-touchpad');
+    // Touchpad'de dokunuşun yeri anlamsız: etikete denk gelen dokunuş da tık olmalı, görünüm tek ekrana geçmemeli
+    await sleep(400);
+    await sent();
+    await tap(await rectOf('.tum-etiket:nth-child(2)'));
+    await sleep(400); // touchpad tek tık, olası çift dokunuşu bekledikten sonra gider
+    s = await sent();
+    check('touchpad: etikete dokunuş sol tık gönderdi', s.some((m) => m.t === 'down' && m.b === 'left'), kisa(s));
+    check('touchpad: etikete dokunuş görünümü değiştirmedi', (await ev("document.getElementById('screenSel').value")) === '*');
+    const e1 = await rectOf('.tum-etiket:nth-child(1)');
+    await kaydir(e1.x, e1.x + 60, e1.y, 10);
+    s = (await sent()).filter((m) => m.t === 'move');
+    check('touchpad: etiketin üstünden başlayan kaydırma imleci taşıdı', s.length > 0, `${s.length} move`);
     await tap(await rectOf('#touchModeBtn')); // doğrudan moda dön
     await sent();
 
@@ -242,6 +259,18 @@ const kisa = (list) => JSON.stringify(list.map((m) => (m.t === 'move' ? `move ${
     s = await sent();
     mv = s.find((m) => m.t === 'move');
     check('dönüşte yine ekran 2', mv && mv.s === D2, kisa(s));
+
+    // ---- Touchpad modunda fare: etiket yine tek ekran açar (touchpad yalnızca dokunuşu etkiler) ----
+    await sleep(400);
+    await tap(await rectOf('#touchModeBtn'));
+    await sent();
+    const e1f = await rectOf('.tum-etiket:nth-child(1)');
+    await call('Input.dispatchMouseEvent', { type: 'mouseMoved', x: e1f.x, y: e1f.y });
+    await call('Input.dispatchMouseEvent', { type: 'mousePressed', x: e1f.x, y: e1f.y, button: 'left', clickCount: 1 });
+    await call('Input.dispatchMouseEvent', { type: 'mouseReleased', x: e1f.x, y: e1f.y, button: 'left', clickCount: 1 });
+    await sleep(300);
+    s = await sent();
+    check('touchpad modunda fareyle etiket 1: tek ekran, bilgisayara tık yok', (await ev("document.getElementById('screenSel').value")) === D1 && !s.some((m) => m.t === 'down'), kisa(s));
 
     check('sayfada yakalanmamış hata yok', exceptions.length === 0, JSON.stringify(exceptions));
     cdp.close();
