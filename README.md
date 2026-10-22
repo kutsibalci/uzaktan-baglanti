@@ -16,7 +16,7 @@ Windows bilgisayarı telefondan, tabletten ya da başka bir bilgisayardan **tara
   "Tuşlar" paneli (kısayollar: Kopyala, Alt+Tab, Win+D, Ctrl+Shift+Esc…; yapışkan Ctrl/Alt/Shift/Win, oklar, F1–F12), ana ekrana eklenebilir (PWA), USB ile bağlantı (`usb-baglan.bat`)
 - Sağ tık: basılı tut, iki parmakla dokun (Fare modu) ya da alt çubuktaki **Sağ tık** düğmesi (imlecin olduğu yerde hemen)
 - Telefonda alt çubuk (Klavye, Tuşlar, Fare/Dokunmatik, Sağ tık, Pano, Diğer), ilk bağlantıda kısa tanıtım
-- **Kumanda modu** (ana menü): görüntü akışı olmadan telefon = touchpad + medya tuşları + sunum kumandası (← → F5 B Esc) + klavye
+- **Kumanda modu** (ana menü): görüntü akışı olmadan telefon = touchpad (ayarlanabilir imleç hızı) + medya tuşları + sunum kumandası (← → F5 B Esc) + klavye (yazılan görünür; kısayollar, F tuşları, yapışkan Ctrl/Alt/Shift/Win)
 - **Çizim tableti** (ana menü, iPad için): kenar kısayol paneli (Photoshop / Krita / Clip Studio Paint / Paint.NET / Paint profilleri;
   basılı tutulan Ctrl/Shift/Alt/Boşluk), avuç içi reddi ve "Parmak" ayarı, kalemin ara noktaları ve Apple Pencil hover
 - **QR ile telefon eşleştirme:** bilgisayarda ana menü / tepsi → "Telefonu bağla (QR)"; telefon kamerayla okutur, bilgisayarda Onayla

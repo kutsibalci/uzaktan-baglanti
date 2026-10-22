@@ -53,7 +53,7 @@ alttan açılır (alt çubuğun üstüne yaslanır). İlk bağlantı tanıtımı
 - Özel tuşlar (kısayollar, yapışkan Ctrl/Alt/Shift/Win, oklar, F1–F12) `public/features/telefon.js`'teki "Tuşlar" panelindedir.
 
 ## Özellik mesajları (JSON, özet; ayrıntı her dosyanın başında)
-- `kumanda.js` — `{ t:'kumanda', op: rel|down|up|wheel|key|text|end }` (control; görüntü akışı olmadan girdi). RemoteHelper'da salt okuyan `cursor` komutu (GetCursorPos). Testte `REMOTE_KUMANDA_KURU=1`: girdi gönderilmez.
+- `kumanda.js` — `{ t:'kumanda', op: rel|down|up|wheel|key|text|end }` (control; görüntü akışı olmadan girdi). RemoteHelper'da salt okuyan `cursor` komutu (GetCursorPos). Testte `REMOTE_KUMANDA_KURU=1`: girdi gönderilmez. İstemcide Klavye sekmesi tuş tanımlarını `RC.tuslar`'dan (public/features/telefon.js) alır; İmleç hızı ana menüdeki Fare hızıyla ortak (`localStorage.fareHizi`).
 - `cizim.js` — `{ t:'cizim-tus', vk, down }` (control; basılı tuşlar bağlantı kopunca / izleme bitince bırakılır, en fazla 8).
 - `eslestir.js` — QR eşleştirme: `onPreAuth('eslestir')` + yönetici ekranında `eslestir-*` mesajları; telefona `eslestir-kod` (onay isteğindeki doğrulama koduyla aynı), `eslestir-olustur` `http: true` ile şifresiz adres. Testte `REMOTE_ESLESTIR_SURE_MS`, `REMOTE_ESLESTIR_ONAY_MS`, `REMOTE_ESLESTIR_TAILSCALE=0`.
 - `durum.js` — `durum-abone`, `durum`, `durum-ilk`, `durum-kapat` (admin) / `durum-kapat-sonuc`, `durum-izle` / `durum-izle-sil` / `durum-izleyiciler`, `durum-bildirim`. `REMOTE_DURUM_KURU=1`: program kapatılmaz; `REMOTE_INDIRME_DIR`: izlenen İndirilenler.

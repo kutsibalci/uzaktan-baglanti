@@ -114,6 +114,16 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
     const rels = s.filter((m) => m.op === 'rel');
     const sx = rels.reduce((a, m) => a + m.dx, 0), sy = rels.reduce((a, m) => a + m.dy, 0);
     check('touchpad: kaydırma -> göreli hareket (sağa, aşağı), tık yok', rels.length >= 2 && sx > 60 && sy > 30 && sx > sy && !s.some((m) => m.op === 'down'), `${sx},${sy} ${JSON.stringify(s.slice(0, 3))}`);
+    // İmleç hızı: Çok hızlı aynı hareketi büyütür; ayar ana menüdeki Fare hızı ile ortak
+    check('touchpad: İmleç hızı seçimi var (varsayılan Normal)', await ev("document.getElementById('kmHiz').value === '0.8'"));
+    await ev("(() => { const s = document.getElementById('kmHiz'); s.value = '1.3'; s.dispatchEvent(new Event('change')); })()");
+    await touch('touchStart', [c]);
+    for (let i = 1; i <= 10; i++) { await sleep(30); await touch('touchMove', [{ x: c.x + i * 6, y: c.y + i * 3 }]); }
+    await sleep(50); await touch('touchEnd', []); await sleep(60);
+    const sx2 = (await km()).filter((m) => m.op === 'rel').reduce((a, m) => a + m.dx, 0);
+    check('touchpad: Çok hızlı -> aynı kaydırmada daha uzun hareket', sx2 > sx * 1.3, `${sx} -> ${sx2}`);
+    check('İmleç hızı ana menüdeki Fare hızı ile ortak (kayıt + seçim)', await ev("localStorage.getItem('fareHizi') === '1.3' && document.getElementById('fareHiz').value === '1.3'"));
+    await ev("(() => { const s = document.getElementById('kmHiz'); s.value = '0.8'; s.dispatchEvent(new Event('change')); })()");
     // dokunuş -> 300 ms sonra sol tık
     await tap(c);
     s = await km();
@@ -199,6 +209,8 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
     await ev("document.querySelector('#kumanda [data-sekme=\"medya\"]').click()");
     await sleep(100);
     await shot('kumanda-2-medya-iphone.png');
+    check('medya: düğmelerde çizgi simgeler (emoji yok)', await ev("[...document.querySelectorAll('[data-govde=\"medya\"] .km-izgara button')].every((b) => b.querySelector('svg') && !/[\\u{1F300}-\\u{1FAFF}\\u23EE\\u23EF\\u23ED]/u.test(b.textContent))"));
+    check('medya: ses karıştırıcı yeri var', await ev("!!document.getElementById('kmKarisim')"));
     const MEDYA = [[179, 'Oynat'], [177, 'Önceki'], [176, 'Sonraki'], [174, 'Ses −'], [175, 'Ses +'], [173, 'Sessiz']];
     for (const [vk, ad] of MEDYA) {
       const r = await rect(`[data-govde="medya"] [data-vk="${vk}"]`);
@@ -227,17 +239,52 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
     await sleep(50);
     s = await km();
     check('klavye: yazı metin olarak gider', s.length === 1 && s[0].op === 'text' && s[0].s === 'Merhaba ş', JSON.stringify(s));
-    check('klavye: yazı alanı boş kalır', (await ev("document.getElementById('kmYazi').value")) === '');
+    check('klavye: yazılan telefonda da görünür', (await ev("document.getElementById('kmYazi').value")) === 'Merhaba ş');
     await call('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 });
     await call('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 });
     await sleep(30);
     s = await km();
     check('klavye: ⌫ tek kez', JSON.stringify(s.map((m) => `${m.vk}${m.down ? 'v' : '^'}`)) === '["8v","8^"]', JSON.stringify(s));
-    const ok = await rect('[data-govde="klavye"] [data-vk="39"]');
+    check('klavye: ⌫ telefondaki yazıdan da siler', (await ev("document.getElementById('kmYazi').value")) === 'Merhaba ');
+    // Tuşlar paneliyle aynı başlıklı bölümler
+    const basliklar = await ev("[...document.querySelectorAll('#kmTuslar h4')].map((h) => h.firstChild.textContent.trim())");
+    check('klavye: başlıklı bölümler (tuşlar ve oklar, sık kullanılanlar, F tuşları, diğer)', JSON.stringify(basliklar) === JSON.stringify(['Tuşlar ve oklar', 'Sık kullanılanlar', 'F tuşları', 'Diğer kısayollar']), JSON.stringify(basliklar));
+    check('klavye: tuş sayısı (17 tuş + 16 kısayol + F1–F12)', (await ev("document.querySelectorAll('#kmTuslar button').length")) === 45, String(await ev("document.querySelectorAll('#kmTuslar button').length")));
+    const ok = await rect('#kmTuslar [data-tus="39"]');
     await tap(ok); await sleep(50);
     s = await km();
-    check('klavye: → düğmesi', s.length === 2 && s[0].vk === 39, JSON.stringify(s));
+    check('klavye: → düğmesi', s.length === 2 && s[0].vk === 39 && s[0].down && !s[1].down, JSON.stringify(s));
+    check('klavye: tuşa basınca yazı alanı odağı korur', await ev("document.activeElement === document.getElementById('kmYazi')"));
+    const geriTus = await rect('#kmTuslar [data-tus="8"]');
+    await tap(geriTus); await sleep(50);
+    s = await km();
+    check('klavye: ⌫ düğmesi -> tuş 8 ve telefondaki yazıdan siler', s.length === 2 && s[0].vk === 8 && (await ev("document.getElementById('kmYazi').value")) === 'Merhaba', JSON.stringify(s));
+    // Yapışkan Ctrl + yazılan harf -> Ctrl+C (ayna değişmez)
+    const ctrl = await rect('#kmTuslar [data-tus="17"]');
+    await tap(ctrl); await sleep(50);
+    check('klavye: Ctrl yapışkan (seçili görünür, başlıkta yazar)', await ev("document.querySelector('#kmTuslar [data-tus=\"17\"]').classList.contains('on') && /Ctrl basılı/.test(document.querySelector('#kmTuslar h4').textContent)"));
+    check('klavye: Ctrl seçince henüz bir şey gitmez', (await km()).length === 0);
+    await ev("document.getElementById('kmYazi').focus()");
+    await call('Input.insertText', { text: 'c' });
+    await sleep(50);
+    s = await km();
+    check('klavye: Ctrl + c -> Ctrl+C (17v 67v 67^ 17^)', JSON.stringify(s.map((m) => `${m.vk}${m.down ? 'v' : '^'}`)) === '["17v","67v","67^","17^"]', JSON.stringify(s));
+    check('klavye: kısayoldan sonra Ctrl bırakılır, yazı değişmez', await ev("!document.querySelector('#kmTuslar [data-tus=\"17\"]').classList.contains('on') && document.getElementById('kmYazi').value === 'Merhaba'"));
+    // Yapışkan Shift + → düğmesi
+    await tap(await rect('#kmTuslar [data-tus="16"]')); await sleep(40);
+    await tap(ok); await sleep(50);
+    s = await km();
+    check('klavye: Shift + → (seçim)', JSON.stringify(s.map((m) => `${m.vk}${m.down ? 'v' : '^'}`)) === '["16v","39v","39^","16^"]', JSON.stringify(s));
+    // Kısayol düğmesi
+    await ev("document.getElementById('kmTuslar').scrollTop = 0");
+    await tap(await rect('#kmTuslar [data-kisayol="yapistir"]')); await sleep(50);
+    s = await km();
+    check('klavye: Yapıştır düğmesi -> Ctrl+V', JSON.stringify(s.map((m) => `${m.vk}${m.down ? 'v' : '^'}`)) === '["17v","86v","86^","17^"]', JSON.stringify(s));
+    check('klavye: Kilitle yöneticiye görünür', await ev("!document.querySelector('#kmTuslar [data-kisayol=\"kilitle\"]').hidden"));
     await shot('kumanda-4-klavye-iphone.png');
+    await tap(await rect('#kmTemizle')); await sleep(50);
+    s = await km();
+    check('klavye: Temizle yalnızca telefondakini siler (bilgisayara bir şey gitmez)', s.length === 0 && (await ev("document.getElementById('kmYazi').value")) === '' && (await ev("document.getElementById('kmTemizle').hidden")), JSON.stringify(s));
 
     // ---- Görüntü akışı yok ----
     const all = await ev('window.__all.slice()');

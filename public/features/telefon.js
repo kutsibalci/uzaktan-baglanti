@@ -68,6 +68,8 @@
 
   const RC = window.RC;
   if (!RC) return;
+  // Kumanda'nın klavye sekmesi aynı tuş tanımlarını kullanır (public/features/kumanda.js).
+  RC.tuslar = { charToVk, comboMessages, mergeMods, MOD_VKS, KISAYOLLAR, GEZINME, F_TUSLARI, SIK };
 
   // ---------- PWA ----------
   // Service worker yalnızca güvenli bağlamda (HTTPS / localhost) çalışır; düz HTTP'de sessizce atla.

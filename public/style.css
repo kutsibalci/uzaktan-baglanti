@@ -48,14 +48,16 @@ input::placeholder { color: #5c5c64; }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
 button { background: var(--accent); color: #fff; border: 1px solid transparent; border-radius: 8px; padding: 9px 14px; cursor: pointer;
   font-weight: 500; transition: background .12s, border-color .12s, color .12s; }
-button:hover:not(:disabled) { background: var(--accent-h); }
+@media (hover: hover) { button:hover:not(:disabled) { background: var(--accent-h); } }
 button:focus-visible { outline: none; box-shadow: var(--ring); }
 button:disabled { cursor: not-allowed; opacity: .5; }
 button.ghost { background: transparent; color: var(--text); border-color: var(--line2); }
-button.ghost:hover:not(:disabled) { background: var(--panel2); }
+@media (hover: hover) { button.ghost:hover:not(:disabled) { background: var(--panel2); } }
 button.small, .small button { padding: 5px 10px; font-size: 13px; border-radius: 7px; }
 button.danger { background: transparent; color: var(--error); border-color: rgba(248, 113, 113, .35); }
-button.danger:hover:not(:disabled) { background: rgba(248, 113, 113, .1); }
+@media (hover: hover) { button.danger:hover:not(:disabled) { background: rgba(248, 113, 113, .1); } }
+/* Dokunmatikte basarken kısa geri bildirim (hover yok; iOS dokunduktan sonra :hover'ı bırakmıyordu, vurgu sönmüyordu) */
+@media (hover: none) { button:active:not(:disabled) { filter: brightness(1.25); } }
 /* Dokunmatikte giriş/kurulum formları parmak boyunda (özellik panellerinin kendi ölçüleri bozulmasın diye yalnızca kartlar) */
 @media (any-pointer: coarse) { .card input:not([type=checkbox]), .card select, .card button:not(.tab):not(.small) { min-height: 44px; } }
 
@@ -94,8 +96,9 @@ input.code { font-size: 26px; letter-spacing: 10px; text-align: center; font-var
 
 .tabs { display: flex; gap: 2px; background: var(--bg2); border: 1px solid var(--line); padding: 3px; border-radius: 9px; }
 .tab { flex: 1; background: transparent; color: var(--muted); min-height: 34px; padding: 6px; border-radius: 6px; font-weight: 500; }
-.tab:hover:not(:disabled) { background: transparent; color: var(--text); }
-.tab.active, .tab.active:hover:not(:disabled) { background: var(--panel3); color: var(--text); }
+@media (hover: hover) { .tab:hover:not(:disabled) { background: transparent; color: var(--text); } }
+.tab.active { background: var(--panel3); color: var(--text); }
+@media (hover: hover) { .tab.active:hover:not(:disabled) { background: var(--panel3); color: var(--text); } }
 .tabpane { display: grid; gap: 14px; }
 
 .spinner { width: 28px; height: 28px; border: 2px solid var(--line2); border-top-color: var(--text); border-radius: 50%; animation: spin .9s linear infinite; margin: 6px auto; }
@@ -116,7 +119,7 @@ input.code { font-size: 26px; letter-spacing: 10px; text-align: center; font-var
 .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .mode { display: grid; gap: 3px; align-content: start; text-align: left; padding: 14px; min-height: 118px; border-radius: 10px; font-weight: 400;
   color: var(--text); background: var(--panel2); border: 1px solid var(--line); }
-.mode:hover:not(:disabled) { background: var(--panel3); border-color: var(--line2); }
+@media (hover: hover) { .mode:hover:not(:disabled) { background: var(--panel3); border-color: var(--line2); } }
 .mode .icon { font-size: 22px; margin-bottom: 10px; }
 .mode .icon.has-ik { width: 34px; height: 34px; border-radius: 8px; display: grid; place-items: center; color: var(--text); background: var(--bg2);
   border: 1px solid var(--line2); }
@@ -135,7 +138,7 @@ input.code { font-size: 26px; letter-spacing: 10px; text-align: center; font-var
 .tools > button, .tools > div > button { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; min-height: 50px; padding: 8px 14px;
   border-radius: 0; font-weight: 500; font-size: 14.5px; color: var(--text); background: transparent; border: 0; border-top: 1px solid var(--line); }
 .tools > :first-child, .tools > div:first-child > button { border-top: 0; }
-.tools > button:hover:not(:disabled), .tools > div > button:hover:not(:disabled) { background: var(--panel2); }
+@media (hover: hover) { .tools > button:hover:not(:disabled), .tools > div > button:hover:not(:disabled) { background: var(--panel2); } }
 .tools > button::after, .tools > div > button::after { content: '›'; margin-left: auto; color: var(--muted); font-size: 20px; line-height: 1; }
 .tools .ik { width: auto; height: auto; background: transparent; color: var(--muted); }
 .tools .tl { min-width: 0; }
@@ -154,7 +157,7 @@ button, .menu-row { touch-action: manipulation; -webkit-tap-highlight-color: tra
 #toolbar button, #toolbar select { background: transparent; color: var(--text); border: 1px solid transparent; border-radius: 8px; padding: 0 9px;
   font-size: 14px; font-weight: 500; height: 38px; min-height: 0; min-width: 38px; flex: none; position: relative; white-space: nowrap;
   display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
-#toolbar button:hover:not(:disabled) { background: var(--panel2); }
+@media (hover: hover) { #toolbar button:hover:not(:disabled) { background: var(--panel2); } }
 #toolbar button.on { background: rgba(59, 127, 246, .16); color: #8db5ff; }
 #toolbar button:disabled { opacity: .45; }
 @media (any-pointer: coarse) { #toolbar button { height: 44px; min-width: 44px; } }
@@ -189,7 +192,8 @@ body.rc-salt .ctl, body.rc-genislet .no-extend { display: none !important; }
 .rc-panel-bas h3 { margin: 0; font-size: 14.5px; font-weight: 600; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rc-x { flex: none; width: 40px; height: 40px; min-height: 0; padding: 0; margin-left: auto; background: transparent; border: 0; border-radius: 8px; color: var(--muted);
   display: grid; place-items: center; }
-.rc-x:hover:not(:disabled), .rc-x:active { background: var(--panel2); color: var(--text); }
+.rc-x:active { background: var(--panel2); color: var(--text); }
+@media (hover: hover) { .rc-x:hover:not(:disabled) { background: var(--panel2); color: var(--text); } }
 .rc-panel-ic { padding: 10px 12px 12px; overflow: auto; display: grid; gap: 8px; align-content: start; min-height: 0;
   -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
 
@@ -199,7 +203,8 @@ body.rc-salt .ctl, body.rc-genislet .no-extend { display: none !important; }
 #vViewer > .menu-list { display: none; } /* panele taşınmadan önce görünmesin */
 .menu-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 42px; padding: 4px 10px; margin: 0; background: transparent; border: 0;
   border-radius: 7px; text-align: left; color: var(--text); font-size: 14.5px; font-weight: 400; cursor: pointer; }
-.menu-row:hover:not(:disabled), .menu-row:active { background: var(--panel2); }
+.menu-row:active { background: var(--panel2); }
+@media (hover: hover) { .menu-row:hover:not(:disabled) { background: var(--panel2); } }
 .menu-row:disabled { opacity: .5; cursor: default; background: transparent; }
 .menu-row .mi { width: 20px; flex: none; text-align: center; font-size: 16px; display: grid; place-items: center; color: var(--muted); }
 .menu-row .mi .svg-ik { width: 18px; height: 18px; }
@@ -283,7 +288,7 @@ body.rc-alt .alt-cubuk { display: flex; flex: none; align-items: stretch; gap: 0
 .alt-cubuk > button { flex: 1 1 0; min-width: 0; height: 54px; min-height: 0; padding: 6px 2px 4px; display: flex; flex-direction: column; align-items: center;
   justify-content: center; gap: 3px; position: relative; background: transparent; border: 0; border-radius: 8px; color: var(--muted);
   font-size: 11px; font-weight: 500; }
-.alt-cubuk > button:hover:not(:disabled) { background: transparent; color: var(--text); }
+@media (hover: hover) { .alt-cubuk > button:hover:not(:disabled) { background: transparent; color: var(--text); } }
 .alt-cubuk > button:active:not(:disabled) { background: var(--panel2); }
 .alt-cubuk > button .svg-ik { width: 22px; height: 22px; color: var(--text); }
 .alt-cubuk > button .pi { display: grid; place-items: center; }

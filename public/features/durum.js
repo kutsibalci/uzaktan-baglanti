@@ -34,7 +34,7 @@
       color: var(--muted); background: transparent; border: 0; border-radius: 6px; text-align: left; }
     .dr-bol small { font-weight: 400; font-variant-numeric: tabular-nums; }
     button.dr-bol { min-height: 40px; cursor: pointer; }
-    button.dr-bol:hover:not(:disabled) { background: var(--panel2); }
+    @media (hover: hover) { button.dr-bol:hover:not(:disabled) { background: var(--panel2); } }
     .dr-bol svg { margin-left: auto; width: 16px; height: 16px; transition: transform .15s; }
     .dr-bol[aria-expanded=true] svg { transform: rotate(90deg); }
     .dr-s { display: flex; align-items: center; gap: 6px; min-height: 44px; padding: 3px 4px 3px 10px; border-radius: 8px; background: var(--panel2); }
@@ -49,7 +49,7 @@
     .dr-nlar span.on { color: var(--text); }
     @media (min-width: 600px) { .dr-nlar { grid-template-columns: 56px 72px; width: 136px; } }
     .dr-s button { flex: none; min-width: 40px; height: 36px; padding: 0 8px; font-size: 13px; border-radius: 8px; background: var(--panel); border: 1px solid var(--line); }
-    .dr-s button:hover:not(:disabled) { background: var(--panel3); }
+    @media (hover: hover) { .dr-s button:hover:not(:disabled) { background: var(--panel3); } }
     .dr-s button.on { border-color: var(--warn); }
     .dr-s button[data-act=kapat] { min-width: 62px; }
     .dr-s button.kilit { opacity: .45; }

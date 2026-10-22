@@ -28,7 +28,7 @@
     #dosyaPanel .yol span { color: var(--muted); }
     #dosyaPanel .girdi { display: grid; grid-template-columns: 28px 1fr auto; gap: 8px; align-items: center; width: 100%;
       background: transparent; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 10px 4px; text-align: left; }
-    #dosyaPanel .girdi:hover { background: var(--panel2); }
+    @media (hover: hover) { #dosyaPanel .girdi:hover { background: var(--panel2); } }
     #dosyaPanel .girdi .bilgi { color: var(--muted); font-size: 12px; text-align: right; white-space: nowrap; }
     #dosyaPanel .birak { border: 2px dashed var(--line); border-radius: 12px; padding: 18px; text-align: center; color: var(--muted); }
     #dosyaPanel .birak.uzerinde, #stage.dosya-uzerinde { outline: 3px dashed var(--accent); outline-offset: -6px; }
@@ -56,7 +56,7 @@
     #dosyaPanel .gsatir .ac { display: grid; grid-template-columns: 26px 1fr; gap: 6px; align-items: center; min-width: 0;
       background: transparent; border: 0; border-radius: 0; padding: 10px 2px; text-align: left; color: var(--text); font-weight: 400;
       -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
-    #dosyaPanel .gsatir .ac:hover { background: var(--panel2); }
+    @media (hover: hover) { #dosyaPanel .gsatir .ac:hover { background: var(--panel2); } }
     #dosyaPanel .gsatir .ac.basili { background: var(--panel3); }
     #dosyaPanel .gsatir .ad { overflow-wrap: anywhere; }
     #dosyaPanel .gsatir .bilgi { display: block; color: var(--muted); font-size: 12px; }

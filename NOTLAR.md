@@ -353,8 +353,19 @@
   (tahmini boyut). Sunucu hata günlüğü artık mesaj türünü ve hatanın kod satırını da yazar (kullanıcının testinde görülen
   "Cannot read properties of undefined (reading 'length')" bulunamadı; bir dahakine yeri görünecek).
   Not: 2026-10-22 09:20 NVIDIA sürücüsü kendini sıfırladı (Sistem günlüğü nvlddmkm 153); ardından ekran yakalama ve H.264 kodlayıcı
-  açılamadı, görüntü JPEG'e düştü. Kumanda'nın "çalışmaması" bununla ilgili olabilir — kullanıcıdan ayrıntı bekleniyor.
+  açılamadı, görüntü JPEG'e düştü. Kumanda'nın "çalışmaması" bununla ilgiliydi: bilgisayar yeniden başlatılınca kullanıcı
+  Kumanda'nın çalıştığını söyledi. (Sürücü sıfırlanınca H.264 o oturumda JPEG'de kalıyor; kendiliğinden geri dönmesi henüz yok.)
   **(henüz gerçek cihazda test edilmedi: iPhone'da onay penceresi + basılı tutma, Safari/Chrome indirme)**
+- **Takılı kalan mavi vurgu, Kumanda klavyesi ve imleç hızı** (2026-10-22; kullanıcı: "butonlara tıklanınca mavilik yanıyor
+  ama sönmüyor", "klavye kısmı berbat", "mausda imleç hızını ayarlayabilelim"). Kök neden: iOS dokunduktan sonra `:hover`'ı
+  bırakmaz; `button:hover` (koyu mavi) vurgusu bir sonraki dokunuşa kadar kalıyordu → tüm `:hover` kuralları
+  `@media (hover: hover)` içinde (style.css, dosya.js, durum.js); dokunmatikte basarken yalnızca kısa `:active` parlaması.
+  Kumanda: emoji simgeler yerine yeni çizgi simgeler; Touchpad'de **İmleç hızı** (ana menüdeki Fare hızı ile ortak ayar,
+  Normal = eski hız); Klavye baştan: yazılan telefonda görünür (Temizle yalnızca telefondakini siler), altında Tuşlar
+  panelindeki başlıklı bölümler (yapışkan Ctrl/Alt/Shift/Win + gezinme ve oklar, sık kullanılanlar, F1–F12, diğer
+  kısayollar; tanımlar `RC.tuslar` ile telefon.js'ten), tuşa basınca ekran klavyesi kapanmaz, klavye açıkken kumanda görünür
+  alana sığar. Medya sekmesinin altında ses karıştırıcının yeri.
+  **(henüz gerçek cihazda test edilmedi: iPhone'da vurgunun sönmesi, klavye açıkken sığdırma ve odak, imleç hızı)**
 
 ## Sıradaki
 1. Yukarıdaki özelliklerin gerçek telefon/tablet/kalemle denenmesi (ikinci ekran dahil)
