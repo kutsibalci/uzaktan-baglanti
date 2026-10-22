@@ -380,6 +380,17 @@
   değerine yazıp yeniden okuma; sunucu kuru), `ozellik-karisim-tarayici` (iPhone / iPad / fare).
   **(henüz gerçek cihazda test edilmedi: iPhone Safari / Chrome'da kaydırıcı dokunma ve sürükleme hissi, gerçekten farklı bir çıkış
   cihazına geçiş, gerçek ses seviyesi değişikliği)**
+- **Kaynak kullanımı ölçüldü, NVENC gecikmesi düzeltildi** (2026-10-22; kullanıcı: "uygulamamızın bilgisayardaki ağırlığı nasıl").
+  Ölçüm (Ryzen 7 5700U + RTX 3050, Görev Yöneticisi'nin "Bellek"i = özel çalışma kümesi): boşta ~%0 CPU, ~21 MB (Windows boştaki
+  süreçleri kırpar; ayrılmış bellek ~136 MB); H.264 1080p aktarırken ~%3,4 CPU, ~217 MB — bunun ~187 MB'ı ffmpeg ve onun da
+  ~110 MB'ı NVIDIA kodlayıcısının sürücüsü (320x240'lık akışta bile; ffmpeg ayarlarıyla küçülmüyor; AMD kodlayıcıyla ffmpeg ~45 MB
+  ama gecikmesi ~110 ms). Disk: kendi kodumuz ~1,3 MB, Node ~93 MB, ffmpeg ~83 MB.
+  Bulunan: ffmpeg'in h264_nvenc'i `-delay` verilmezse çıktıyı 3 kare bekletiyordu → `-delay 0`: yakalamadan kodlanmış pakete
+  ortanca ~120-145 ms → ~55-60 ms (gdigrab + framecrc zaman damgasıyla ölçüldü). Kare NVENC'e bgra verilir (renk dönüşümü
+  GPU'da; ffmpeg CPU ~%6,5 → ~%3, düz renklerde fark ≤ 3/255). Test: `ozellik-kodlayici-gecikme` (kareler tek tek verilir;
+  bekleten kodlayıcıda ilk kare hiç çıkmaz). Bekçi (PowerShell) Node'la değiştirilmedi: Görev Yöneticisi'nde ~10 MB, kazanç
+  birkaç MB olurdu.
+  **(henüz gerçek cihazda test edilmedi: iPhone'da gecikme farkının hissedilmesi)**
 
 ## Sıradaki
 1. Yukarıdaki özelliklerin gerçek telefon/tablet/kalemle denenmesi (ikinci ekran dahil)
