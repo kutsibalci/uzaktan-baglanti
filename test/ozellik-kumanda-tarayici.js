@@ -210,7 +210,7 @@ const getJson = (u) => new Promise((res, rej) => http.get(u, (r) => { let d = ''
     await sleep(100);
     await shot('kumanda-2-medya-iphone.png');
     check('medya: düğmelerde çizgi simgeler (emoji yok)', await ev("[...document.querySelectorAll('[data-govde=\"medya\"] .km-izgara button')].every((b) => b.querySelector('svg') && !/[\\u{1F300}-\\u{1FAFF}\\u23EE\\u23EF\\u23ED]/u.test(b.textContent))"));
-    check('medya: ses karıştırıcı yeri var', await ev("!!document.getElementById('kmKarisim')"));
+    check('medya: ses karıştırıcı sekmenin altına yerleşti', await ev("(() => { const k = document.getElementById('kmKarisim'); return !!k && k.classList.contains('kr') && !!k.querySelector('[data-r=\"uyg\"]'); })()"));
     const MEDYA = [[179, 'Oynat'], [177, 'Önceki'], [176, 'Sonraki'], [174, 'Ses −'], [175, 'Ses +'], [173, 'Sessiz']];
     for (const [vk, ad] of MEDYA) {
       const r = await rect(`[data-govde="medya"] [data-vk="${vk}"]`);

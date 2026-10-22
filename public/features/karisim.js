@@ -26,7 +26,7 @@
     .kr-sessiz { flex: none; width: 44px; height: 44px; min-height: 0; padding: 0; display: grid; place-items: center; margin-left: -6px;
       background: transparent; border: 0; border-radius: 10px; color: var(--text); }
     .kr-sessiz .svg-ik { width: 22px; height: 22px; }
-    .kr-sessiz:hover:not(:disabled) { background: var(--panel3); }
+    @media (hover: hover) { .kr-sessiz:hover:not(:disabled) { background: var(--panel3); } }
     .kr-sessiz[aria-pressed=true] { color: var(--muted); }
     .kr-kaydirici { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; touch-action: pan-y; cursor: pointer; -webkit-tap-highlight-color: transparent; }
     .kr input[type=range] { -webkit-appearance: none; appearance: none; flex: 1 1 auto; min-width: 0; width: 100%; height: 44px; margin: 0; padding: 0;
