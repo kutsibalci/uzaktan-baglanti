@@ -86,10 +86,11 @@ async function runSuite(file) {
   // (gerçek kapatmayı yalnızca kendi alt sürecini kapatan test '// @ortam REMOTE_DURUM_KURU=0' ile açar).
   // REMOTE_AG_PROFILI_SAHTE='{}': Windows ağ profili okunmaz, hiçbir adres Ortak sayılmaz (bilgisayar okul/kafe ağındayken
   // ev ağı adresine bağlanan testler düşmesin; lib/agprofili.js). REMOTE_TANITIM=0: ilk bağlantı tanıtımı (dokunuşları örten katman)
-  // açılmaz; tanıtımın kendi testi '// @ortam REMOTE_TANITIM=1' ile açar.
+  // açılmaz; tanıtımın kendi testi '// @ortam REMOTE_TANITIM=1' ile açar. REMOTE_KARISIM_KURU=1: ses karıştırıcı ayarları (ses seviyesi,
+  // sessiz, varsayılan cihaz) uygulanmaz, yalnızca listede gösterilir.
   const ortam = { TEST_TMP: tmpDir, REMOTE_UPLOAD_DIR: path.join(tmpDir, 'yuklenen'), REMOTE_BROWSE_ROOT: path.join(tmpDir, 'kok'), PORT_HTTPS: '0',
     REMOTE_INDIRME_DIR: path.join(tmpDir, 'indirilenler'), REMOTE_DURUM_KURU: '1', REMOTE_AG_PROFILI_SAHTE: '{}',
-    REMOTE_TANITIM: '0', ...opts.env };
+    REMOTE_TANITIM: '0', REMOTE_KARISIM_KURU: '1', ...opts.env };
   fs.mkdirSync(path.join(tmpDir, 'kok'));
   fs.mkdirSync(path.join(tmpDir, 'indirilenler'));
   let server;
