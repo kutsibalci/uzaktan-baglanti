@@ -364,8 +364,22 @@
   Normal = eski hız); Klavye baştan: yazılan telefonda görünür (Temizle yalnızca telefondakini siler), altında Tuşlar
   panelindeki başlıklı bölümler (yapışkan Ctrl/Alt/Shift/Win + gezinme ve oklar, sık kullanılanlar, F1–F12, diğer
   kısayollar; tanımlar `RC.tuslar` ile telefon.js'ten), tuşa basınca ekran klavyesi kapanmaz, klavye açıkken kumanda görünür
-  alana sığar. Medya sekmesinin altında ses karıştırıcının yeri.
+  alana sığar. Medya sekmesinin altında ses karıştırıcı (aşağıda).
   **(henüz gerçek cihazda test edilmedi: iPhone'da vurgunun sönmesi, klavye açıkken sığdırma ve odak, imleç hızı)**
+- **Ses karıştırıcı** (2026-10-22; kullanıcı: "ses açık kapatmada sesin hangi ses kanalını tercih edeceğini seçebilelim" → hem cihaz hem
+  uygulama): Windows Ses Karıştırıcısı gibi **çıkış cihazı** seçimi (seçilen Windows'un varsayılanı olur: konsol + multimedya + iletişim),
+  cihaz ses seviyesi / sessiz, **uygulama başına** ses seviyesi / sessiz (Sistem sesleri dahil; ad = oturum adı ya da exe'nin dosya
+  açıklaması). Yeni yardımcı `helper/Karistirici.exe` (Core Audio COM, ek DLL / yönetici izni yok; varsayılan cihaz belgelenmemiş
+  `IPolicyConfig::SetDefaultEndpoint` ile — bu bilgisayarda şimdiki varsayılana yazılınca S_OK, farklı cihaza geçiş kullanıcının ayarı
+  değişmesin diye denenmedi); istek gelince başlar, 30 sn boşta kapanır; çıktı ASCII (Türkçe adlar \uXXXX). Sunucu `features/karisim.js`:
+  kontrol yetkisi, kimlik / süreç yalnızca listeden, değer 0–100, ayarlar saniyede en fazla ~15 (sürüklerken aynı ayarın son değeri).
+  Arayüz `public/features/karisim.js`: ⋯ > Daha fazla > **Ses karıştırıcı** paneli ve `RC.karisim.mount(el)` (Kumanda > Medya için);
+  kaydırıcılar 44 px, dokununca o noktaya atlar, yatay sürükleme izler, dikey hareket sayfayı kaydırır (yerel kaydırıcı Chrome'da
+  dokunur dokunmaz atlıyor, iOS'ta yalnızca topuz sürükleniyordu); sürüklenen kaydırıcı gelen listeyle zıplamaz; panel açıkken 3 sn'de
+  bir yenilenir. Testler: `ozellik-karisim` (gerçek okuma + adlar kayıt defteriyle aynı, gerçek ayar yolu DEĞİŞİKLİK YAPMADAN: şimdiki
+  değerine yazıp yeniden okuma; sunucu kuru), `ozellik-karisim-tarayici` (iPhone / iPad / fare).
+  **(henüz gerçek cihazda test edilmedi: iPhone Safari / Chrome'da kaydırıcı dokunma ve sürükleme hissi, gerçekten farklı bir çıkış
+  cihazına geçiş, gerçek ses seviyesi değişikliği)**
 
 ## Sıradaki
 1. Yukarıdaki özelliklerin gerçek telefon/tablet/kalemle denenmesi (ikinci ekran dahil)

@@ -64,6 +64,15 @@ alttan açılır (alt çubuğun üstüne yaslanır). İlk bağlantı tanıtımı
   `require('../lib/helper').spawnHelper(ad, exe, args, opts)` kullanır (engelliyse null döner, yeniden denemeyin). Testte `REMOTE_EXE_<AD>`
   (geçersiz exe ile engel taklidi), `REMOTE_RUN_ANAHTARI` (sahte HKCU anahtarı), `REMOTE_BILDIRIM_KURU=1`; test sunucusunda (TEST_PORT) Run ve bildirim kendiliğinden kuru.
 - `veri.js` — veri sayacı: sunucu → `{ t:'veri-http', alinan, gonderilen }` (bu bağlantının HTTP toplamı); istemci → `{ t:'veri-tasarruf', acik }` (kalite "Veri tasarrufu" mu; tüm ses dinleyenleri tasarruftaysa Opus 96 → 32 kbps). Kalite `tasarruf` = `{ quality: 35, maxWidth: 1280, fps: 15, kbps: 500 }` (public/app.js QUALITY).
+- `karisim.js` — ses karıştırıcı (control; salt izleme alamaz): `{ t:'karisim-al', cihazId? }` → `{ t:'karisim', cihazlar: [{ id, ad, varsayilan,
+  multimedya, iletisim, ses, sessiz }], cihazId, uygulamalar: [{ pid, ad, ses, sessiz, cihazId, sistem? }], kuru?, hata? }` (uygulamalar: istenen,
+  yoksa varsayılan cihazınkiler); `{ t:'karisim-ayar', tur: 'cihaz-ses'|'cihaz-sessiz'|'varsayilan'|'uyg-ses'|'uyg-sessiz', id | pid, deger }`
+  (ses 0–100, sessiz true/false; id / pid yalnızca listedekiler) → uygulanır, ardından güncel `karisim`; hata `{ t:'karisim-hata', msg }`.
+  Ayarlar en fazla saniyede ~15, aynı ayarın son değeri. Yardımcı `helper/Karistirici.exe` (Core Audio; varsayılan cihaz belgelenmemiş
+  IPolicyConfig ile) istek gelince başlar, 30 sn boşta kapanır. Testte `REMOTE_KARISIM_KURU=1` (calistir.js varsayılanı): ayarlar
+  uygulanmaz, yalnızca listede yansıtılır; `REMOTE_KARISIM_BOSTA_MS`. Tarayıcı: `RC.karisim.mount(el)` karıştırıcıyı bir kaba çizer
+  (aynı öğeye bir kez; `{ el, yenile() }`; görünür kaldıkça 3 sn'de bir yenilenir). Betikler eşzamansız yüklendiği için kap öğesine
+  `data-karisim` verilebilir: karisim.js sonra yüklenirse onu kendisi bağlar. Görüntüleyicide ⋯ > Daha fazla > Ses karıştırıcı.
 - `sertifika.js` — `GET /api/sertifika/*` (oturumsuz ama yalnızca özel ağdan; `/yokla` güven denetimi), yönetimde aç/kapat/yeniden üret/sil. `PORT_HTTPS` (varsayılan 3443; testte `0` = rastgele).
 
 ## İkili mesaj türleri (ilk bayt)
