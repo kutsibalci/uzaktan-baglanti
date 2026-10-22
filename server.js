@@ -205,7 +205,9 @@ wss.on('connection', (ws, req) => {
       if (!ws.session) await handleAuth(ws, m);
       else await handleSession(ws, m);
     } catch (e) {
-      console.error('Hata:', e.message);
+      // Mesaj türü ve hatanın ilk kod satırı da yazılır (yalnızca ileti yetmiyordu: hangi özellikten geldiği bulunamadı).
+      const yer = String(e.stack || '').split('\n').find((l) => /\.js:\d+/.test(l))?.trim() || '';
+      console.error(`Hata (${String(m?.t).slice(0, 40)}${m?.op ? `/${String(m.op).slice(0, 20)}` : ''}): ${e.message}${yer ? ` — ${yer}` : ''}`);
       sendJson(ws, { t: 'error', msg: e.message });
     }
   });

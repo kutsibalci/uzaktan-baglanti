@@ -403,44 +403,78 @@ async function tarayiciKismi() {
     };
     await tikla("document.querySelector('#dosyaPanel [data-sekme=gez]')");
     check('tarayıcı: dosya listesi', await bekle(`${P('liste')}.querySelectorAll('.gsatir').length >= 5`), await metin('gezDurum'));
-    const satirlar = await ev(`[...${P('liste')}.querySelectorAll('.gsatir')].map((s) => ({ ad: s.dataset.ad, tur: s.dataset.tur, kutu: !!s.querySelector('input[type=checkbox]'), zip: s.querySelector('.zip')?.textContent || '', zipGorunur: !!s.querySelector('.zip')?.getClientRects().length }))`);
+    const satirlar = await ev(`[...${P('liste')}.querySelectorAll('.gsatir')].map((s) => ({ ad: s.dataset.ad, tur: s.dataset.tur, kutu: !!s.querySelector('input[type=checkbox]'), dugme: s.querySelectorAll('button').length }))`);
     check('tarayıcı: her satırda seçme kutusu', satirlar.every((x) => x.kutu), JSON.stringify(satirlar));
-    check('tarayıcı: klasör satırlarında görünür "Zip olarak indir", dosyalarda yok', satirlar.filter((x) => x.tur === 'klasor').every((x) => x.zip.includes('Zip olarak indir') && x.zipGorunur) && satirlar.filter((x) => x.tur === 'dosya').every((x) => !x.zip),
-      satirlar.map((x) => `${x.ad}:${x.zip}`).join(', '));
+    check('tarayıcı: satırlarda ayrı zip düğmesi yok (yalnızca satırın kendisi)', satirlar.every((x) => x.dugme === 1), JSON.stringify(satirlar));
+    check('tarayıcı: üstte "Bu klasörü indir"', await ev(`!!${P('klasoruIndir')}.getClientRects().length && !${P('klasoruIndir')}.disabled`));
     check('tarayıcı: dosya listesinde yatay taşma yok', await ev("(() => { const p = document.getElementById('dosyaPanel'); return p.scrollWidth <= p.clientWidth; })()"));
     check('tarayıcı: seçim yokken seçim çubuğu gizli', await ev(`${P('secimCubugu')}.hidden`));
     await goruntu('1-liste');
+    const satirAc = (ad) => `[...${P('liste')}.querySelectorAll('.gsatir')].find((s) => s.dataset.ad === ${JSON.stringify(ad)}).querySelector('.ac')`;
+    const O = (k) => `${P('onay')}.querySelector('[data-k4="${k}"]')`;
+    const onayAcik = () => ev(`!${P('onay')}.hidden`);
+    // Dosyaya dokununca hemen inmez: onay penceresi (ad, boyut), Vazgeç kapatır
+    await tikla(satirAc('a.txt'));
+    check('tarayıcı: dosyaya dokununca onay penceresi (ad + boyut + İndir)', await bekle(`!${P('onay')}.hidden && ${O('ad')}.textContent === 'a.txt' && /B|KB/.test(${O('ayrinti')}.textContent) && ${O('indir')}.getAttribute('download') === 'a.txt'`),
+      await ev(`${P('onay')}.textContent.replace(/\\s+/g, ' ')`));
+    const pencere = await ev(`(() => { const r = ${P('onay')}.querySelector('.onay-kart').getBoundingClientRect(); return { top: r.top, bottom: r.bottom, w: r.width }; })()`);
+    check('tarayıcı: onay penceresi ekranda görünür (kaydırmadan)', pencere.top >= 0 && pencere.bottom <= 844 && pencere.w <= 390, JSON.stringify(pencere));
+    await goruntu('1b-onay');
+    await tikla(O('vazgec'));
+    check('tarayıcı: Vazgeç kapattı, indirme olmadı', !(await onayAcik()) && !fs.existsSync(path.join(indirmeler, 'a.txt')));
+    await tikla(satirAc('a.txt'));
+    await bekle(`!${P('onay')}.hidden`);
+    await tikla(O('indir'));
+    const aIcerik = await indirilen('a.txt');
+    check('tarayıcı: onaydaki İndir dosyayı indirdi', aIcerik && aIcerik.toString() === 'a', String(aIcerik));
+    check('tarayıcı: indirme notu ve "Kapat"', await ev(`!${O('not')}.hidden && ${O('vazgec')}.textContent === 'Kapat'`));
+    await tikla(O('vazgec'));
+    // Seçim: tek dosya da onay penceresiyle
     const kutu = (ad) => `[...${P('liste')}.querySelectorAll('.gsatir')].find((s) => s.dataset.ad === ${JSON.stringify(ad)}).querySelector('input')`;
-    await tikla(kutu('a.txt'));
+    await tikla(kutu('b.txt'));
     check('tarayıcı: tek dosya seçilince "Seçileni indir"', await bekle(`!${P('secimCubugu')}.hidden && ${P('secilenleriIndir')}.textContent === 'Seçileni indir'`), await metin('secimCubugu'));
     await tikla(P('secilenleriIndir'));
-    const aIcerik = await indirilen('a.txt');
-    check('tarayıcı: tek seçili dosya doğrudan indi', aIcerik && aIcerik.toString() === 'a', String(aIcerik));
-    await tikla(kutu('b.txt'));
+    check('tarayıcı: "Seçileni indir" onay penceresi açtı', await bekle(`!${P('onay')}.hidden && ${O('indir')}.getAttribute('download') === 'b.txt'`));
+    await tikla(O('vazgec'));
+    await tikla(kutu('a.txt'));
     await tikla(kutu('alt'));
     check('tarayıcı: çoklu seçim çubuğu', await bekle(`${P('secimSayi')}.textContent === '3 seçili (1 klasör)' && ${P('secilenleriIndir')}.textContent === 'Seçilenleri zip olarak indir'`), await metin('secimCubugu'));
     await tikla(P('secilenleriIndir'));
-    check('tarayıcı: zip çubuğunda tahmini boyut ve İndir bağlantısı', await bekle(`${P('zipBar')}.querySelector('a[download]') && ${P('zipBar')}.textContent.includes('dosya') && ${P('zipBar')}.textContent.includes('sıkıştırmadan önce')`),
-      (await metin('zipBar')).replace(/\s+/g, ' '));
-    const zipAdi = await ev(`${P('zipBar')}.querySelector('a[download]').getAttribute('download')`);
+    check('tarayıcı: zip onay penceresinde tahmini boyut ve İndir', await bekle(`!${P('onay')}.hidden && ${O('indir')}.getAttribute('href') && ${O('ayrinti')}.textContent.includes('dosya') && ${O('ayrinti')}.textContent.includes('sıkıştırmadan önce')`),
+      await ev(`${P('onay')}.textContent.replace(/\\s+/g, ' ')`));
+    const zipAdi = await ev(`${O('indir')}.getAttribute('download')`);
     check('tarayıcı: zip adı', zipAdi === `${path.basename(KOK)} (3 öğe).zip`, zipAdi);
     await goruntu('2-coklu-secim-zip');
     const once = await ev('location.href');
-    await tikla(`${P('zipBar')}.querySelector('a[download]')`);
+    await tikla(O('indir'));
     const zipIcerik = await indirilen(zipAdi);
     check('tarayıcı: "İndir" zip\'i indirdi (PK imzası)', zipIcerik && zipIcerik.subarray(0, 2).toString() === 'PK', zipIcerik ? `${zipIcerik.length} bayt` : 'yok');
-    check('tarayıcı: indirme sayfadan ayrılmadı', (await ev('location.href')) === once && await ev("!document.getElementById('dosyaPanel').hidden") && await ev(`!${P('zipBar')}.querySelector('[data-k3="not"]').hidden`));
-    await tikla(`[...${P('liste')}.querySelectorAll('.gsatir')].find((s) => s.dataset.ad === 'alt').querySelector('.zip')`);
-    check('tarayıcı: klasör satırındaki zip düğmesi', await bekle(`${P('zipBar')}.querySelector('a[download="alt.zip"]')`), (await metin('zipBar')).replace(/\s+/g, ' '));
-    await tikla(`${P('zipBar')}.querySelector('a[download]')`);
+    check('tarayıcı: indirme sayfadan ayrılmadı', (await ev('location.href')) === once && await ev("!document.getElementById('dosyaPanel').hidden") && await ev(`!${O('not')}.hidden`));
+    await tikla(O('vazgec'));
+    // Klasör satırına basılı tut: seçenekler; "Zip olarak indir"
+    await ev(`${satirAc('alt')}.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 50, clientY: 50 }))`);
+    await sleep(650);
+    await ev(`${satirAc('alt')}.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 50, clientY: 50 }))`);
+    await tikla(satirAc('alt')); // basılı tutmanın ardından gelen tıklama klasörü AÇMAMALI
+    const eylemler = await ev(`[...${O('eylemler')}.querySelectorAll('button')].map((b) => b.textContent)`);
+    check('tarayıcı: klasöre basılı tutunca seçenekler (Aç, Zip olarak indir, Seç), klasör açılmadı', await onayAcik() && eylemler.some((x) => x.includes('Zip olarak indir')) && eylemler.some((x) => x.includes('Aç')) && !(await metin('yol')).includes('alt'), JSON.stringify(eylemler));
+    await goruntu('2b-basili-tut');
+    await tikla(`[...${O('eylemler')}.querySelectorAll('button')].find((b) => b.textContent.includes('Zip olarak indir'))`);
+    check('tarayıcı: seçenekten klasör zip\'i', await bekle(`${O('indir')}.getAttribute('download') === 'alt.zip' && ${O('indir')}.getAttribute('href')`), await ev(`${P('onay')}.textContent.replace(/\\s+/g, ' ')`));
+    await tikla(O('indir'));
     const altZip = await indirilen('alt.zip');
     check('tarayıcı: alt.zip indi', altZip && altZip.subarray(0, 2).toString() === 'PK');
+    await tikla(O('vazgec'));
+    // "Bu klasörü indir" (kök klasörde: içindekilerin hepsi)
+    await tikla(P('klasoruIndir'));
+    check('tarayıcı: "Bu klasörü indir" zip onayı', await bekle(`!${P('onay')}.hidden && /\\.zip$/.test(${O('indir')}.getAttribute('download') || '') && ${O('indir')}.getAttribute('href')`), await ev(`${O('ad')}.textContent`));
+    await tikla(O('vazgec'));
     await tikla(P('secimTemizle'));
     check('tarayıcı: seçimi temizle', await bekle(`${P('secimCubugu')}.hidden && ![...${P('liste')}.querySelectorAll('input')].some((k) => k.checked)`));
     await tikla(P('tumu'));
     check('tarayıcı: tümünü seç', await bekle(`[...${P('liste')}.querySelectorAll('input')].every((k) => k.checked) && ${P('tumu')}.textContent === 'Seçimi kaldır'`));
-    await tikla(`[...${P('liste')}.querySelectorAll('.gsatir')].find((s) => s.dataset.ad === 'alt').querySelector('.ac')`);
-    check('tarayıcı: klasöre girince seçim sıfırlandı', await bekle(`${P('yol')}.textContent.includes('alt') && ${P('secimCubugu')}.hidden && ${P('zipBar')}.hidden`));
+    await tikla(satirAc('alt'));
+    check('tarayıcı: klasöre girince seçim sıfırlandı', await bekle(`${P('yol')}.textContent.includes('alt') && ${P('secimCubugu')}.hidden && ${P('onay')}.hidden`));
     await goruntu('3-alt-klasor');
     check('tarayıcı: sayfada yakalanmamış hata yok', hatalar.length === 0, JSON.stringify(hatalar));
     cdp.close();

@@ -2,9 +2,10 @@
 // (1) Bilgisayara gönder: kaydedilecek yer açıkça görünür ve "Değiştir" ile seçilir (bu cihaz için hatırlanır);
 //     çoklu seçim, dosya başına ilerleme çubuğu ve iptal (XMLHttpRequest; oturum ?oturum= ile). Biten her dosya için
 //     tam yeri ve "Bilgisayarda göster" düğmesi; "Son gönderilenler" listesi (bu cihazda saklanır).
-// (2) Bilgisayardaki dosyalar: klasör gezinme ve indirme (her dosya türü), klasör satırında "Zip olarak indir",
-//     seçme kutuları + "Seçilenleri indir" (tek dosya doğrudan, birden fazlası zip). Zip önce POST /api/dosya/secim ile
-//     sayılır (tahmini boyut gösterilir), sonra kullanıcı gerçek bir <a download> bağlantısına dokunarak indirir:
+// (2) Bilgisayardaki dosyalar: klasör gezinme ve indirme (her dosya türü). Dosyaya dokununca ortada ONAY penceresi
+//     (ad, boyut, İndir / Vazgeç); satıra basılı tutunca seçenekler (klasör: Aç, Zip olarak indir, Seç; dosya: İndir, Seç);
+//     üstte "Bu klasörü indir"; seçme kutuları + "Seçilenleri indir". Zip önce POST /api/dosya/secim ile
+//     sayılır (tahmini boyut onay penceresinde), sonra kullanıcı gerçek bir <a download> bağlantısına dokunarak indirir:
 //     iOS Safari/Chrome indirmeyi sayfadan ayrılmadan indirme yöneticisine verir (blob yok: büyük dosya belleğe alınmaz).
 //     Görüntüleyiciye dosya sürükleyip bırakmak da gönderir.
 // Salt izleme rolünde gizlidir (sunucu da kontrol yetkisi ister).
@@ -49,20 +50,34 @@
     #dosyaPanel .son .yer { grid-column: 1; }
     #dosyaPanel .son button, #dosyaPanel .yukleme button { white-space: nowrap; }
     #dosyaPanel .wrap { flex-wrap: wrap; }
-    #dosyaPanel .gsatir { display: grid; grid-template-columns: 34px 1fr auto; gap: 4px; align-items: center; border-bottom: 1px solid var(--line); }
+    #dosyaPanel .gsatir { display: grid; grid-template-columns: 34px 1fr; gap: 4px; align-items: center; border-bottom: 1px solid var(--line); }
     #dosyaPanel .gsatir.secili { background: var(--panel2); }
     #dosyaPanel .gsatir input[type="checkbox"] { width: 22px; height: 22px; margin: 0 auto; padding: 0; accent-color: var(--accent); }
     #dosyaPanel .gsatir .ac { display: grid; grid-template-columns: 26px 1fr; gap: 6px; align-items: center; min-width: 0;
-      background: transparent; border: 0; border-radius: 0; padding: 10px 2px; text-align: left; }
+      background: transparent; border: 0; border-radius: 0; padding: 10px 2px; text-align: left; color: var(--text); font-weight: 400;
+      -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
     #dosyaPanel .gsatir .ac:hover { background: var(--panel2); }
+    #dosyaPanel .gsatir .ac.basili { background: var(--panel3); }
     #dosyaPanel .gsatir .ad { overflow-wrap: anywhere; }
     #dosyaPanel .gsatir .bilgi { display: block; color: var(--muted); font-size: 12px; }
-    #dosyaPanel .gsatir .zip { max-width: 104px; line-height: 1.2; margin-right: 2px; }
+    /* Onay / seçenek penceresi (dosyaya dokununca, basılı tutunca, "Bu klasörü indir") */
+    #dosyaPanel .onay { position: fixed; inset: 0; z-index: 70; display: grid; align-items: end; justify-items: center; background: rgba(0, 0, 0, .6);
+      padding: 16px 12px max(16px, env(safe-area-inset-bottom)); }
+    @media (min-width: 600px) { #dosyaPanel .onay { align-items: center; } }
+    #dosyaPanel .onay-kart { width: min(420px, 100%); display: grid; gap: 10px; background: var(--panel); border: 1px solid var(--line2);
+      border-radius: 14px; padding: 18px; box-shadow: var(--shadow); }
+    #dosyaPanel .onay-kart .baslik { font-size: 16px; font-weight: 600; }
+    #dosyaPanel .onay-kart .ad { overflow-wrap: anywhere; margin: 0; }
+    #dosyaPanel .onay-kart .dugmeler { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+    #dosyaPanel .onay-kart .dugmeler > * { min-height: 44px; display: grid; place-items: center; text-align: center; }
+    #dosyaPanel .onay-kart a.dugme[aria-disabled="true"] { opacity: .45; pointer-events: none; }
+    #dosyaPanel .onay-kart .eylemler { display: grid; gap: 6px; }
+    #dosyaPanel .onay-kart .eylemler button { min-height: 46px; text-align: left; padding: 0 14px; }
     #dosyaPanel .cubuk { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between;
       background: var(--panel2); border-radius: 10px; padding: 10px 12px; position: sticky; top: 0; z-index: 1; }
     #dosyaPanel .cubuk > div { min-width: 0; }
     #dosyaPanel .cubuk .ad { overflow-wrap: anywhere; }
-    #dosyaPanel a.dugme { display: inline-block; background: var(--accent); color: var(--text); text-decoration: none;
+    #dosyaPanel a.dugme { display: inline-block; background: var(--accent); color: #fff; text-decoration: none; font-weight: 500;
       border-radius: 8px; padding: 8px 16px; font-size: 14px; -webkit-tap-highlight-color: transparent; }
   `;
   document.head.appendChild(stil);
@@ -142,6 +157,7 @@
           <button class="small ghost" data-k="ust" title="Üst klasör">⬆ Üst</button>
           <button class="small ghost" data-k="yenile" title="Yenile">↻</button>
           <button class="small ghost" data-k="tumu">Tümünü seç</button>
+          <button class="small ghost" data-k="klasoruIndir" title="Bu klasörün tamamını zip olarak indir">⬇ Bu klasörü indir</button>
         </div>
         <div class="yol" data-k="yol"></div>
         <p class="msg small" data-k="gezDurum"></p>
@@ -152,10 +168,23 @@
             <button class="small ghost" data-k="secimTemizle">Seçimi temizle</button>
           </div>
         </div>
-        <div class="cubuk" data-k="zipBar" hidden></div>
         <div class="liste" data-k="liste"></div>
-        <p class="muted small">Her dosya türü indirilebilir. iPhone'da indirilenler Dosyalar uygulamasında İndirilenler klasörüne kaydedilir
-          (Safari'de adres çubuğundaki ⬇ simgesinden izlenir); zip'e dokununca açılır.</p>
+        <p class="muted small">Dosyaya dokun: indir. Satıra basılı tut: diğer seçenekler (klasörü zip olarak indir, seç). Her dosya türü
+          indirilebilir; iPhone'da indirilenler Dosyalar uygulamasında İndirilenler klasörüne kaydedilir (Safari'de adres çubuğundaki ⬇
+          simgesinden izlenir); zip'e dokununca açılır.</p>
+        <div class="onay" data-k="onay" hidden>
+          <div class="onay-kart" role="dialog" aria-modal="true">
+            <div class="baslik" data-k4="baslik"></div>
+            <p class="ad" data-k4="ad"></p>
+            <p class="muted small" data-k4="ayrinti"></p>
+            <div class="eylemler" data-k4="eylemler" hidden></div>
+            <div class="dugmeler" data-k4="dugmeler">
+              <button type="button" class="ghost" data-k4="vazgec">Vazgeç</button>
+              <a class="dugme" data-k4="indir" download>İndir</a>
+            </div>
+            <p class="muted small" data-k4="not" hidden>İndirme başladı. iPhone'da Dosyalar › İndirilenler'de; Safari'de adres çubuğundaki ⬇ simgesinden izlenir.</p>
+          </div>
+        </div>
       </div>
     </div>`;
   document.body.appendChild(panel);
@@ -514,7 +543,9 @@
     secili = new Set(yol === seciliYol ? [...secili].filter((a) => adlar.has(a)) : []);
     seciliYol = yol;
     turler = new Map(j.girdiler.map((g) => [g.ad, g.tur]));
-    if (yol !== zipYol) zipKapat();
+    onayKapat();
+    girdiler = new Map(j.girdiler.map((g) => [g.ad, g]));
+    el('klasoruIndir').disabled = !j.girdiler.length;
     el('liste').innerHTML = j.girdiler.map((g) => `
       <div class="gsatir${secili.has(g.ad) ? ' secili' : ''}" data-ad="${esc(g.ad)}" data-tur="${g.tur}">
         <input type="checkbox" class="sec" aria-label="Seç: ${esc(g.ad)}"${secili.has(g.ad) ? ' checked' : ''}>
@@ -522,7 +553,6 @@
           <span>${g.tur === 'klasor' ? '📁' : '📄'}</span>
           <span class="ad">${esc(g.ad)}<span class="bilgi">${g.tur === 'dosya' ? `${boyutYaz(g.boyut)} · ` : ''}${RC.fmtTime(g.degisme)}</span></span>
         </button>
-        ${g.tur === 'klasor' ? '<button class="small ghost zip" title="Klasörü zip olarak indir">📦 Zip olarak indir</button>' : '<span></span>'}
       </div>`).join('');
     secimCiz();
   }
@@ -532,7 +562,7 @@
   let seciliYol = null;
   let turler = new Map(); // ad -> 'klasor' | 'dosya'
   let zipIs = 0;          // en son hazırlanan zip (eski cevaplar yok sayılır)
-  let zipYol = null;      // zip çubuğunun ait olduğu klasör
+  let girdiler = new Map(); // ad -> { ad, tur, boyut, degisme }
 
   function secimCiz() {
     el('secimCubugu').hidden = !secili.size;
@@ -545,51 +575,79 @@
     el('tumu').disabled = !turler.size;
   }
 
-  // Tek dosya: tarayıcı akışla kaydeder (oturum adreste). Kullanıcının dokunuşu içinde çağrılmalı (iOS).
-  function dosyaIndir(hedefYol, ad) {
-    const a = document.createElement('a');
-    a.href = RC.authUrl(`/api/dosya/indir?yol=${encodeURIComponent(hedefYol)}`);
-    a.download = ad;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+  // ---------- Onay / seçenek penceresi ----------
+  // İndirme her zaman bu penceredeki gerçek <a download> bağlantısına dokunarak başlar (iOS: kullanıcı hareketi, sayfadan ayrılmaz).
+  const O = (k) => el('onay').querySelector(`[data-k4="${k}"]`);
+  function onayGoster({ baslik, ad, ayrinti = '', href = null, indirAd = '', eylemler = null }) {
+    O('baslik').textContent = baslik;
+    O('ad').textContent = ad || '';
+    O('ayrinti').textContent = ayrinti;
+    O('not').hidden = true;
+    O('vazgec').textContent = 'Vazgeç';
+    O('eylemler').hidden = !eylemler;
+    O('eylemler').innerHTML = '';
+    for (const e of eylemler || []) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = e.ana ? '' : 'ghost';
+      b.textContent = e.ad;
+      b.addEventListener('click', e.yap);
+      O('eylemler').appendChild(b);
+    }
+    const ind = O('indir');
+    ind.hidden = !!eylemler;
+    O('dugmeler').style.gridTemplateColumns = eylemler ? '1fr' : '';
+    if (href) { ind.href = href; ind.removeAttribute('aria-disabled'); } else { ind.removeAttribute('href'); ind.setAttribute('aria-disabled', 'true'); }
+    ind.setAttribute('download', indirAd);
+    el('onay').hidden = false;
+  }
+  function onayKapat() { zipIs++; el('onay').hidden = true; }
+  RC.ui.closable(el('onay'), onayKapat); // Esc kapatır
+  O('vazgec').addEventListener('click', onayKapat);
+  el('onay').addEventListener('click', (e) => { if (e.target === el('onay')) onayKapat(); }); // dışına dokununca
+  O('indir').addEventListener('click', () => { O('not').hidden = false; O('vazgec').textContent = 'Kapat'; }); // varsayılan davranış: indirme
+
+  // Tek dosya: onay penceresinde ad, boyut, tarih; İndir tarayıcıya akışla kaydettirir (oturum adreste).
+  function dosyaOnay(hedefYol, ad) {
+    const g = girdiler.get(ad);
+    onayGoster({
+      baslik: 'Dosyayı indir', ad,
+      ayrinti: g ? `${boyutYaz(g.boyut)} · ${RC.fmtTime(g.degisme)}` : '',
+      href: RC.authUrl(`/api/dosya/indir?yol=${encodeURIComponent(hedefYol)}`), indirAd: ad,
+    });
   }
 
-  function zipKapat() { zipIs++; zipYol = null; el('zipBar').hidden = true; el('zipBar').innerHTML = ''; }
-
-  // Seçimi sunucuya bırakır, tahmini boyutu gösterir; indirmeyi kullanıcı "İndir" bağlantısına dokunarak başlatır.
+  // Zip: seçim sunucuda sayılır, onay penceresinde tahmini boyut; İndir hazır olunca etkinleşir.
   async function zipHazirla(yollar) {
     const benim = ++zipIs;
-    zipYol = yol;
-    const bar = el('zipBar');
-    bar.hidden = false;
-    bar.innerHTML = '<span class="muted small">Zip hazırlanıyor (dosyalar sayılıyor)…</span>';
+    onayGoster({ baslik: 'Zip olarak indir', ad: 'Hazırlanıyor (dosyalar sayılıyor)…' });
+    zipIs = benim; // onayGoster eski cevapları geçersiz kılmasın
     let j;
     try {
       j = await jsonIste('/api/dosya/secim', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ yollar }) });
     } catch (e) {
       if (benim !== zipIs) return;
-      bar.innerHTML = `<span class="msg small err">${esc(e.message || 'Zip hazırlanamadı.')}</span><button class="small ghost" data-k3="kapat">✕</button>`;
+      O('ad').textContent = e.message || 'Zip hazırlanamadı.';
       return;
     }
     if (benim !== zipIs) return;
-    const ayrinti = [`${j.dosya} dosya`, j.klasor ? `${j.klasor} klasör` : '', `${boyutYaz(j.boyut)} (sıkıştırmadan önce)`].filter(Boolean).join(' · ');
-    bar.innerHTML = `
-      <div><b class="ad">📦 ${esc(j.ad)}</b><br><span class="muted small">${ayrinti}</span>
-        ${j.atlanan ? `<br><span class="muted small">${j.atlanan} öğe (kısayol/erişilemeyen) eklenmeyecek; liste zip içinde _atlananlar.txt</span>` : ''}</div>
-      <div class="row gap">
-        <a class="dugme" data-k3="indir" href="${esc(RC.authUrl(`/api/dosya/zip?secim=${encodeURIComponent(j.id)}`))}" download="${esc(j.ad)}">İndir</a>
-        <button class="small ghost" data-k3="kapat">Vazgeç</button>
-      </div>
-      <p class="muted small" data-k3="not" hidden>İndirme başladı. Zip bilgisayarda oluşturuldukça gelir; toplam boyut önceden bilinmediği için yüzde görünmeyebilir.</p>`;
+    const ayrinti = [`${j.dosya} dosya`, j.klasor ? `${j.klasor} klasör` : '', `${boyutYaz(j.boyut)} (sıkıştırmadan önce)`].filter(Boolean).join(' · ')
+      + (j.atlanan ? ` · ${j.atlanan} öğe (kısayol/erişilemeyen) eklenmeyecek; liste zip içinde _atlananlar.txt` : '');
+    onayGoster({ baslik: 'Zip olarak indir', ad: `📦 ${j.ad}`, ayrinti, href: RC.authUrl(`/api/dosya/zip?secim=${encodeURIComponent(j.id)}`), indirAd: j.ad });
+    zipIs = benim;
   }
 
-  el('zipBar').addEventListener('click', (e) => {
-    const k = e.target.closest('[data-k3]');
-    if (!k) return;
-    if (k.dataset.k3 === 'kapat') zipKapat();
-    if (k.dataset.k3 === 'indir') el('zipBar').querySelector('[data-k3="not"]').hidden = false; // varsayılan davranış: indirme
-  });
+  // Basılı tutunca seçenekler.
+  function secenekler(satir) {
+    const ad = satir.dataset.ad, hedefYol = birlestir(yol, ad), klasor = satir.dataset.tur === 'klasor';
+    const sec = () => { const k = satir.querySelector('input.sec'); k.checked = !k.checked; k.dispatchEvent(new Event('change', { bubbles: true })); onayKapat(); };
+    onayGoster({
+      baslik: klasor ? 'Klasör' : 'Dosya', ad,
+      eylemler: klasor
+        ? [{ ad: '📂 Aç', yap: () => { onayKapat(); listele(hedefYol); } }, { ad: '📦 Zip olarak indir', ana: true, yap: () => zipHazirla([hedefYol]) }, { ad: secili.has(ad) ? '☐ Seçimi kaldır' : '☑ Seç', yap: sec }]
+        : [{ ad: '⬇ İndir', ana: true, yap: () => dosyaOnay(hedefYol, ad) }, { ad: secili.has(ad) ? '☐ Seçimi kaldır' : '☑ Seç', yap: sec }],
+    });
+  }
   el('liste').addEventListener('change', (e) => {
     const k = e.target.closest('input.sec');
     if (!k) return;
@@ -611,7 +669,7 @@
   el('secilenleriIndir').addEventListener('click', () => {
     const adlar = [...secili];
     if (!adlar.length) return;
-    if (adlar.length === 1 && turler.get(adlar[0]) === 'dosya') return dosyaIndir(birlestir(yol, adlar[0]), adlar[0]);
+    if (adlar.length === 1 && turler.get(adlar[0]) === 'dosya') return dosyaOnay(birlestir(yol, adlar[0]), adlar[0]);
     zipHazirla(adlar.map((a) => birlestir(yol, a)));
   });
 
@@ -628,14 +686,37 @@
   });
   el('ust').addEventListener('click', () => listele(ustYol(yol)));
   el('yenile').addEventListener('click', () => listele(yol));
+  // Bu klasörün tamamı: kök klasörde içindekilerin hepsi (kökün kendisi zip'lenemez), alt klasörde klasörün kendisi.
+  el('klasoruIndir').addEventListener('click', () => {
+    if (!girdiler.size) return;
+    zipHazirla(yol ? [yol] : [...girdiler.keys()]);
+  });
+
+  // Satıra dokun: klasör açılır, dosya için onay penceresi. Basılı tut (BASILI_MS, kıpırdamadan): seçenekler.
+  const BASILI_MS = 500;
+  let basili = null; // { satir, x, y, zamanlayici, oldu }
+  let tiklamaYut = false;
+  el('liste').addEventListener('pointerdown', (e) => {
+    const ac = e.target.closest('.ac');
+    if (!ac) return;
+    const b = { satir: ac.closest('.gsatir'), ac, x: e.clientX, y: e.clientY, oldu: false };
+    b.zamanlayici = setTimeout(() => { b.oldu = true; ac.classList.remove('basili'); tiklamaYut = true; navigator.vibrate?.(20); secenekler(b.satir); }, BASILI_MS);
+    ac.classList.add('basili');
+    basili = b;
+  });
+  const basiliBitir = () => { if (!basili) return; clearTimeout(basili.zamanlayici); basili.ac.classList.remove('basili'); basili = null; };
+  el('liste').addEventListener('pointermove', (e) => { if (basili && Math.hypot(e.clientX - basili.x, e.clientY - basili.y) > 10) basiliBitir(); });
+  el('liste').addEventListener('pointerup', basiliBitir);
+  el('liste').addEventListener('pointercancel', basiliBitir);
+  el('liste').addEventListener('contextmenu', (e) => { if (e.target.closest('.ac')) e.preventDefault(); });
   el('liste').addEventListener('click', (e) => {
-    const b = e.target.closest('button');
+    const b = e.target.closest('button.ac');
     const satir = b && b.closest('.gsatir');
     if (!satir) return;
+    if (tiklamaYut) { tiklamaYut = false; return; } // basılı tutmanın ardından gelen tıklama
     const hedefYol = birlestir(yol, satir.dataset.ad);
-    if (b.classList.contains('zip')) return zipHazirla([hedefYol]);
     if (satir.dataset.tur === 'klasor') return listele(hedefYol);
-    dosyaIndir(hedefYol, satir.dataset.ad);
+    dosyaOnay(hedefYol, satir.dataset.ad);
   });
 
   RC.on('auth', guncelle);

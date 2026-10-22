@@ -346,6 +346,15 @@
   yalnızca bu oturumda kaydedilen adlar). (3) **Fare hızı** (⋯ menü, dokunmatik cihazlarda): Çok yavaş 0.5 … Çok hızlı 1.3, varsayılan Normal 0.8
   (eski hız = Hızlı), hatırlanır. Diğer menüsünün sınırı %68 (Fare hızı satırıyla "Daha fazla" görünür kalsın).
   **(henüz gerçek cihazda test edilmedi: yeni Tuşlar düzeni, iPhone'da "Panodaki metni gönder" balonu ve resmin klasöre kaydı, Fare hızı)**
+- **Dosya indirme onayı** (2026-10-22; kullanıcı: "onay penceresi gelmiyor, en üste kaydırıp indir demek gerekiyor", "her şeyin yanında
+  zip yazıyor"): bilgisayardaki dosyaya dokununca ortada onay penceresi (ad, boyut, tarih, Vazgeç / İndir — gerçek `<a download>`,
+  iOS'ta sayfadan ayrılmaz); satırlardaki "Zip olarak indir" düğmeleri kaldırıldı; satıra **basılı tutunca** seçenekler (klasör: Aç,
+  Zip olarak indir, Seç; dosya: İndir, Seç); üstte **Bu klasörü indir** (kökte içindekilerin hepsi); seçilenler ve zip de aynı pencerede
+  (tahmini boyut). Sunucu hata günlüğü artık mesaj türünü ve hatanın kod satırını da yazar (kullanıcının testinde görülen
+  "Cannot read properties of undefined (reading 'length')" bulunamadı; bir dahakine yeri görünecek).
+  Not: 2026-10-22 09:20 NVIDIA sürücüsü kendini sıfırladı (Sistem günlüğü nvlddmkm 153); ardından ekran yakalama ve H.264 kodlayıcı
+  açılamadı, görüntü JPEG'e düştü. Kumanda'nın "çalışmaması" bununla ilgili olabilir — kullanıcıdan ayrıntı bekleniyor.
+  **(henüz gerçek cihazda test edilmedi: iPhone'da onay penceresi + basılı tutma, Safari/Chrome indirme)**
 
 ## Sıradaki
 1. Yukarıdaki özelliklerin gerçek telefon/tablet/kalemle denenmesi (ikinci ekran dahil)
