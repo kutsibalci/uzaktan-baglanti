@@ -41,6 +41,7 @@ static class Durum
     [DllImport("kernel32.dll", SetLastError = true)] static extern IntPtr OpenProcess(int access, bool inherit, int pid);
     [DllImport("kernel32.dll", SetLastError = true)] static extern bool TerminateProcess(IntPtr h, uint code);
     [DllImport("kernel32.dll")] static extern uint WaitForSingleObject(IntPtr h, uint ms);
+    [DllImport("kernel32.dll")] static extern bool GetExitCodeProcess(IntPtr h, out uint code);
     [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern uint QueryDosDevice(string ad, StringBuilder sb, int max);
     [DllImport("kernel32.dll")] static extern IntPtr LoadLibrary(string path);
@@ -149,7 +150,7 @@ static class Durum
         {
             long ct = i + 1 < sayi.Length ? sayi[i + 1] : 0;
             Surec x;
-            if (sayi[i] <= 4 || sayi[i] > int.MaxValue || !s.TryGetValue((int)sayi[i], out x) || (ct != 0 && ct != x.ct)) continue;
+            if (sayi[i] <= 4 || sayi[i] > int.MaxValue || !s.TryGetValue((int)sayi[i], out x) || (ct != 0 && ct != x.ct) || Bitmis(x.pid)) continue;
             if (biz.Contains(x.pid)) { Yaz("{\"t\":\"" + t + "\",\"ok\":false,\"msg\":" + Json("Uzaktan Bağlantı'nın kendi süreci.") + "}"); return; }
             hedef.Add(x);
         }
@@ -187,12 +188,25 @@ static class Durum
             : tamam + " işlem kapatıldı, " + red + " işlem kapatılamadı (" + neden + ").") + "}");
     }
 
+    // Kapanmakta olan süreç (çıkış kodu yazılmış, belleği bırakılırken) süreç listesinde bir süre daha görünür: açık sayılmaz
+    // (zorla kapatılan ~100 MB'lık süreç, kapandığı görüldükten sonra bile listede bulunup "2 işlem kapatıldı" deniyordu).
+    // Açılamayan (korumalı) süreç açık sayılır.
+    static bool Bitmis(int pid)
+    {
+        IntPtr h = OpenProcess(0x1000 /* PROCESS_QUERY_LIMITED_INFORMATION */ | 0x00100000 /* SYNCHRONIZE */, false, pid);
+        if (h == IntPtr.Zero) return Marshal.GetLastWin32Error() == 87;
+        uint kod;
+        bool bitti = WaitForSingleObject(h, 0) == 0 || (GetExitCodeProcess(h, out kod) && kod != 259 /* STILL_ACTIVE */);
+        CloseHandle(h);
+        return bitti;
+    }
+
     static string Bilgi(Dictionary<int, Surec> s, HashSet<int> biz, long n, string t)
     {
         Surec x;
         int pid = n > 4 && n <= int.MaxValue ? (int)n : -1;
         string bas = t == null ? "{" : "{\"t\":\"" + t + "\",";
-        if (pid < 0 || !s.TryGetValue(pid, out x)) return bas + "\"pid\":" + n + ",\"var\":false}";
+        if (pid < 0 || !s.TryGetValue(pid, out x) || Bitmis(pid)) return bas + "\"pid\":" + n + ",\"var\":false}";
         return bas + "\"pid\":" + pid + ",\"var\":true,\"ad\":" + Json(x.ad) + ",\"ct\":\"" + x.ct + "\",\"biz\":" + (biz.Contains(pid) ? "true" : "false") + "}";
     }
 
@@ -344,7 +358,10 @@ static class Durum
             NvUtil u; NvMem m; uint t;
             if (i > 0) sb.Append(',');
             sb.Append("{\"ad\":").Append(Json(nvAd[i]));
-            sb.Append(",\"kul\":").Append(nvmlDeviceGetUtilizationRates(nvAygit[i], out u) == 0 ? u.gpu.ToString() : "null");
+            // Dizüstündeki ekran kartı boştayken güç tasarrufuyla uyur; NVML o sırada kullanımı ölçemez ve 999 (NVML_ERROR_UNKNOWN)
+            // döner (kart çalışırken her saniye okunuyor; sıcaklık ve bellek okunmaya devam ediyor). Bu durum %0 "boşta" sayılır.
+            int ku = nvmlDeviceGetUtilizationRates(nvAygit[i], out u);
+            sb.Append(",\"kul\":").Append(ku == 0 ? u.gpu.ToString() : ku == 999 ? "0,\"bosta\":true" : "null");
             sb.Append(",\"sic\":").Append(nvmlDeviceGetTemperature(nvAygit[i], 0, out t) == 0 ? t.ToString() : "null");
             if (nvmlDeviceGetMemoryInfo(nvAygit[i], out m) == 0) sb.Append(",\"vramKul\":").Append(m.used).Append(",\"vramTop\":").Append(m.total);
             sb.Append('}');

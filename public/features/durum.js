@@ -177,7 +177,7 @@
     const g = m.gpu?.[0];
     kutu('gpu').hidden = !g;
     if (g) {
-      kart('gpu', g.kul != null ? `%${g.kul}` : '–', [g.sic != null && `${g.sic} °C`, g.vramTop && `${ondalik(g.vramKul / 2 ** 30)}/${ondalik(g.vramTop / 2 ** 30)} GB`, g.ad.replace(/^NVIDIA (GeForce )?/, '')].filter(Boolean).join(' · '));
+      kart('gpu', g.kul != null ? `%${g.kul}` : '–', [g.bosta && 'boşta', g.sic != null && `${g.sic} °C`, g.vramTop && `${ondalik(g.vramKul / 2 ** 30)}/${ondalik(g.vramTop / 2 ** 30)} GB`, g.ad.replace(/^NVIDIA (GeForce )?/, '')].filter(Boolean).join(' · '));
       kutu('gpu').title = g.ad;
       cizgi(kutu('gpu').querySelector('polyline'), gecmis.map((x) => x.gpu), 100);
     }

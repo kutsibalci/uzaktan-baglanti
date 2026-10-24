@@ -390,6 +390,14 @@
   GPU'da; ffmpeg CPU ~%6,5 → ~%3, düz renklerde fark ≤ 3/255). Test: `ozellik-kodlayici-gecikme` (kareler tek tek verilir;
   bekleten kodlayıcıda ilk kare hiç çıkmaz). Bekçi (PowerShell) Node'la değiştirilmedi: Görev Yöneticisi'nde ~10 MB, kazanç
   birkaç MB olurdu.
+  Ayrıca: `ozellik-durum-kapat` ~3 çalıştırmada bir düşüyordu. Kök neden: zorla kapatılan süreç (çıkış kodu yazılmış, belleğini
+  bırakırken) süreç listesinde bir süre daha görünüyordu; Durum.exe onu açık sayıp "2 işlem kapatıldı" diyordu. Artık kapanmakta
+  olan süreç açık sayılmaz (Durum.cs `Bitmis`); 8/8 geçti.
+- **Durum panelinde GPU yüzdesi "–" kalıyordu** (2026-10-24, portfolyo ekran görüntüleri alınırken görüldü). Kök neden: dizüstündeki
+  NVIDIA kartı boştayken uyuyor; NVML o sırada `nvmlDeviceGetUtilizationRates` için 999 (NVML_ERROR_UNKNOWN) döndürüyor (kart
+  kodlama yaparken her saniye okunuyor; sıcaklık ve VRAM hep okunuyor). Artık 999 = %0 "boşta" (grafik dolar); başka hata yine "–".
+  Portfolyo için ekran görüntüleri ve bilgi.md: Masaüstü\portfolyo-cikti\uzaktan-baglanti (geçici "demo" hesabı geçici veri
+  klasöründe açıldı, klasörle silindi).
   **(henüz gerçek cihazda test edilmedi: iPhone'da gecikme farkının hissedilmesi)**
 
 ## Sıradaki
