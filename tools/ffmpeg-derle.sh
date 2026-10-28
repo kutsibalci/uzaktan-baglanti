@@ -5,7 +5,8 @@
 #   giriş     gdigrab (ekran), lavfi (color/testsrc2/nullsrc: kodlayıcı denemesi ve testler), ddagrab (DXGI yakalama)
 #   kodlayıcı h264_nvenc, h264_amf, h264_qsv, libx264 (işlemci), libopus (ses), png/rawvideo/pcm_s16le (testler)
 #   çözücü    h264, mjpeg, png, opus, rawvideo, pcm_s16le (testler), wrapped_avframe (lavfi/ddagrab girişleri)
-#   diğer     h264/ogg/null/rawvideo/s16le/image2/framecrc biçimleri, h264_metadata ve trace_headers süzgeçleri, d3d11/cuda
+#   diğer     h264/ogg/null/rawvideo/s16le/image2/framecrc biçimleri, h264_metadata ve trace_headers süzgeçleri, d3d11/cuda,
+#             file/pipe/fd protokolleri (ffmpeg 8: "-" standart giriş/çıkış fd protokolüyle açılır)
 # Kullanım: tools/ffmpeg-derle.sh [ffmpeg etiketi]   → dist/ffmpeg/ffmpeg.exe, lisanslar/, yapilandirma.txt
 set -euo pipefail
 
@@ -92,7 +93,7 @@ YAPILANDIRMA=(
   --enable-demuxer=h264,image2,image_jpeg_pipe,image_png_pipe,ogg,pcm_s16le,rawvideo
   --enable-muxer=h264,null,ogg,rawvideo,pcm_s16le,image2,framecrc
   --enable-bsf=h264_metadata,trace_headers,h264_mp4toannexb,extract_extradata,null
-  --enable-protocol=file,pipe
+  --enable-protocol=file,pipe,fd
 )
 (cd ffmpeg && ./configure "${YAPILANDIRMA[@]}" || { tail -n 60 ffbuild/config.log; exit 1; })
 make -C ffmpeg -j"$IS" ffmpeg.exe
