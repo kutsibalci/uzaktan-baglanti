@@ -4,7 +4,7 @@ Kişisel proje: tarayıcı tabanlı uzaktan masaüstü (TeamViewer benzeri) + ik
 Kullanıcı gündelik Türkçe yazar; cevaplar Türkçe. Kişisel kullanım + CV projesi; ana iddia: **bulut yok, veri dışarı çıkmaz**.
 
 ## Değişmez kurallar
-- Repo ve GitHub Releases **PRIVATE** kalır (kullanıcı aksini söyleyene kadar). Push yalnızca istenince ya da iş bitince; etiket/sürüm yayınlamadan önce sor.
+- Depo **herkese açık** (2026-10-28, GPLv3; eski geçmiş gizli `uzaktan-baglanti-arsiv`te). Kişisel bilgi (adres, IP, bilgisayar adı) depoya girmez: bu bilgisayara özel notlar git dışı `CLAUDE.local.md`'de. Push yalnızca istenince ya da iş bitince; etiket/sürüm yayınlamadan önce sor.
 - **3080 portu kullanıcının çalışan sunucusudur** (varsayılan port; 3000'i Docker'daki Grafana alıyor): ona, `data/` klasörüne ve onun süreçlerine dokunma. Testler başka port kullanır.
 - Kodun kendisi hiçbir dış adrese bağlanmaz (telemetri, CDN, analitik yok). Yeni bir dış bağlantı eklemek gizlilik iddiasını bozar — önce sor.
 - Kullanıcının bilgisayarında YASAK: gerçek fare/klavye/kalem girdisi enjekte etmek; süreçleri ADLA öldürmek (yalnızca kendi PID'lerin, ağacıyla); güç komutları (testlerde `REMOTE_GUC_KURU=1`); panoyu kalıcı değiştirmek (eskiyi geri koy); hoparlörden ses çalmak; yönetici izni isteyen kurulum; Başlangıç klasörüne kalıcı kısayol.
