@@ -15,7 +15,7 @@ i = net.clientInfo(fake('127.0.0.1', { host: 'pc.tail1234.ts.net' }));
 check('başlıksız ama Host ts.net = yerel DEĞİL', !i.isLocal);
 i = net.clientInfo(fake('100.80.1.2', { host: '100.70.0.1:3000' }));
 check('doğrudan Tailscale IP', !i.isLocal && i.via === 'tailscale');
-i = net.clientInfo(fake('192.168.1.50', { host: '192.168.1.50:3000' }));
+i = net.clientInfo(fake('192.168.1.50', { host: '192.168.1.10:3000' }));
 check('ev ağı', !i.isLocal && i.via === 'lan');
 check('internet IP reddedilir', !net.isPrivate('85.105.3.4') && !net.isPrivate('8.8.8.8'));
 check('özel IP kabul', ['10.0.0.5', '172.20.1.1', '192.168.0.9', '100.64.0.1', '::1', 'fd7a:115c:a1e0::1'].every(net.isPrivate));
