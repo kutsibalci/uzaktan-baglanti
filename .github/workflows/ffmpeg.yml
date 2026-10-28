@@ -1,0 +1,39 @@
+# Küçük ffmpeg: yalnızca uygulamanın ve testlerin kullandığı parçalarla, resmi kaynaklardan derlenir (tools/ffmpeg-derle.sh).
+# Elle çalıştırılır: Actions -> "Küçük ffmpeg" -> Run workflow. Çıktı: ffmpeg-kucuk (ffmpeg.exe, lisanslar, yapilandirma.txt).
+name: Küçük ffmpeg
+
+on:
+  workflow_dispatch:
+    inputs:
+      surum:
+        description: FFmpeg etiketi
+        default: n8.1.2
+
+permissions:
+  contents: read
+
+jobs:
+  derle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Derleme araçları
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mingw-w64 nasm pkg-config cmake autoconf automake libtool make git curl
+          # C++ (libvpl) için posix iş parçacığı modeli
+          sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix
+          sudo update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix
+
+      - name: Derle
+        env:
+          SURUM: ${{ inputs.surum }}
+        run: bash tools/ffmpeg-derle.sh "$SURUM"
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: ffmpeg-kucuk
+          path: dist/ffmpeg/
+          retention-days: 30
