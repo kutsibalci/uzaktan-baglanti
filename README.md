@@ -2,6 +2,8 @@
 
 Windows bilgisayarı telefondan, tabletten ya da başka bir bilgisayardan **tarayıcı ile** görüp kontrol etmeye yarayan, kendi bilgisayarında çalışan uzaktan masaüstü uygulaması. Karşı tarafa bir şey kurmak gerekmez.
 
+> **English:** A self-hosted remote desktop for Windows that you use from any browser (phone, tablet or another computer) with nothing to install on the viewing device. No cloud: the picture, sound and files go directly from your computer to your own devices. Features include H.264 streaming with hardware encoders, a touch-first phone interface, a screenless remote mode, file transfer, clipboard sync, system status and an audio mixer. Licensed under GPL-3.0-or-later. The interface and documentation are in Turkish.
+
 ## Özellikler
 - Uzaktan kontrol: fare, klavye (Türkçe karakterler dahil), dokunmatik; farklı ölçeklemeli (ör. %125 + %100) birden çok monitör
 - H.264 görüntü (NVIDIA / AMD / Intel donanım kodlayıcı), desteklenmeyen tarayıcılarda JPEG (hızlı ekran yakalama, ağa göre "Otomatik" kalite)
@@ -114,6 +116,21 @@ Yönetici hesabıyla ana menüde **⏻ Güç** düğmesi bilgisayarı kilitler, 
 | `.github/workflows/paket.yml` | Etiket gönderilince zip'i Releases'e koyar |
 
 Yol haritası ve piyasa notları: [NOTLAR.md](NOTLAR.md)
+
+## Gizlilik / Privacy
+
+Uzaktan Bağlantı, siz istemedikçe hiçbir ağ sistemine bilgi göndermez. Görüntü, ses, dosyalar ve hesaplar yalnızca sizin bilgisayarınızda ve bağlandığınız kendi cihazlarınızda kalır; projenin işlettiği bir sunucu, telemetri ya da analitik yoktur. Evin dışından erişim için isteğe bağlı olarak kendi Tailscale hesabınızı kullanabilirsiniz; o durumda bağlantı Tailscale ağınız üzerinden kurulur.
+
+*This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.* There is no project-run server, telemetry or analytics. Remote access outside your home network is optional and uses your own Tailscale account if you set it up.
+
+## Kod imzalama politikası / Code signing policy
+
+Windows yardımcı programlarının ve yayın paketlerinin [SignPath Foundation](https://signpath.org) ücretsiz açık kaynak programıyla imzalanması için başvuru aşamasındayız. İmzalı dosyalar yalnızca bu depodaki kaynak koddan, GitHub Actions'ta otomatik olarak derlenir.
+
+*We are applying to sign the Windows helper programs and release packages through the free open source program of the [SignPath Foundation](https://signpath.org). Signed files are built only from the source code in this repository, automatically on GitHub Actions.*
+
+- Committers and reviewers / Geliştirici ve inceleyen: [@kutsibalci](https://github.com/kutsibalci)
+- Approvers / İmza onaylayan: [@kutsibalci](https://github.com/kutsibalci)
 
 ## Lisans
 
