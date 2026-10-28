@@ -70,9 +70,6 @@ function birimTestleri() {
     ['HELLO WORLD', 0, 1, '2cee776cd87923a0b50751b157fe74b2'],
     ['HELLO WORLD', 3, 1, '1e387bd8b7a170bfa73b461bab560d96'],
     ['HELLO WORLD', 6, 1, '84a0007f0e8c0dbac8c1c5b7ea46ab60'],
-    [`https://desktop-abc1234.tailnet123.ts.net/#e=${UZUN}`, 0, 6, 'c0a03f732e822e5b66f7681952b0eda3'],
-    [`https://desktop-abc1234.tailnet123.ts.net/#e=${UZUN}`, 3, 6, 'd7e14edaede3089201a1a7760c6ae8d8'],
-    [`https://desktop-abc1234.tailnet123.ts.net/#e=${UZUN}`, 6, 6, '213b9837c08d4a6fecc052f6bd5de76c'],
     [`http://192.168.1.34:3080/#e=${UZUN}`, 0, 5, '5a091271e9bf04862e815ddb1c16120b'],
     [`http://192.168.1.34:3080/#e=${UZUN}`, 3, 5, 'c2c5dacd6bcc758012382ed4d81d72ec'],
     [`http://192.168.1.34:3080/#e=${UZUN}`, 6, 5, '5af43fa4452dc42c030615b75d707a82'],
@@ -88,10 +85,11 @@ function birimTestleri() {
     const e = qr.encode(metin, { mask });
     return e.version !== surum || e.size !== surum * 4 + 17 || ozet(e.modules) !== h;
   });
-  check('referans uygulamayla bit bit aynı (5 metin × 3 maske, sürüm 1–13, UTF-8)', farkli.length === 0, farkli.map((x) => `${x[0].slice(0, 12)}/${x[1]}`).join(', '));
+  // (Tailscale biçimli adresle hesaplanmış üç referans satırı, gerçek bir makine adı içerdiği için açık depodan çıkarıldı.)
+  check('referans uygulamayla bit bit aynı (4 metin × 3 maske, sürüm 1–13, UTF-8)', farkli.length === 0, farkli.map((x) => `${x[0].slice(0, 12)}/${x[1]}`).join(', '));
 
   // Otomatik maske: en düşük ceza puanlı maske seçilir; matristen biçim bilgisi geri okunabilir.
-  const url = `https://desktop-abc1234.tailnet123.ts.net/#e=${crypto.randomBytes(32).toString('base64url')}`;
+  const url = `https://bilgisayar.ornek-ag.ts.net/#e=${crypto.randomBytes(32).toString('base64url')}`;
   const e = qr.encode(url);
   const puanlar = [0, 1, 2, 3, 4, 5, 6, 7].map((k) => qr.penalty(qr.encode(url, { mask: k }).modules));
   check('maske: en düşük ceza puanlısı seçildi', puanlar[e.mask] === Math.min(...puanlar), `maske ${e.mask}, puanlar ${puanlar.join('/')}`);

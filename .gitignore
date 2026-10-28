@@ -12,6 +12,9 @@ helper/*.exe
 # Taşınabilir paket çıktısı (tools\paketle.ps1)
 dist/
 
+# Küçük ffmpeg (tools/ffmpeg-derle.sh, Actions'ta derlenir; lib/ffmpeg.js önce bunu kullanır)
+/ffmpeg/
+
 # Geçici dosyalar
 *.tmp
 *.log
@@ -21,3 +24,7 @@ tools/platform-tools/
 
 # Claude Code çalışma klasörü (ajan worktree'leri)
 .claude/
+
+# Yalnızca bu bilgisayara özel notlar (Tailscale adresi vb.) ve konuşma notlarının kopyası: açık depoya girmez
+CLAUDE.local.md
+HAFIZA.md
