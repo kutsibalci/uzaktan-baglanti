@@ -89,7 +89,7 @@ function birimTestleri() {
   check('referans uygulamayla bit bit aynı (4 metin × 3 maske, sürüm 1–13, UTF-8)', farkli.length === 0, farkli.map((x) => `${x[0].slice(0, 12)}/${x[1]}`).join(', '));
 
   // Otomatik maske: en düşük ceza puanlı maske seçilir; matristen biçim bilgisi geri okunabilir.
-  const url = `https://bilgisayar.ornek-ag.ts.net/#e=${crypto.randomBytes(32).toString('base64url')}`;
+  const url = `https://desktop-abc1234.tailnet123.ts.net/#e=${crypto.randomBytes(32).toString('base64url')}`;
   const e = qr.encode(url);
   const puanlar = [0, 1, 2, 3, 4, 5, 6, 7].map((k) => qr.penalty(qr.encode(url, { mask: k }).modules));
   check('maske: en düşük ceza puanlısı seçildi', puanlar[e.mask] === Math.min(...puanlar), `maske ${e.mask}, puanlar ${puanlar.join('/')}`);
